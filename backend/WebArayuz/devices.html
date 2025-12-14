@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cihazlar - Test Otomasyon Platformu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">🧪</div>
+                    <span>Test Platform</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">Ana Menü</div>
+                    <a href="index.html" class="nav-item">
+                        <span class="nav-item-icon">📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="devices.html" class="nav-item active">
+                        <span class="nav-item-icon">📱</span>
+                        <span>Cihazlar</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section" id="adminSection" style="display: none;">
+                    <div class="nav-section-title">Yönetim</div>
+                    <a href="#" class="nav-item" onclick="showAddDeviceModal(); return false;">
+                        <span class="nav-item-icon">➕</span>
+                        <span>Cihaz Ekle</span>
+                    </a>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">?</div>
+                    <div class="user-details">
+                        <div class="user-name">Yükleniyor...</div>
+                        <div class="user-role">-</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left">
+                    <h1 class="page-title">Cihazlar</h1>
+                </div>
+                <div class="header-right">
+                    <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+                    <div class="tabs">
+                        <button class="tab active" onclick="filterDevices('all')">Tümü</button>
+                        <button class="tab" onclick="filterDevices('emulator')">Emülatör</button>
+                        <button class="tab" onclick="filterDevices('physical')">Fiziksel</button>
+                    </div>
+                </div>
+            </header>
+            
+            <div class="page-content">
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-title">Toplam Cihaz</span>
+                            <div class="stat-card-icon" style="background: rgba(79, 70, 229, 0.1); color: var(--accent-primary);">📱</div>
+                        </div>
+                        <div class="stat-card-value" id="statTotal">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-title">Müsait</span>
+                            <div class="stat-card-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">✅</div>
+                        </div>
+                        <div class="stat-card-value" id="statAvailable">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-title">Kullanımda</span>
+                            <div class="stat-card-icon" style="background: rgba(245, 158, 11, 0.1); color: var(--warning);">🔒</div>
+                        </div>
+                        <div class="stat-card-value" id="statInUse">0</div>
+                    </div>
+                </div>
+                
+                <!-- My Device -->
+                <div class="card mb-4" id="myDeviceCard" style="display: none;">
+                    <div class="card-header">
+                        <h2 class="card-title">🎯 Kullandığım Cihaz</h2>
+                    </div>
+                    <div class="card-body" id="myDeviceContent"></div>
+                </div>
+                
+                <!-- Device Grid -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Cihaz Listesi</h2>
+                        <button class="btn btn-ghost btn-sm" onclick="loadDevices()">🔄 Yenile</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="device-grid" id="deviceGrid"></div>
+                        
+                        <div class="empty-state" id="emptyState" style="display: none;">
+                            <div class="empty-state-icon">📱</div>
+                            <h3 class="empty-state-title">Henüz cihaz yok</h3>
+                            <p class="empty-state-description">Admin panelinden cihaz ekleyebilirsiniz</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Add Device Modal (Admin) -->
+    <div class="modal-overlay" id="addDeviceModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">➕ Yeni Cihaz Ekle</h3>
+                <button class="modal-close" onclick="Modal.hide('addDeviceModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="addDeviceForm">
+                    <div class="form-group">
+                        <label class="form-label">Cihaz Adı *</label>
+                        <input type="text" class="form-input" id="deviceName" placeholder="Samsung Galaxy S21" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Cihaz ID (UDID) *</label>
+                        <input type="text" class="form-input" id="deviceId" placeholder="emulator-5554 veya UDID" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Tür *</label>
+                        <select class="form-input form-select" id="deviceType" required>
+                            <option value="emulator">Emülatör</option>
+                            <option value="physical">Fiziksel Cihaz</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">İşletim Sistemi *</label>
+                        <select class="form-input form-select" id="deviceOS" required>
+                            <option value="android">Android</option>
+                            <option value="ios">iOS</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">OS Versiyon</label>
+                        <input type="text" class="form-input" id="deviceOSVersion" placeholder="14.0">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Appium URL</label>
+                        <input type="text" class="form-input" id="deviceAppiumUrl" placeholder="http://localhost:4723/wd/hub">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Modal.hide('addDeviceModal')">İptal</button>
+                <button class="btn btn-primary" onclick="addDevice()">Ekle</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/app.js"></script>
+    <script>
+        // Check auth
+        if (!Auth.checkAuth()) {}
+        
+        let allDevices = [];
+        let currentFilter = 'all';
+        
+        async function init() {
+            UI.renderUserInfo();
+            
+            // Show admin section
+            const user = Auth.getUser();
+            if (user && user.role === 'admin') {
+                document.getElementById('adminSection').style.display = 'block';
+            }
+            
+            await loadDevices();
+            await loadMyDevice();
+        }
+        
+        async function loadDevices() {
+            try {
+                const data = await DevicesAPI.list();
+                allDevices = data.devices;
+                
+                // Update stats
+                document.getElementById('statTotal').textContent = data.total;
+                document.getElementById('statAvailable').textContent = data.available;
+                document.getElementById('statInUse').textContent = data.in_use;
+                
+                renderDevices();
+            } catch (error) {
+                Toast.error('Cihazlar yüklenemedi');
+            }
+        }
+        
+        async function loadMyDevice() {
+            try {
+                const device = await DevicesAPI.getMyDevice();
+                const card = document.getElementById('myDeviceCard');
+                const content = document.getElementById('myDeviceContent');
+                
+                if (device) {
+                    card.style.display = 'block';
+                    content.innerHTML = `
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <div class="device-icon">${device.os === 'android' ? '🤖' : '🍎'}</div>
+                                <div>
+                                    <div style="font-weight: 600;">${device.name}</div>
+                                    <div style="font-size: 0.85rem; color: var(--text-muted);">
+                                        ${device.os} ${device.os_version} • ${device.type === 'emulator' ? 'Emülatör' : 'Fiziksel'}
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-danger btn-sm" onclick="unlockDevice(${device.id})">
+                                🔓 Bırak
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    card.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('My device load error:', error);
+            }
+        }
+        
+        function filterDevices(type) {
+            currentFilter = type;
+            
+            // Update tabs
+            document.querySelectorAll('.tabs .tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            renderDevices();
+        }
+        
+        function renderDevices() {
+            const grid = document.getElementById('deviceGrid');
+            const empty = document.getElementById('emptyState');
+            
+            let devices = allDevices;
+            if (currentFilter !== 'all') {
+                devices = allDevices.filter(d => d.type === currentFilter);
+            }
+            
+            if (devices.length === 0) {
+                grid.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
+            
+            grid.style.display = 'grid';
+            empty.style.display = 'none';
+            
+            const user = Auth.getUser();
+            
+            grid.innerHTML = devices.map(device => {
+                const isMyDevice = device.current_user_id === user?.id;
+                const canUse = device.status === 'available' || isMyDevice;
+                
+                return `
+                    <div class="device-card ${device.status}">
+                        <div class="device-header">
+                            <div class="device-icon">${device.os === 'android' ? '🤖' : '🍎'}</div>
+                            <div class="device-info">
+                                <div class="device-name">${device.name}</div>
+                                <div class="device-os">${device.os} ${device.os_version || ''}</div>
+                            </div>
+                            <span class="badge badge-${device.type === 'emulator' ? 'info' : 'primary'}">
+                                ${device.type === 'emulator' ? 'EMU' : 'FİZİK'}
+                            </span>
+                        </div>
+                        
+                        <div class="device-status">
+                            <span class="status-dot ${device.status === 'available' ? 'online' : device.status === 'in_use' ? 'busy' : 'offline'}"></span>
+                            ${device.status === 'available' ? 'Müsait' : 
+                              device.status === 'in_use' ? `<span class="device-user">${device.current_user_name || 'Bilinmeyen'} kullanıyor</span>` :
+                              'Çevrimdışı'}
+                        </div>
+                        
+                        <div style="display: flex; gap: 8px;">
+                            ${device.status === 'available' ? `
+                                <button class="btn btn-success btn-sm" style="flex: 1;" onclick="lockDevice(${device.id})">
+                                    🔒 Kullan
+                                </button>
+                            ` : isMyDevice ? `
+                                <button class="btn btn-danger btn-sm" style="flex: 1;" onclick="unlockDevice(${device.id})">
+                                    🔓 Bırak
+                                </button>
+                            ` : `
+                                <button class="btn btn-secondary btn-sm" style="flex: 1;" disabled>
+                                    Kullanılamaz
+                                </button>
+                            `}
+                            
+                            ${user?.role === 'admin' ? `
+                                <button class="btn btn-ghost btn-sm btn-icon" onclick="deleteDevice(${device.id})" title="Sil">
+                                    🗑️
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        async function lockDevice(id) {
+            try {
+                const result = await DevicesAPI.lock(id);
+                if (result.success) {
+                    Toast.success('Cihaz kilitlendi');
+                    await loadDevices();
+                    await loadMyDevice();
+                } else {
+                    Toast.error(result.message);
+                }
+            } catch (error) {
+                Toast.error(error.message);
+            }
+        }
+        
+        async function unlockDevice(id) {
+            try {
+                const result = await DevicesAPI.unlock(id);
+                if (result.success) {
+                    Toast.success('Cihaz serbest bırakıldı');
+                    await loadDevices();
+                    await loadMyDevice();
+                } else {
+                    Toast.error(result.message);
+                }
+            } catch (error) {
+                Toast.error(error.message);
+            }
+        }
+        
+        function showAddDeviceModal() {
+            document.getElementById('addDeviceForm').reset();
+            Modal.show('addDeviceModal');
+        }
+        
+        async function addDevice() {
+            const data = {
+                name: document.getElementById('deviceName').value,
+                device_id: document.getElementById('deviceId').value,
+                type: document.getElementById('deviceType').value,
+                os: document.getElementById('deviceOS').value,
+                os_version: document.getElementById('deviceOSVersion').value,
+                appium_url: document.getElementById('deviceAppiumUrl').value
+            };
+            
+            if (!data.name || !data.device_id) {
+                Toast.error('Cihaz adı ve ID gerekli');
+                return;
+            }
+            
+            try {
+                await DevicesAPI.create(data);
+                Toast.success('Cihaz eklendi');
+                Modal.hide('addDeviceModal');
+                await loadDevices();
+            } catch (error) {
+                Toast.error(error.message);
+            }
+        }
+        
+        async function deleteDevice(id) {
+            if (!confirm('Bu cihazı silmek istediğinize emin misiniz?')) return;
+            
+            try {
+                await DevicesAPI.delete(id);
+                Toast.success('Cihaz silindi');
+                await loadDevices();
+            } catch (error) {
+                Toast.error(error.message);
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>
