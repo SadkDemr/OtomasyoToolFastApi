@@ -4,13 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Test Otomasyon Platformu</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
@@ -18,129 +16,86 @@
                     <span>Test Platform</span>
                 </div>
             </div>
-            
             <nav class="sidebar-nav">
                 <div class="nav-section">
-                    <div class="nav-section-title">Ana Menü</div>
-                    <a href="index.html" class="nav-item active" data-page="dashboard">
-                        <span class="nav-item-icon">📊</span>
-                        <span>Dashboard</span>
-                    </a>
-                    <a href="scenarios.html" class="nav-item" data-page="scenarios">
-                        <span class="nav-item-icon">📝</span>
-                        <span>Senaryolar</span>
-                        <span class="nav-item-badge" id="scenarioCount">0</span>
-                    </a>
-                    <a href="devices.html" class="nav-item" data-page="devices">
-                        <span class="nav-item-icon">📱</span>
-                        <span>Cihazlar</span>
-                    </a>
+                    <div class="nav-section-title">Ana Menu</div>
+                    <a href="index.html" class="nav-item active"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
+                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
                 </div>
-                
                 <div class="nav-section">
-                    <div class="nav-section-title">Test Türleri</div>
-                    <a href="scenarios.html?type=web" class="nav-item">
-                        <span class="nav-item-icon">🌐</span>
-                        <span>Web Test</span>
-                    </a>
-                    <a href="scenarios.html?type=mobile" class="nav-item">
-                        <span class="nav-item-icon">📲</span>
-                        <span>Mobil Test</span>
-                    </a>
-                    <a href="scenarios.html?type=desktop" class="nav-item">
-                        <span class="nav-item-icon">🖥️</span>
-                        <span>Desktop Test</span>
-                    </a>
-                </div>
-                
-                <div class="nav-section" id="adminSection" style="display: none;">
-                    <div class="nav-section-title">Yönetim</div>
-                    <a href="admin-devices.html" class="nav-item">
-                        <span class="nav-item-icon">⚙️</span>
-                        <span>Cihaz Yönetimi</span>
-                    </a>
+                    <div class="nav-section-title">Test Turleri</div>
+                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
+                    <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
                 </div>
             </nav>
-            
             <div class="sidebar-footer">
-                <div class="user-info">
+                <div class="user-info" onclick="if(confirm('Cikis yapmak istiyor musunuz?')) Auth.logout();">
                     <div class="user-avatar">?</div>
                     <div class="user-details">
-                        <div class="user-name">Yükleniyor...</div>
+                        <div class="user-name">Yukleniyor...</div>
                         <div class="user-role">-</div>
                     </div>
                 </div>
             </div>
         </aside>
         
-        <!-- Main Content -->
         <main class="main-content">
             <header class="header">
-                <div class="header-left">
-                    <h1 class="page-title">Dashboard</h1>
-                </div>
+                <div class="header-left"><h1 class="page-title">Dashboard</h1></div>
                 <div class="header-right">
                     <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
-                    <a href="editor.html" class="btn btn-primary">
-                        <span>+</span>
-                        Yeni Senaryo
-                    </a>
+                    <a href="editor.html" class="btn btn-primary">+ Yeni Senaryo</a>
                 </div>
             </header>
             
             <div class="page-content">
-                <!-- Stats -->
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-card-header">
                             <span class="stat-card-title">Toplam Senaryo</span>
-                            <div class="stat-card-icon" style="background: rgba(79, 70, 229, 0.1); color: var(--accent-primary);">📝</div>
+                            <div class="stat-card-icon" style="background: rgba(79,70,229,0.1); color: var(--accent-primary);">📝</div>
                         </div>
                         <div class="stat-card-value" id="statTotal">0</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-header">
                             <span class="stat-card-title">Web Test</span>
-                            <div class="stat-card-icon" style="background: rgba(59, 130, 246, 0.1); color: var(--info);">🌐</div>
+                            <div class="stat-card-icon" style="background: rgba(59,130,246,0.1); color: var(--info);">🌐</div>
                         </div>
                         <div class="stat-card-value" id="statWeb">0</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card-header">
                             <span class="stat-card-title">Mobil Test</span>
-                            <div class="stat-card-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">📲</div>
+                            <div class="stat-card-icon" style="background: rgba(16,185,129,0.1); color: var(--success);">📲</div>
                         </div>
                         <div class="stat-card-value" id="statMobile">0</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-card-header">
-                            <span class="stat-card-title">Desktop Test</span>
-                            <div class="stat-card-icon" style="background: rgba(124, 58, 237, 0.1); color: var(--accent-secondary);">🖥️</div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header"><h2 class="card-title">Hizli Erisim</h2></div>
+                    <div class="card-body">
+                        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                            <a href="web-test.html" class="btn btn-primary btn-lg" style="flex:1; min-width:200px; justify-content:center;">🌐 Web Test</a>
+                            <a href="mobile-test.html" class="btn btn-success btn-lg" style="flex:1; min-width:200px; justify-content:center;">📲 Mobil Test</a>
+                            <a href="editor.html" class="btn btn-secondary btn-lg" style="flex:1; min-width:200px; justify-content:center;">✏️ Yeni Senaryo</a>
                         </div>
-                        <div class="stat-card-value" id="statDesktop">0</div>
                     </div>
                 </div>
                 
-                <!-- Recent Scenarios -->
                 <div class="card">
                     <div class="card-header">
                         <h2 class="card-title">Son Senaryolar</h2>
-                        <a href="scenarios.html" class="btn btn-ghost btn-sm">Tümünü Gör →</a>
+                        <a href="scenarios.html" class="btn btn-ghost btn-sm">Tumunu Gor</a>
                     </div>
                     <div class="card-body">
-                        <div class="scenario-grid" id="scenarioGrid">
-                            <!-- Senaryolar buraya yüklenecek -->
-                        </div>
-                        
-                        <!-- Empty State -->
-                        <div class="empty-state" id="emptyState" style="display: none;">
+                        <div class="scenario-grid" id="scenarioGrid"></div>
+                        <div class="empty-state" id="emptyState" style="display:none;">
                             <div class="empty-state-icon">📝</div>
-                            <h3 class="empty-state-title">Henüz senaryo yok</h3>
-                            <p class="empty-state-description">İlk test senaryonuzu oluşturarak başlayın</p>
-                            <a href="editor.html" class="btn btn-primary">
-                                <span>+</span>
-                                Yeni Senaryo Oluştur
-                            </a>
+                            <h3 class="empty-state-title">Henuz senaryo yok</h3>
+                            <p class="empty-state-description">Ilk test senaryonuzu olusturun</p>
+                            <a href="editor.html" class="btn btn-primary">+ Yeni Senaryo</a>
                         </div>
                     </div>
                 </div>
@@ -150,39 +105,19 @@
     
     <script src="js/app.js"></script>
     <script>
-        // Check auth
-        if (!Auth.checkAuth()) {
-            // Redirect handled in checkAuth
-        }
+        if (!Auth.checkAuth()) {}
         
-        // Load data
-        async function loadDashboard() {
+        async function load() {
+            UI.renderUserInfo();
             try {
-                // Load user info
-                UI.renderUserInfo();
-                
-                // Show admin section if admin
-                const user = Auth.getUser();
-                if (user && user.role === 'admin') {
-                    document.getElementById('adminSection').style.display = 'block';
-                }
-                
-                // Load stats
                 const stats = await ScenariosAPI.getStats();
                 document.getElementById('statTotal').textContent = stats.total;
                 document.getElementById('statWeb').textContent = stats.web;
                 document.getElementById('statMobile').textContent = stats.mobile;
-                document.getElementById('statDesktop').textContent = stats.desktop;
-                document.getElementById('scenarioCount').textContent = stats.total;
                 
-                // Load recent scenarios
                 const data = await ScenariosAPI.list();
                 renderScenarios(data.scenarios.slice(0, 6));
-                
-            } catch (error) {
-                console.error('Dashboard load error:', error);
-                Toast.error('Veriler yüklenirken hata oluştu');
-            }
+            } catch (e) { console.error(e); }
         }
         
         function renderScenarios(scenarios) {
@@ -198,78 +133,32 @@
             grid.style.display = 'grid';
             empty.style.display = 'none';
             
-            grid.innerHTML = scenarios.map(scenario => `
-                <div class="scenario-card" onclick="window.location.href='editor.html?id=${scenario.id}'">
+            grid.innerHTML = scenarios.map(s => `
+                <div class="scenario-card" onclick="location.href='editor.html?id=${s.id}'">
                     <div class="scenario-card-header">
-                        <div class="scenario-icon ${scenario.type}">
-                            ${scenario.type === 'web' ? '🌐' : scenario.type === 'mobile' ? '📲' : '🖥️'}
-                        </div>
-                        <div class="scenario-actions">
-                            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); runScenario(${scenario.id})" title="Çalıştır">
-                                ▶️
-                            </button>
-                            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); deleteScenario(${scenario.id})" title="Sil">
-                                🗑️
-                            </button>
-                        </div>
+                        <div class="scenario-icon ${s.type}">${s.type === 'web' ? '🌐' : '📲'}</div>
+                        <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); deleteScenario(${s.id})">🗑</button>
                     </div>
-                    <h3 class="scenario-name">${Utils.escapeHtml(scenario.name)}</h3>
-                    <p class="scenario-description">${Utils.escapeHtml(scenario.description || 'Açıklama yok')}</p>
+                    <h3 class="scenario-name">${Utils.escapeHtml(s.name)}</h3>
+                    <p class="scenario-description">${Utils.escapeHtml(s.description || '')}</p>
                     <div class="scenario-meta">
-                        <span class="scenario-meta-item">
-                            <span class="badge badge-${scenario.type === 'web' ? 'info' : scenario.type === 'mobile' ? 'success' : 'primary'}">
-                                ${scenario.type.toUpperCase()}
-                            </span>
-                        </span>
-                        <span class="scenario-meta-item">
-                            ${Utils.formatRelativeTime(scenario.updated_at)}
-                        </span>
+                        <span class="badge badge-${s.type === 'web' ? 'info' : 'success'}">${s.type.toUpperCase()}</span>
+                        <span>${Utils.formatRelativeTime(s.updated_at)}</span>
                     </div>
                 </div>
             `).join('');
         }
         
-        async function runScenario(id) {
-            try {
-                const scenario = await ScenariosAPI.get(id);
-                
-                if (scenario.type === 'web') {
-                    const config = JSON.parse(scenario.config_json || '{}');
-                    const result = await TestAPI.runWebTest({
-                        url: config.url || '',
-                        input_type: 'natural',
-                        natural_text: scenario.natural_steps,
-                        headless: false,
-                        stop_on_fail: true
-                    });
-                    
-                    if (result.success) {
-                        Toast.success(`Test başarılı! (${result.duration}s)`);
-                    } else {
-                        Toast.error(`Test başarısız: ${result.message}`);
-                    }
-                } else {
-                    Toast.error('Bu test türü henüz desteklenmiyor');
-                }
-            } catch (error) {
-                Toast.error(error.message);
-            }
-        }
-        
         async function deleteScenario(id) {
-            if (!confirm('Bu senaryoyu silmek istediğinize emin misiniz?')) return;
-            
+            if (!confirm('Silmek istediginize emin misiniz?')) return;
             try {
                 await ScenariosAPI.delete(id);
-                Toast.success('Senaryo silindi');
-                loadDashboard();
-            } catch (error) {
-                Toast.error(error.message);
-            }
+                Toast.success('Silindi');
+                load();
+            } catch (e) { Toast.error(e.message); }
         }
         
-        // Init
-        loadDashboard();
+        load();
     </script>
 </body>
 </html>

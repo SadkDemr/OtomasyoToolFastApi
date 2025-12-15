@@ -3,160 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Senaryo Editörü - Test Otomasyon Platformu</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <title>Senaryo Editoru - Test Otomasyon Platformu</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <div class="logo">
-                    <div class="logo-icon">🧪</div>
-                    <span>Test Platform</span>
-                </div>
+                <div class="logo"><div class="logo-icon">🧪</div><span>Test Platform</span></div>
             </div>
-            
             <nav class="sidebar-nav">
                 <div class="nav-section">
-                    <div class="nav-section-title">Ana Menü</div>
-                    <a href="index.html" class="nav-item">
-                        <span class="nav-item-icon">📊</span>
-                        <span>Dashboard</span>
-                    </a>
-                    <a href="devices.html" class="nav-item">
-                        <span class="nav-item-icon">📱</span>
-                        <span>Cihazlar</span>
-                    </a>
+                    <div class="nav-section-title">Ana Menu</div>
+                    <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
+                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
                 </div>
-                
                 <div class="nav-section">
-                    <div class="nav-section-title">Yardım</div>
-                    <a href="#" class="nav-item" onclick="showHelpModal(); return false;">
-                        <span class="nav-item-icon">❓</span>
-                        <span>Nasıl Yazılır?</span>
-                    </a>
+                    <div class="nav-section-title">Test Turleri</div>
+                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
+                    <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
                 </div>
             </nav>
-            
             <div class="sidebar-footer">
-                <div class="user-info">
+                <div class="user-info" onclick="if(confirm('Cikis?')) Auth.logout();">
                     <div class="user-avatar">?</div>
-                    <div class="user-details">
-                        <div class="user-name">Yükleniyor...</div>
-                        <div class="user-role">-</div>
-                    </div>
+                    <div class="user-details"><div class="user-name">Yukleniyor...</div><div class="user-role">-</div></div>
                 </div>
             </div>
         </aside>
         
-        <!-- Main Content -->
         <main class="main-content">
             <header class="header">
                 <div class="header-left">
-                    <a href="index.html" class="btn btn-ghost btn-sm">← Geri</a>
+                    <a href="scenarios.html" class="btn btn-ghost btn-sm">← Geri</a>
                     <h1 class="page-title" id="pageTitle">Yeni Senaryo</h1>
                 </div>
                 <div class="header-right">
                     <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
-                    <button class="btn btn-secondary" onclick="parseSteps()">
-                        🔍 Kontrol Et
-                    </button>
-                    <button class="btn btn-success" onclick="runTest()">
-                        ▶️ Çalıştır
-                    </button>
-                    <button class="btn btn-primary" onclick="saveScenario()">
-                        💾 Kaydet
-                    </button>
+                    <button class="btn btn-secondary" onclick="parseSteps()">🔍 Kontrol Et</button>
+                    <button class="btn btn-primary" onclick="saveScenario()">💾 Kaydet</button>
                 </div>
             </header>
             
             <div class="page-content">
-                <div class="editor-container">
-                    <!-- Editor Main -->
+                <div class="editor-layout">
                     <div class="editor-main">
                         <div class="editor-toolbar">
-                            <div class="tabs">
-                                <button class="tab active" data-tab="natural">Türkçe Adımlar</button>
-                                <button class="tab" data-tab="preview">Önizleme</button>
-                            </div>
+                            <span style="font-weight: 600;">✏️ Test Adimlari</span>
+                            <button class="btn btn-ghost btn-sm" onclick="Modal.show('helpModal')">❓ Yardim</button>
                         </div>
                         <div class="editor-content">
-                            <div id="naturalTab" class="editor-with-lines">
-                                <div class="line-numbers" id="lineNumbers">1</div>
-                                <textarea class="code-editor" id="stepsEditor" placeholder="Test adımlarınızı Türkçe yazın...
+                            <textarea class="code-editor" id="stepsEditor" placeholder="Test adimlarinizi Turkce yazin...
 
-Örnek:
+Ornek:
 1. 2 saniye beklenir
-2. &quot;Giriş Yap&quot; butonuna tıklanır
-3. &quot;Email&quot; alanına test@test.com yazılır
-4. &quot;Şifre&quot; alanına 123456 yazılır
-5. &quot;Gönder&quot; butonuna tıklanır
-6. &quot;Hoş geldiniz&quot; yazısı görülür"></textarea>
-                            </div>
-                            
-                            <div id="previewTab" class="card-body" style="display: none;">
-                                <div id="previewContent">
-                                    <p style="color: var(--text-muted);">Adımları görmek için "Kontrol Et" butonuna tıklayın</p>
-                                </div>
-                            </div>
+2. &quot;Giris Yap&quot; butonuna tiklanir
+3. &quot;Email&quot; alanina test@test.com yazilir
+4. &quot;Sifre&quot; alanina 123456 yazilir
+5. &quot;Gonder&quot; butonuna tiklanir
+6. &quot;Hos geldiniz&quot; yazisi gorulur"></textarea>
                         </div>
                     </div>
                     
-                    <!-- Settings Sidebar -->
                     <div class="editor-sidebar">
-                        <!-- Senaryo Bilgileri -->
                         <div class="settings-card">
-                            <div class="settings-card-header">
-                                <span>📝</span>
-                                Senaryo Bilgileri
-                            </div>
+                            <div class="settings-card-header">📝 Senaryo Bilgileri</div>
                             <div class="settings-card-body">
                                 <div class="form-group">
-                                    <label class="form-label">Senaryo Adı *</label>
-                                    <input type="text" class="form-input" id="scenarioName" placeholder="Örn: Login Testi" required>
+                                    <label class="form-label">Senaryo Adi *</label>
+                                    <input type="text" class="form-input" id="scenarioName" placeholder="Ornek: Login Testi">
                                 </div>
-                                
                                 <div class="form-group">
-                                    <label class="form-label">Açıklama</label>
-                                    <textarea class="form-input" id="scenarioDesc" placeholder="Senaryo hakkında kısa açıklama..." rows="2" style="resize: vertical;"></textarea>
+                                    <label class="form-label">Aciklama</label>
+                                    <textarea class="form-input" id="scenarioDesc" rows="2" placeholder="Kisa aciklama..."></textarea>
                                 </div>
-                                
                                 <div class="form-group">
-                                    <label class="form-label">Test Türü *</label>
-                                    <select class="form-input form-select" id="scenarioType">
+                                    <label class="form-label">Test Turu *</label>
+                                    <select class="form-input form-select" id="scenarioType" onchange="updateSettings()">
                                         <option value="web">🌐 Web Test</option>
                                         <option value="mobile">📲 Mobil Test</option>
-                                        <option value="desktop">🖥️ Desktop Test</option>
                                     </select>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Web Test Ayarları -->
                         <div class="settings-card" id="webSettings">
-                            <div class="settings-card-header">
-                                <span>🌐</span>
-                                Web Test Ayarları
-                            </div>
+                            <div class="settings-card-header">🌐 Web Ayarlari</div>
                             <div class="settings-card-body">
                                 <div class="form-group">
-                                    <label class="form-label">Başlangıç URL *</label>
+                                    <label class="form-label">Baslangic URL</label>
                                     <input type="url" class="form-input" id="webUrl" placeholder="https://example.com">
                                 </div>
-                                
                                 <div class="toggle-group">
-                                    <span class="toggle-label">Headless Mod</span>
+                                    <span>Headless Mod</span>
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="webHeadless">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
-                                
                                 <div class="toggle-group">
-                                    <span class="toggle-label">Hatada Dur</span>
+                                    <span>Hatada Dur</span>
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="webStopOnFail" checked>
                                         <span class="toggle-slider"></span>
@@ -165,56 +112,23 @@
                             </div>
                         </div>
                         
-                        <!-- Mobil Test Ayarları -->
-                        <div class="settings-card" id="mobileSettings" style="display: none;">
-                            <div class="settings-card-header">
-                                <span>📲</span>
-                                Mobil Test Ayarları
-                            </div>
+                        <div class="settings-card" id="mobileSettings" style="display:none;">
+                            <div class="settings-card-header">📲 Mobil Ayarlari</div>
                             <div class="settings-card-body">
-                                <div class="form-group">
-                                    <label class="form-label">Cihaz Seç</label>
-                                    <select class="form-input form-select" id="mobileDevice">
-                                        <option value="">Cihaz seçin...</option>
-                                    </select>
-                                </div>
-                                
                                 <div class="form-group">
                                     <label class="form-label">Uygulama Paketi</label>
-                                    <input type="text" class="form-input" id="mobilePackage" placeholder="com.example.app">
+                                    <input type="text" class="form-input" id="appPackage" placeholder="com.example.app">
                                 </div>
-                                
                                 <div class="form-group">
-                                    <label class="form-label">Activity (Opsiyonel)</label>
-                                    <input type="text" class="form-input" id="mobileActivity" placeholder=".MainActivity">
+                                    <label class="form-label">Activity</label>
+                                    <input type="text" class="form-input" id="appActivity" placeholder=".MainActivity">
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Desktop Test Ayarları -->
-                        <div class="settings-card" id="desktopSettings" style="display: none;">
-                            <div class="settings-card-header">
-                                <span>🖥️</span>
-                                Desktop Test Ayarları
-                            </div>
-                            <div class="settings-card-body">
-                                <div class="form-group">
-                                    <label class="form-label">Uygulama Yolu</label>
-                                    <input type="text" class="form-input" id="desktopPath" placeholder="C:\Program Files\App\app.exe">
-                                </div>
-                                <p style="font-size: 0.8rem; color: var(--text-muted);">
-                                    ⚠️ Desktop test henüz geliştirme aşamasında
-                                </p>
-                            </div>
-                        </div>
-                        
-                        <!-- Test Sonucu -->
-                        <div class="settings-card" id="resultCard" style="display: none;">
-                            <div class="settings-card-header">
-                                <span>📊</span>
-                                Son Test Sonucu
-                            </div>
-                            <div class="settings-card-body" id="resultContent"></div>
+                        <div class="settings-card" id="parseResult" style="display:none;">
+                            <div class="settings-card-header">🔍 Adim Onizleme</div>
+                            <div class="settings-card-body" id="parseContent"></div>
                         </div>
                     </div>
                 </div>
@@ -226,39 +140,38 @@
     <div class="modal-overlay" id="helpModal">
         <div class="modal" style="max-width: 600px;">
             <div class="modal-header">
-                <h3 class="modal-title">📖 Türkçe Test Adımları Nasıl Yazılır?</h3>
+                <h3 class="modal-title">Test Adimlari Nasil Yazilir?</h3>
                 <button class="modal-close" onclick="Modal.hide('helpModal')">✕</button>
             </div>
             <div class="modal-body">
-                <h4 style="margin-bottom: 12px; color: var(--text-primary);">Tıklama</h4>
-                <code style="display: block; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 16px; color: var(--text-secondary);">
-                    "Giriş Yap" butonuna tıklanır<br>
-                    "Devam Et" linkine tıklanır
+                <h4 style="margin-bottom:8px;">Tiklama</h4>
+                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
+                    "Giris Yap" butonuna tiklanir<br>
+                    "Devam Et" linkine tiklanir
                 </code>
                 
-                <h4 style="margin-bottom: 12px; color: var(--text-primary);">Yazma</h4>
-                <code style="display: block; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 16px; color: var(--text-secondary);">
-                    "Email" alanına test@test.com yazılır<br>
-                    "Şifre" kutusuna 123456 girilir
+                <h4 style="margin-bottom:8px;">Yazma</h4>
+                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
+                    "Email" alanina test@test.com yazilir<br>
+                    "Sifre" kutusuna 123456 girilir
                 </code>
                 
-                <h4 style="margin-bottom: 12px; color: var(--text-primary);">Doğrulama</h4>
-                <code style="display: block; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 16px; color: var(--text-secondary);">
-                    "Hoş geldiniz" yazısı görülür<br>
-                    "Başarılı" metni görüntülenir
+                <h4 style="margin-bottom:8px;">Dogrulama</h4>
+                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
+                    "Hos geldiniz" yazisi gorulur<br>
+                    "Basarili" metni goruntulenir
                 </code>
                 
-                <h4 style="margin-bottom: 12px; color: var(--text-primary);">Bekleme</h4>
-                <code style="display: block; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 16px; color: var(--text-secondary);">
+                <h4 style="margin-bottom:8px;">Bekleme</h4>
+                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
                     2 saniye beklenir<br>
                     5 sn beklenir
                 </code>
                 
-                <h4 style="margin-bottom: 12px; color: var(--text-primary);">Diğer</h4>
-                <code style="display: block; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; color: var(--text-secondary);">
-                    Sayfa aşağı kaydırılır<br>
-                    Sayfa yukarı kaydırılır<br>
-                    Geri tuşuna basılır<br>
+                <h4 style="margin-bottom:8px;">Diger</h4>
+                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px;">
+                    Sayfa asagi kaydirilir<br>
+                    Geri tusuna basilir<br>
                     Sayfa yenilenir
                 </code>
             </div>
@@ -267,169 +180,90 @@
     
     <script src="js/app.js"></script>
     <script>
-        // Check auth
         if (!Auth.checkAuth()) {}
         
-        let currentScenarioId = null;
-        let isEditing = false;
+        let currentId = null;
         
         async function init() {
             UI.renderUserInfo();
             
-            const urlParams = new URLSearchParams(window.location.search);
-            const id = urlParams.get('id');
-            
+            const params = new URLSearchParams(location.search);
+            const id = params.get('id');
             if (id) {
-                isEditing = true;
-                currentScenarioId = parseInt(id);
-                await loadScenario(currentScenarioId);
+                currentId = parseInt(id);
+                await loadScenario(currentId);
             }
-            
-            loadDevices();
-            setupEventListeners();
         }
         
         async function loadScenario(id) {
             try {
-                const scenario = await ScenariosAPI.get(id);
+                const s = await ScenariosAPI.get(id);
+                document.getElementById('pageTitle').textContent = 'Senaryo Duzenle';
+                document.getElementById('scenarioName').value = s.name;
+                document.getElementById('scenarioDesc').value = s.description || '';
+                document.getElementById('scenarioType').value = s.type;
+                document.getElementById('stepsEditor').value = s.natural_steps || '';
                 
-                document.getElementById('pageTitle').textContent = 'Senaryo Düzenle';
-                document.getElementById('scenarioName').value = scenario.name;
-                document.getElementById('scenarioDesc').value = scenario.description || '';
-                document.getElementById('scenarioType').value = scenario.type;
-                document.getElementById('stepsEditor').value = scenario.natural_steps || '';
-                
-                if (scenario.config_json) {
-                    const config = JSON.parse(scenario.config_json);
-                    if (scenario.type === 'web') {
+                if (s.config_json) {
+                    const config = JSON.parse(s.config_json);
+                    if (s.type === 'web') {
                         document.getElementById('webUrl').value = config.url || '';
                         document.getElementById('webHeadless').checked = config.headless || false;
                         document.getElementById('webStopOnFail').checked = config.stop_on_fail !== false;
-                    } else if (scenario.type === 'mobile') {
-                        document.getElementById('mobilePackage').value = config.app_package || '';
-                        document.getElementById('mobileActivity').value = config.app_activity || '';
+                    } else {
+                        document.getElementById('appPackage').value = config.app_package || '';
+                        document.getElementById('appActivity').value = config.app_activity || '';
                     }
                 }
                 
-                updateSettingsVisibility(scenario.type);
-                updateLineNumbers();
-            } catch (error) {
-                Toast.error('Senaryo yüklenemedi');
-            }
+                updateSettings();
+            } catch (e) { Toast.error('Yukleme hatasi'); }
         }
         
-        async function loadDevices() {
-            try {
-                const data = await DevicesAPI.list();
-                const select = document.getElementById('mobileDevice');
-                
-                data.devices.forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.id;
-                    option.textContent = `${device.name} (${device.os} ${device.os_version}) - ${device.status === 'available' ? '✅' : '🔒'}`;
-                    option.disabled = device.status !== 'available' && device.current_user_id !== Auth.getUser()?.id;
-                    select.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Devices load error:', error);
-            }
-        }
-        
-        function setupEventListeners() {
-            document.getElementById('scenarioType').addEventListener('change', (e) => {
-                updateSettingsVisibility(e.target.value);
-            });
-            
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', () => {
-                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                    tab.classList.add('active');
-                    
-                    const tabName = tab.dataset.tab;
-                    document.getElementById('naturalTab').style.display = tabName === 'natural' ? 'flex' : 'none';
-                    document.getElementById('previewTab').style.display = tabName === 'preview' ? 'block' : 'none';
-                });
-            });
-            
-            const editor = document.getElementById('stepsEditor');
-            editor.addEventListener('input', updateLineNumbers);
-            editor.addEventListener('scroll', () => {
-                document.getElementById('lineNumbers').scrollTop = editor.scrollTop;
-            });
-            
-            updateLineNumbers();
-        }
-        
-        function updateSettingsVisibility(type) {
+        function updateSettings() {
+            const type = document.getElementById('scenarioType').value;
             document.getElementById('webSettings').style.display = type === 'web' ? 'block' : 'none';
             document.getElementById('mobileSettings').style.display = type === 'mobile' ? 'block' : 'none';
-            document.getElementById('desktopSettings').style.display = type === 'desktop' ? 'block' : 'none';
-        }
-        
-        function updateLineNumbers() {
-            const editor = document.getElementById('stepsEditor');
-            const lines = editor.value.split('\n').length;
-            document.getElementById('lineNumbers').innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
-        }
-        
-        function showHelpModal() {
-            Modal.show('helpModal');
         }
         
         async function parseSteps() {
             const text = document.getElementById('stepsEditor').value;
             const type = document.getElementById('scenarioType').value;
             
-            if (!text.trim()) {
-                Toast.error('Lütfen test adımları yazın');
-                return;
-            }
+            if (!text.trim()) { Toast.error('Adim yazin'); return; }
             
             try {
                 const result = await TestAPI.parseNatural(text, type);
                 
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelector('[data-tab="preview"]').classList.add('active');
-                document.getElementById('naturalTab').style.display = 'none';
-                document.getElementById('previewTab').style.display = 'block';
+                const card = document.getElementById('parseResult');
+                const content = document.getElementById('parseContent');
+                card.style.display = 'block';
                 
-                const previewContent = document.getElementById('previewContent');
                 if (result.count === 0) {
-                    previewContent.innerHTML = '<p style="color: var(--text-muted);">Hiç adım bulunamadı. Lütfen formatı kontrol edin.</p>';
+                    content.innerHTML = '<p style="color:var(--text-muted);">Adim bulunamadi</p>';
                 } else {
-                    previewContent.innerHTML = `
-                        <p style="margin-bottom: 16px;"><strong>${result.count}</strong> adım bulundu:</p>
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                            ${result.steps.map((step, i) => `
-                                <div style="display: flex; gap: 12px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
-                                    <span style="color: var(--text-muted);">${i + 1}.</span>
-                                    <div>
-                                        <strong style="color: var(--accent-primary);">${step.action}</strong>
-                                        ${step.target ? `: "${step.target}"` : ''}
-                                        ${step.value ? ` → "${step.value}"` : ''}
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
+                    content.innerHTML = `
+                        <p style="margin-bottom:12px;"><strong>${result.count}</strong> adim bulundu:</p>
+                        ${result.steps.map((s, i) => `
+                            <div style="padding:8px; background:var(--bg-tertiary); border-radius:6px; margin-bottom:6px; font-size:0.85rem;">
+                                <span style="color:var(--text-muted);">${i+1}.</span>
+                                <strong style="color:var(--accent-primary);">${s.action}</strong>
+                                ${s.target ? `: "${s.target}"` : ''}
+                                ${s.value ? ` → "${s.value}"` : ''}
+                            </div>
+                        `).join('')}
                     `;
                 }
                 
-                Toast.success(`${result.count} adım bulundu`);
-            } catch (error) {
-                Toast.error(error.message);
-            }
+                Toast.success(result.count + ' adim bulundu');
+            } catch (e) { Toast.error(e.message); }
         }
         
         async function saveScenario() {
             const name = document.getElementById('scenarioName').value.trim();
-            const description = document.getElementById('scenarioDesc').value.trim();
             const type = document.getElementById('scenarioType').value;
-            const naturalSteps = document.getElementById('stepsEditor').value;
             
-            if (!name) {
-                Toast.error('Senaryo adı gerekli');
-                return;
-            }
+            if (!name) { Toast.error('Senaryo adi gerekli'); return; }
             
             let config = {};
             if (type === 'web') {
@@ -438,135 +272,33 @@
                     headless: document.getElementById('webHeadless').checked,
                     stop_on_fail: document.getElementById('webStopOnFail').checked
                 };
-            } else if (type === 'mobile') {
+            } else {
                 config = {
-                    device_id: document.getElementById('mobileDevice').value,
-                    app_package: document.getElementById('mobilePackage').value,
-                    app_activity: document.getElementById('mobileActivity').value
+                    app_package: document.getElementById('appPackage').value,
+                    app_activity: document.getElementById('appActivity').value
                 };
-            } else if (type === 'desktop') {
-                config = { app_path: document.getElementById('desktopPath').value };
             }
             
             const data = {
                 name,
-                description,
+                description: document.getElementById('scenarioDesc').value,
                 type,
-                natural_steps: naturalSteps,
+                natural_steps: document.getElementById('stepsEditor').value,
                 config_json: JSON.stringify(config)
             };
             
             try {
-                if (isEditing) {
-                    await ScenariosAPI.update(currentScenarioId, data);
-                    Toast.success('Senaryo güncellendi');
+                if (currentId) {
+                    await ScenariosAPI.update(currentId, data);
+                    Toast.success('Guncellendi');
                 } else {
                     const result = await ScenariosAPI.create(data);
-                    currentScenarioId = result.id;
-                    isEditing = true;
-                    document.getElementById('pageTitle').textContent = 'Senaryo Düzenle';
-                    window.history.replaceState({}, '', `editor.html?id=${result.id}`);
-                    Toast.success('Senaryo kaydedildi');
+                    currentId = result.id;
+                    document.getElementById('pageTitle').textContent = 'Senaryo Duzenle';
+                    history.replaceState({}, '', 'editor.html?id=' + result.id);
+                    Toast.success('Kaydedildi');
                 }
-            } catch (error) {
-                Toast.error(error.message);
-            }
-        }
-        
-        async function runTest() {
-            const type = document.getElementById('scenarioType').value;
-            const naturalSteps = document.getElementById('stepsEditor').value;
-            
-            if (!naturalSteps.trim()) {
-                Toast.error('Lütfen test adımları yazın');
-                return;
-            }
-            
-            const resultCard = document.getElementById('resultCard');
-            const resultContent = document.getElementById('resultContent');
-            resultCard.style.display = 'block';
-            resultContent.innerHTML = '<p>⏳ Test çalışıyor...</p>';
-            
-            try {
-                let result;
-                
-                if (type === 'web') {
-                    result = await TestAPI.runWebTest({
-                        url: document.getElementById('webUrl').value,
-                        input_type: 'natural',
-                        natural_text: naturalSteps,
-                        headless: document.getElementById('webHeadless').checked,
-                        stop_on_fail: document.getElementById('webStopOnFail').checked
-                    });
-                } else if (type === 'mobile') {
-                    const deviceId = document.getElementById('mobileDevice').value;
-                    if (!deviceId) {
-                        Toast.error('Lütfen bir cihaz seçin');
-                        resultContent.innerHTML = '<p style="color: var(--danger);">Cihaz seçilmedi</p>';
-                        return;
-                    }
-                    
-                    result = await TestAPI.runMobileTest({
-                        device_id: parseInt(deviceId),
-                        app_package: document.getElementById('mobilePackage').value,
-                        app_activity: document.getElementById('mobileActivity').value,
-                        input_type: 'natural',
-                        natural_text: naturalSteps,
-                        stop_on_fail: true
-                    });
-                } else {
-                    Toast.error('Desktop test henüz desteklenmiyor');
-                    resultContent.innerHTML = '<p style="color: var(--warning);">Desktop test henüz geliştirme aşamasında</p>';
-                    return;
-                }
-                
-                renderResult(result);
-            } catch (error) {
-                resultContent.innerHTML = `<p style="color: var(--danger);">❌ Hata: ${error.message}</p>`;
-                Toast.error(error.message);
-            }
-        }
-        
-        function renderResult(result) {
-            const resultContent = document.getElementById('resultContent');
-            const statusIcon = result.success ? '✅' : '❌';
-            const statusClass = result.success ? 'success' : 'danger';
-            const summary = result.summary || {};
-            
-            resultContent.innerHTML = `
-                <div style="text-align: center; margin-bottom: 16px;">
-                    <span style="font-size: 2rem;">${statusIcon}</span>
-                    <p style="font-weight: 600; color: var(--${statusClass});">
-                        ${result.success ? 'Test Başarılı' : 'Test Başarısız'}
-                    </p>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">${result.duration || 0}s</p>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px;">
-                    <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 8px; text-align: center;">
-                        <div style="font-size: 1.5rem; font-weight: 700;">${summary.executed || 0}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">Çalıştırıldı</div>
-                    </div>
-                    <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 8px; text-align: center;">
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--success);">${summary.passed || 0}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">Başarılı</div>
-                    </div>
-                </div>
-                
-                ${result.results?.length ? `
-                    <div style="max-height: 200px; overflow-y: auto;">
-                        ${result.results.map((r, i) => `
-                            <div style="display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid var(--border-light); font-size: 0.85rem;">
-                                <span>${r.success ? '✅' : '❌'}</span>
-                                <span style="color: var(--text-muted);">${i + 1}.</span>
-                                <span>${r.action}: ${r.target || ''}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
-            `;
-            
-            result.success ? Toast.success('Test başarıyla tamamlandı!') : Toast.error(result.message || 'Test başarısız');
+            } catch (e) { Toast.error(e.message); }
         }
         
         init();

@@ -3,10 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Giriş Yap - Test Otomasyon Platformu</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <title>Giris - Test Otomasyon Platformu</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%);
+        }
+        .login-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 400px;
+            overflow: hidden;
+        }
+        .login-header {
+            padding: 32px 32px 24px;
+            text-align: center;
+        }
+        .login-logo {
+            width: 64px; height: 64px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.8rem;
+            margin: 0 auto 16px;
+        }
+        .login-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+        .login-subtitle { color: var(--text-muted); font-size: 0.9rem; }
+        .login-body { padding: 0 32px 32px; }
+        .login-tabs {
+            display: flex;
+            margin-bottom: 24px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-md);
+            padding: 4px;
+        }
+        .login-tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+        }
+        .login-tab.active {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            box-shadow: var(--shadow-sm);
+        }
+        .login-form { display: none; }
+        .login-form.active { display: block; }
+        .login-footer {
+            padding: 20px 32px;
+            background: var(--bg-tertiary);
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
     <div class="login-container">
@@ -14,138 +80,109 @@
             <div class="login-header">
                 <div class="login-logo">🧪</div>
                 <h1 class="login-title">Test Otomasyon</h1>
-                <p class="login-subtitle">Platformuna hoş geldiniz</p>
+                <p class="login-subtitle">Platformuna hos geldiniz</p>
             </div>
             
             <div class="login-body">
-                <!-- Tabs -->
                 <div class="login-tabs">
-                    <button class="login-tab active" data-tab="login">Giriş Yap</button>
-                    <button class="login-tab" data-tab="register">Kayıt Ol</button>
+                    <button class="login-tab active" onclick="showTab('login')">Giris Yap</button>
+                    <button class="login-tab" onclick="showTab('register')">Kayit Ol</button>
                 </div>
                 
-                <!-- Login Form -->
-                <form id="loginForm" class="login-form active">
+                <form id="loginForm" class="login-form active" onsubmit="login(event)">
                     <div class="form-group">
-                        <label class="form-label">Kullanıcı Adı</label>
+                        <label class="form-label">Kullanici Adi</label>
                         <input type="text" class="form-input" id="loginUsername" placeholder="kullaniciadi" required>
                     </div>
-                    
                     <div class="form-group">
-                        <label class="form-label">Şifre</label>
+                        <label class="form-label">Sifre</label>
                         <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" required>
                     </div>
-                    
-                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
-                        Giriş Yap
-                    </button>
+                    <button type="submit" class="btn btn-primary btn-lg" style="width:100%;">Giris Yap</button>
                 </form>
                 
-                <!-- Register Form -->
-                <form id="registerForm" class="login-form">
+                <form id="registerForm" class="login-form" onsubmit="register(event)">
                     <div class="form-group">
                         <label class="form-label">Ad Soyad</label>
-                        <input type="text" class="form-input" id="registerFullName" placeholder="Adınız Soyadınız">
+                        <input type="text" class="form-input" id="regFullName" placeholder="Adiniz Soyadiniz">
                     </div>
-                    
                     <div class="form-group">
-                        <label class="form-label">Kullanıcı Adı</label>
-                        <input type="text" class="form-input" id="registerUsername" placeholder="kullaniciadi" required>
+                        <label class="form-label">Kullanici Adi</label>
+                        <input type="text" class="form-input" id="regUsername" placeholder="kullaniciadi" required>
                     </div>
-                    
                     <div class="form-group">
                         <label class="form-label">E-posta</label>
-                        <input type="email" class="form-input" id="registerEmail" placeholder="ornek@email.com" required>
+                        <input type="email" class="form-input" id="regEmail" placeholder="ornek@email.com" required>
                     </div>
-                    
                     <div class="form-group">
-                        <label class="form-label">Şifre</label>
-                        <input type="password" class="form-input" id="registerPassword" placeholder="En az 6 karakter" required minlength="6">
+                        <label class="form-label">Sifre</label>
+                        <input type="password" class="form-input" id="regPassword" placeholder="En az 6 karakter" required minlength="6">
                     </div>
-                    
-                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
-                        Kayıt Ol
-                    </button>
+                    <button type="submit" class="btn btn-primary btn-lg" style="width:100%;">Kayit Ol</button>
                 </form>
             </div>
             
             <div class="login-footer">
-                <button class="btn btn-ghost btn-sm" onclick="Theme.toggle()" style="margin: 0 auto;">
-                    🌙 Tema Değiştir
-                </button>
+                <button class="btn btn-ghost btn-sm" onclick="Theme.toggle()">🌙 Tema Degistir</button>
             </div>
         </div>
     </div>
     
     <script src="js/app.js"></script>
     <script>
-        // Redirect if already logged in
         if (Auth.isLoggedIn()) {
-            window.location.href = 'index.html';
+            location.href = 'index.html';
         }
         
-        // Tab switching
-        document.querySelectorAll('.login-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                // Update tabs
-                document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                
-                // Update forms
-                document.querySelectorAll('.login-form').forEach(f => f.classList.remove('active'));
-                document.getElementById(tab.dataset.tab + 'Form').classList.add('active');
-            });
-        });
+        function showTab(tab) {
+            document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.login-form').forEach(f => f.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tab + 'Form').classList.add('active');
+        }
         
-        // Login form
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        async function login(e) {
             e.preventDefault();
-            
-            const username = document.getElementById('loginUsername').value;
-            const password = document.getElementById('loginPassword').value;
             const btn = e.target.querySelector('button[type="submit"]');
-            
             btn.disabled = true;
-            btn.textContent = 'Giriş yapılıyor...';
+            btn.textContent = 'Giris yapiliyor...';
             
             try {
-                await AuthAPI.login(username, password);
-                Toast.success('Giriş başarılı!');
-                setTimeout(() => {
-                    window.location.href = 'index.html';
-                }, 500);
-            } catch (error) {
-                Toast.error(error.message || 'Giriş başarısız');
+                await AuthAPI.login(
+                    document.getElementById('loginUsername').value,
+                    document.getElementById('loginPassword').value
+                );
+                Toast.success('Giris basarili!');
+                setTimeout(() => location.href = 'index.html', 500);
+            } catch (err) {
+                Toast.error(err.message);
                 btn.disabled = false;
-                btn.textContent = 'Giriş Yap';
+                btn.textContent = 'Giris Yap';
             }
-        });
+        }
         
-        // Register form
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        async function register(e) {
             e.preventDefault();
-            
-            const fullName = document.getElementById('registerFullName').value;
-            const username = document.getElementById('registerUsername').value;
-            const email = document.getElementById('registerEmail').value;
-            const password = document.getElementById('registerPassword').value;
             const btn = e.target.querySelector('button[type="submit"]');
-            
             btn.disabled = true;
-            btn.textContent = 'Kayıt yapılıyor...';
+            btn.textContent = 'Kayit yapiliyor...';
             
             try {
-                await AuthAPI.register(username, email, password, fullName);
-                Toast.success('Kayıt başarılı!');
-                setTimeout(() => {
-                    window.location.href = 'index.html';
-                }, 500);
-            } catch (error) {
-                Toast.error(error.message || 'Kayıt başarısız');
+                await AuthAPI.register(
+                    document.getElementById('regUsername').value,
+                    document.getElementById('regEmail').value,
+                    document.getElementById('regPassword').value,
+                    document.getElementById('regFullName').value
+                );
+                Toast.success('Kayit basarili!');
+                setTimeout(() => location.href = 'index.html', 500);
+            } catch (err) {
+                Toast.error(err.message);
                 btn.disabled = false;
-                btn.textContent = 'Kayıt Ol';
+                btn.textContent = 'Kayit Ol';
             }
-        });
+        }
     </script>
 </body>
 </html>

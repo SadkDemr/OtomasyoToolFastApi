@@ -1,22 +1,29 @@
 @echo off
 cd /d "%~dp0"
 
-echo ============================================
-echo    Test Otomasyon Platformu API v2.0
-echo ============================================
-
 if not exist "venv" (
-    echo Venv olusturuluyor...
-    python -m venv venv
+    echo HATA: Once setup.bat calistirin!
+    pause
+    exit /b 1
 )
 
 call venv\Scripts\activate.bat
 
-echo Bagimliliklar yukleniyor...
-pip install -r requirements.txt -q
-
 echo.
-echo Swagger UI: http://localhost:8000/docs
+echo ========================================
+echo    Test Otomasyon Platformu v2.1
+echo ========================================
+echo.
+echo Bagli Cihazlar:
+if exist "platform-tools\adb.exe" (
+    "platform-tools\adb.exe" devices
+)
+echo.
+echo Swagger UI:  http://localhost:8000/docs
+echo Web Arayuz:  http://localhost:8000/ui
+echo.
+echo Durdurmak icin Ctrl+C
+echo ========================================
 echo.
 
 python main.py

@@ -1,7 +1,9 @@
 """
 Selenium Service - Web Test
+Windows WinError 193 duzeltmesi
 """
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time
@@ -17,9 +19,15 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import *
-from webdriver_manager.chrome import ChromeDriverManager
 
 from models.schemas import TestStep, StepResult
+
+# ChromeDriver manager - otomatik indir
+try:
+    from webdriver_manager.chrome import ChromeDriverManager
+    WEBDRIVER_MANAGER = True
+except:
+    WEBDRIVER_MANAGER = False
 
 
 class SeleniumService:
@@ -28,17 +36,59 @@ class SeleniumService:
     
     def create_driver(self, headless: bool = False):
         options = Options()
+        
         if headless:
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')
+        
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-infobars')
         
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=options)
-        self.driver.implicitly_wait(5)
+        # Windows icin ozel ayarlar
+        if os.name == 'nt':
+            options.add_argument('--disable-features=VizDisplayCompositor')
+        
+        try:
+            if WEBDRIVER_MANAGER:
+                # Otomatik ChromeDriver indir
+                driver_path = ChromeDriverManager().install()
+                
+                # Windows'ta path duzeltmesi
+                # Bazen webdriver_manager .exe yerine klasor doner
+                if os.name == 'nt' and not driver_path.endswith('.exe'):
+                    # chromedriver.exe'yi bul
+                    driver_dir = os.path.dirname(driver_path)
+                    for f in os.listdir(driver_dir):
+                        if f == 'chromedriver.exe':
+                            driver_path = os.path.join(driver_dir, f)
+                            break
+                    
+                    # Hala bulamadiysa parent'ta ara
+                    if not driver_path.endswith('.exe'):
+                        parent_dir = os.path.dirname(driver_dir)
+                        for root, dirs, files in os.walk(parent_dir):
+                            for f in files:
+                                if f == 'chromedriver.exe':
+                                    driver_path = os.path.join(root, f)
+                                    break
+                
+                print(f"[SELENIUM] ChromeDriver path: {driver_path}")
+                service = Service(executable_path=driver_path)
+            else:
+                # System PATH'te chromedriver olmali
+                service = Service()
+            
+            self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.implicitly_wait(5)
+            
+        except Exception as e:
+            print(f"[SELENIUM] Driver creation error: {e}")
+            raise Exception(f"Chrome driver olusturulamadi: {str(e)}")
+        
         return self.driver
     
     def close_driver(self):
@@ -66,7 +116,10 @@ class SeleniumService:
                 (By.XPATH, f"//button[contains(.,'{locator_value}')]"),
                 (By.XPATH, f"//a[contains(.,'{locator_value}')]"),
                 (By.XPATH, f"//*[@placeholder='{locator_value}']"),
+                (By.XPATH, f"//*[@placeholder][contains(@placeholder,'{locator_value}')]"),
                 (By.XPATH, f"//*[@aria-label='{locator_value}']"),
+                (By.XPATH, f"//input[@name='{locator_value}']"),
+                (By.XPATH, f"//input[@id='{locator_value}']"),
                 (By.ID, locator_value),
                 (By.NAME, locator_value),
             ])
@@ -75,7 +128,7 @@ class SeleniumService:
         
         for by_type, by_value in strategies:
             try:
-                wait = WebDriverWait(self.driver, 1.5)
+                wait = WebDriverWait(self.driver, 2)
                 element = wait.until(EC.presence_of_element_located((by_type, by_value)))
                 return element
             except:
@@ -143,6 +196,7 @@ class SeleniumService:
         except Exception as e:
             result["success"] = False
             result["error"] = str(e)
+            result["message"] = str(e)
         
         return result
     
@@ -159,7 +213,7 @@ class SeleniumService:
             step = TestStep()
             
             # TIKLA
-            match = re.search(r'"([^"]+)"\s*(?:butonuna|dugmesine|linkine|elementine|yazisina|alanina|sekmesine|menusune)\s*(?:tiklanir|tikla|bas|basilir|click)', line, re.IGNORECASE)
+            match = re.search(r'"([^"]+)"\s*(?:butonuna|dugmesine|linkine|elementine|yazisina|alanina|sekmesine|menusune)?\s*(?:tiklanir|tikla|bas|basilir|click)', line, re.IGNORECASE)
             if match:
                 step.action = 'click'
                 step.target = match.group(1)
@@ -210,6 +264,12 @@ class SeleniumService:
                 step.action = 'back'
                 commands.append(step)
                 continue
+            
+            # YENILE
+            if re.search(r'(?:sayfa)?\s*(?:yenilenir|yenile|refresh)', line, re.IGNORECASE):
+                step.action = 'refresh'
+                commands.append(step)
+                continue
         
         return commands
     
@@ -222,6 +282,8 @@ class SeleniumService:
             self.create_driver(headless)
             
             if url:
+                if not url.startswith('http'):
+                    url = 'https://' + url
                 self.driver.get(url)
                 time.sleep(2)
             

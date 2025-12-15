@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobil Test - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .mobile-layout { display: grid; grid-template-columns: 280px 1fr 380px; gap: 16px; height: calc(100vh - 130px); }
+        .device-panel, .right-panel { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+        .emulator-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .device-filter { display: flex; gap: 4px; margin-bottom: 10px; }
+        .device-filter .tab { flex: 1; text-align: center; padding: 6px; font-size: 0.75rem; }
+        .device-list { flex: 1; overflow-y: auto; }
+        .device-item { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; cursor: pointer; position: relative; margin-bottom: 8px; }
+        .device-item:hover { border-color: var(--accent-primary); }
+        .device-item.selected { border-color: var(--accent-primary); background: rgba(79,70,229,0.05); }
+        .device-item.unavailable { opacity: 0.5; cursor: not-allowed; }
+        .device-item-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+        .device-item-icon { font-size: 1.2rem; }
+        .device-item-info { flex: 1; }
+        .device-item-name { font-weight: 600; font-size: 0.85rem; }
+        .device-item-meta { font-size: 0.7rem; color: var(--text-muted); }
+        .device-item-status { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; margin-top: 4px; }
+        .device-item-settings { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 4px; border: none; background: var(--bg-tertiary); cursor: pointer; font-size: 0.8rem; }
+        .type-badge { padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 600; }
+        .type-badge.physical { background: rgba(59,130,246,0.1); color: var(--info); }
+        .type-badge.emulator { background: rgba(124,58,237,0.1); color: var(--accent-secondary); }
+        .connection-box { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.85rem; }
+        .panel-tabs { display: flex; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 8px; }
+        .panel-tab { flex: 1; padding: 8px; border-radius: 6px; border: none; background: transparent; font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); cursor: pointer; text-align: center; }
+        .panel-tab.active { background: var(--bg-secondary); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+        .panel-content { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+        .panel-content.active { display: flex; }
+        .log-container { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .log-header { padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; font-weight: 600; }
+        .log-body { flex: 1; overflow-y: auto; padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+        .log-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; background: var(--bg-tertiary); }
+        .log-item.running { background: rgba(59,130,246,0.15); border-left: 3px solid var(--info); animation: pulse 1s infinite; }
+        .log-item.success { background: rgba(16,185,129,0.1); border-left: 3px solid var(--success); }
+        .log-item.failed { background: rgba(239,68,68,0.15); border-left: 3px solid var(--danger); }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .log-step { min-width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; background: var(--bg-secondary); }
+        .log-item.running .log-step { background: var(--info); color: white; }
+        .log-item.success .log-step { background: var(--success); color: white; }
+        .log-item.failed .log-step { background: var(--danger); color: white; }
+        .log-content { flex: 1; }
+        .log-action { font-weight: 600; }
+        .log-message { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+        .log-icon { font-size: 1rem; }
+        .status-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-tertiary); border-radius: 8px; }
+        .status-icon { font-size: 1.8rem; }
+        .status-info { flex: 1; }
+        .status-title { font-weight: 600; font-size: 0.95rem; }
+        .status-desc { font-size: 0.75rem; color: var(--text-muted); }
+        .editor-box { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .editor-box textarea { flex: 1; padding: 12px; border: none; background: transparent; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.7; resize: none; }
+        .editor-box textarea:focus { outline: none; }
+        .settings-box { flex: 1; overflow-y: auto; }
+        .settings-section { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 10px; }
+        .settings-section-header { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; }
+        .settings-section-body { padding: 10px 12px; }
+        .scenario-list { max-height: 140px; overflow-y: auto; margin-bottom: 10px; }
+        .scenario-item { padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 4px; cursor: pointer; font-size: 0.8rem; background: var(--bg-secondary); }
+        .scenario-item:hover { border-color: var(--accent-primary); }
+        .scenario-item.selected { border-color: var(--accent-primary); background: rgba(79,70,229,0.05); }
+        .run-controls { display: flex; gap: 8px; padding: 10px; background: var(--bg-tertiary); border-radius: 8px; }
+        .run-controls .btn { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="logo"><div class="logo-icon">🧪</div><span>Test Platform</span></div></div>
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">Ana Menu</div>
+                    <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
+                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Test Turleri</div>
+                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
+                    <a href="mobile-test.html" class="nav-item active"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
+                </div>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info" onclick="if(confirm('Cikis?')) Auth.logout();">
+                    <div class="user-avatar">?</div>
+                    <div class="user-details"><div class="user-name">Yukleniyor...</div><div class="user-role">-</div></div>
+                </div>
+            </div>
+        </aside>
+        
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left"><h1 class="page-title">Mobil Test</h1></div>
+                <div class="header-right">
+                    <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+                    <button class="btn btn-ghost btn-sm" onclick="loadDevices()">🔄</button>
+                    <button class="btn btn-primary btn-sm" onclick="showAddDevice()">+ Cihaz</button>
+                </div>
+            </header>
+            
+            <div class="page-content">
+                <div class="mobile-layout">
+                    <div class="device-panel">
+                        <div class="card" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+                            <div class="card-header" style="padding:12px;"><h3 class="card-title" style="font-size:0.9rem;">Cihazlar</h3></div>
+                            <div class="card-body" style="flex:1; overflow:hidden; padding:10px; display:flex; flex-direction:column;">
+                                <div class="device-filter">
+                                    <button class="tab active" onclick="filterDevices('all')">Tumu</button>
+                                    <button class="tab" onclick="filterDevices('physical')">USB</button>
+                                    <button class="tab" onclick="filterDevices('emulator')">AVD</button>
+                                </div>
+                                <div class="device-list" id="deviceList"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="emulator-panel">
+                        <div class="connection-box">
+                            <span>📱</span>
+                            <span id="currentDeviceName" style="font-weight:500;">Cihaz secin</span>
+                            <span class="badge badge-warning" id="connectionBadge">Bagli Degil</span>
+                        </div>
+                        <div class="phone-wrapper">
+                            <div class="phone-frame">
+                                <div class="phone-notch"></div>
+                                <div class="phone-screen" id="phoneScreen">
+                                    <img id="screenImage" src="" alt="" style="display:none;">
+                                    <div id="noDeviceMsg" style="color:#666; text-align:center; padding-top:180px;">
+                                        <div style="font-size:2.5rem; margin-bottom:12px;">📱</div>
+                                        <div style="font-size:0.85rem;">Cihaz secin</div>
+                                    </div>
+                                    <div class="touch-indicator" id="touchIndicator"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="phone-controls">
+                            <button class="phone-btn" onclick="sendKey('recent')">▢</button>
+                            <button class="phone-btn" onclick="sendKey('home')">●</button>
+                            <button class="phone-btn" onclick="sendKey('back')">◀</button>
+                            <button class="phone-btn" onclick="toggleKeyboard()">⌨</button>
+                        </div>
+                        <input type="text" class="form-input" id="keyboardInput" placeholder="Metin yaz..." style="display:none; max-width:280px; font-size:0.8rem;" onkeydown="if(event.key==='Enter'){sendText(this.value);this.value='';}">
+                    </div>
+                    
+                    <div class="right-panel">
+                        <div class="scenario-list" id="scenarioList"></div>
+                        <div class="run-controls">
+                            <button class="btn btn-success btn-sm" onclick="runTest()" id="btnRun">▶ Calistir</button>
+                            <button class="btn btn-danger btn-sm" onclick="stopTest()" id="btnStop" style="display:none;">⏹ Durdur</button>
+                        </div>
+                        <div class="panel-tabs">
+                            <button class="panel-tab active" onclick="showPanel('log')">📋 Log</button>
+                            <button class="panel-tab" onclick="showPanel('editor')">✏️ Editor</button>
+                            <button class="panel-tab" onclick="showPanel('settings')">⚙️ Ayarlar</button>
+                        </div>
+                        
+                        <div class="panel-content active" id="panelLog">
+                            <div class="status-bar">
+                                <span class="status-icon" id="statusIcon">⏸️</span>
+                                <div class="status-info">
+                                    <div class="status-title" id="statusTitle">Hazir</div>
+                                    <div class="status-desc" id="statusDesc">Senaryo secip calistirin</div>
+                                </div>
+                            </div>
+                            <div class="log-container" style="margin-top:10px;">
+                                <div class="log-header"><span>Test Loglari</span><button class="btn btn-ghost btn-sm" onclick="clearLogs()">Temizle</button></div>
+                                <div class="log-body" id="logBody"><div style="color:var(--text-muted); text-align:center; padding:40px; font-size:0.8rem;">Test calistirinca loglar burada gorunecek</div></div>
+                            </div>
+                        </div>
+                        
+                        <div class="panel-content" id="panelEditor">
+                            <div class="editor-box">
+                                <div style="padding:10px 12px; border-bottom:1px solid var(--border-color); display:flex; align-items:center; gap:8px;">
+                                    <input type="text" id="scenarioName" placeholder="Senaryo adi..." style="border:none; background:none; font-weight:600; font-size:0.85rem; flex:1;">
+                                    <button class="btn btn-ghost btn-sm" onclick="saveScenario()">💾</button>
+                                </div>
+                                <textarea id="stepsEditor" placeholder="Turkce test adimlari..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="panel-content" id="panelSettings">
+                            <div class="settings-box">
+                                <div class="settings-section">
+                                    <div class="settings-section-header">📦 Uygulama</div>
+                                    <div class="settings-section-body">
+                                        <div class="form-group" style="margin-bottom:10px;">
+                                            <label class="form-label" style="font-size:0.8rem;">Paket Adi</label>
+                                            <input type="text" class="form-input" id="appPackage" placeholder="com.example.app" style="font-size:0.8rem; padding:8px;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label" style="font-size:0.8rem;">Activity</label>
+                                            <input type="text" class="form-input" id="appActivity" placeholder=".MainActivity" style="font-size:0.8rem; padding:8px;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section">
+                                    <div class="settings-section-header">⚙️ Test</div>
+                                    <div class="settings-section-body">
+                                        <div class="toggle-group" style="padding:6px 0;">
+                                            <span style="font-size:0.8rem;">Hatada Dur</span>
+                                            <label class="toggle-switch"><input type="checkbox" id="stopOnFail" checked><span class="toggle-slider"></span></label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section">
+                                    <div class="settings-section-header">📱 Cihaz</div>
+                                    <div class="settings-section-body" id="deviceInfo" style="font-size:0.8rem; color:var(--text-muted);">Cihaz secilmedi</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <div class="modal-overlay" id="deviceModal">
+        <div class="modal">
+            <div class="modal-header"><h3 class="modal-title" id="modalTitle">Cihaz</h3><button class="modal-close" onclick="Modal.hide('deviceModal')">✕</button></div>
+            <div class="modal-body">
+                <div class="form-group"><label class="form-label">Cihaz Adi *</label><input type="text" class="form-input" id="modalName"></div>
+                <div class="form-group"><label class="form-label">Device ID *</label><input type="text" class="form-input" id="modalDeviceId"></div>
+                <div class="form-group"><label class="form-label">Tur</label><select class="form-input form-select" id="modalType"><option value="physical">Fiziksel</option><option value="emulator">Emulator</option></select></div>
+                <div class="form-group"><label class="form-label">OS</label><select class="form-input form-select" id="modalOs"><option value="android">Android</option><option value="ios">iOS</option></select></div>
+                <div class="form-group"><label class="form-label">OS Versiyon</label><input type="text" class="form-input" id="modalOsVersion"></div>
+                <div class="form-group"><label class="form-label">Appium URL</label><input type="text" class="form-input" id="modalAppiumUrl" value="http://localhost:4723"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" id="btnDeleteDevice" onclick="deleteDevice()" style="margin-right:auto;">Sil</button>
+                <button class="btn btn-secondary" onclick="Modal.hide('deviceModal')">Iptal</button>
+                <button class="btn btn-primary" onclick="saveDevice()">Kaydet</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/app.js"></script>
+    <script>
+        let allDevices = [], currentFilter = 'all', selectedDevice = null, selectedScenarioId = null, editingDeviceId = null;
+        let ws = null, isConnected = false, screenWidth = 1080, screenHeight = 1920;
+        let touchStartX = 0, touchStartY = 0, touchStartTime = 0, testRunning = false;
+        
+        async function init() { if (!Auth.checkAuth()) return; UI.renderUserInfo(); await loadDevices(); await loadScenarios(); setupTouchHandlers(); }
+        
+        function showPanel(name) {
+            document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+        }
+        
+        async function loadDevices() { try { const data = await DevicesAPI.list(); allDevices = data.devices; renderDevices(); } catch (e) { Toast.error('Cihazlar yuklenemedi'); } }
+        function filterDevices(type) { currentFilter = type; document.querySelectorAll('.device-filter .tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active'); renderDevices(); }
+        function renderDevices() {
+            const list = document.getElementById('deviceList'); let devices = currentFilter === 'all' ? allDevices : allDevices.filter(d => d.type === currentFilter);
+            if (devices.length === 0) { list.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px; font-size:0.8rem;">Cihaz yok</p>'; return; }
+            const user = Auth.getUser();
+            list.innerHTML = devices.map(d => {
+                const isAvailable = d.status === 'available', isMyDevice = d.current_user_id === user?.id, canUse = isAvailable || isMyDevice, isSelected = selectedDevice?.id === d.id;
+                return `<div class="device-item ${isSelected ? 'selected' : ''} ${!canUse ? 'unavailable' : ''}" onclick="${canUse ? `selectDevice(${d.id})` : ''}"><button class="device-item-settings" onclick="event.stopPropagation(); openDeviceSettings(${d.id})">⚙</button><div class="device-item-header"><span class="device-item-icon">${d.os === 'android' ? '🤖' : '🍎'}</span><div class="device-item-info"><div class="device-item-name">${d.name}</div><div class="device-item-meta">${d.device_id}</div></div><span class="type-badge ${d.type}">${d.type === 'physical' ? 'USB' : 'AVD'}</span></div><div class="device-item-status"><span class="status-dot ${isAvailable ? 'online' : d.status === 'in_use' ? 'busy' : 'offline'}"></span>${isAvailable ? 'Musait' : isMyDevice ? 'Sizde' : d.current_user_name || 'Mesgul'}</div></div>`;
+            }).join('');
+        }
+        
+        async function selectDevice(id) {
+            const device = allDevices.find(d => d.id === id); if (!device) return;
+            try {
+                if (device.status === 'available') { const lock = await DevicesAPI.lock(id); if (!lock.success) { Toast.error(lock.message); return; } }
+                selectedDevice = device; await loadDevices();
+                document.getElementById('currentDeviceName').textContent = device.name;
+                document.getElementById('connectionBadge').textContent = 'Baglaniyor...';
+                document.getElementById('connectionBadge').className = 'badge badge-warning';
+                document.getElementById('deviceInfo').innerHTML = `<p><b>Ad:</b> ${device.name}</p><p><b>ID:</b> ${device.device_id}</p><p><b>OS:</b> ${device.os} ${device.os_version || ''}</p>`;
+                connectWebSocket(device.device_id);
+                Toast.success(device.name + ' secildi');
+            } catch (e) { Toast.error(e.message); }
+        }
+        
+        function showAddDevice() { editingDeviceId = null; document.getElementById('modalTitle').textContent = 'Yeni Cihaz'; document.getElementById('modalName').value = ''; document.getElementById('modalDeviceId').value = ''; document.getElementById('modalDeviceId').readOnly = false; document.getElementById('modalType').value = 'physical'; document.getElementById('modalOs').value = 'android'; document.getElementById('modalOsVersion').value = ''; document.getElementById('modalAppiumUrl').value = 'http://localhost:4723'; document.getElementById('btnDeleteDevice').style.display = 'none'; Modal.show('deviceModal'); }
+        function openDeviceSettings(id) { const d = allDevices.find(x => x.id === id); if (!d) return; editingDeviceId = id; document.getElementById('modalTitle').textContent = 'Cihaz Ayarlari'; document.getElementById('modalName').value = d.name; document.getElementById('modalDeviceId').value = d.device_id; document.getElementById('modalDeviceId').readOnly = true; document.getElementById('modalType').value = d.type; document.getElementById('modalOs').value = d.os; document.getElementById('modalOsVersion').value = d.os_version || ''; document.getElementById('modalAppiumUrl').value = d.appium_url || 'http://localhost:4723'; document.getElementById('btnDeleteDevice').style.display = 'block'; Modal.show('deviceModal'); }
+        async function saveDevice() { const data = { name: document.getElementById('modalName').value, device_id: document.getElementById('modalDeviceId').value, type: document.getElementById('modalType').value, os: document.getElementById('modalOs').value, os_version: document.getElementById('modalOsVersion').value, appium_url: document.getElementById('modalAppiumUrl').value }; if (!data.name || !data.device_id) { Toast.error('Ad ve ID gerekli'); return; } try { if (editingDeviceId) { await DevicesAPI.update(editingDeviceId, data); Toast.success('Guncellendi'); } else { await DevicesAPI.create(data); Toast.success('Eklendi'); } Modal.hide('deviceModal'); await loadDevices(); } catch (e) { Toast.error(e.message); } }
+        async function deleteDevice() { if (!editingDeviceId || !confirm('Silmek istediginize emin misiniz?')) return; try { await DevicesAPI.delete(editingDeviceId); Toast.success('Silindi'); Modal.hide('deviceModal'); await loadDevices(); } catch (e) { Toast.error(e.message); } }
+        
+        async function loadScenarios() { try { const data = await ScenariosAPI.list('mobile'); const list = document.getElementById('scenarioList'); if (data.scenarios.length === 0) { list.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:12px; font-size:0.75rem;">Mobil senaryo yok</p>'; return; } list.innerHTML = data.scenarios.map(s => `<div class="scenario-item ${selectedScenarioId === s.id ? 'selected' : ''}" onclick="selectScenario(${s.id})"><div style="font-weight:500;">${Utils.escapeHtml(s.name)}</div></div>`).join(''); } catch (e) { console.error(e); } }
+        async function selectScenario(id) { try { const s = await ScenariosAPI.get(id); selectedScenarioId = s.id; document.getElementById('scenarioName').value = s.name; document.getElementById('stepsEditor').value = s.natural_steps || ''; if (s.config_json) { const config = JSON.parse(s.config_json); document.getElementById('appPackage').value = config.app_package || ''; document.getElementById('appActivity').value = config.app_activity || ''; } await loadScenarios(); } catch (e) { Toast.error(e.message); } }
+        async function saveScenario() { const name = document.getElementById('scenarioName').value.trim(), steps = document.getElementById('stepsEditor').value; if (!name) { Toast.error('Senaryo adi gerekli'); return; } const data = { name, type: 'mobile', natural_steps: steps, config_json: JSON.stringify({ app_package: document.getElementById('appPackage').value, app_activity: document.getElementById('appActivity').value }) }; try { if (selectedScenarioId) { await ScenariosAPI.update(selectedScenarioId, data); Toast.success('Guncellendi'); } else { const result = await ScenariosAPI.create(data); selectedScenarioId = result.id; Toast.success('Kaydedildi'); } await loadScenarios(); } catch (e) { Toast.error(e.message); } }
+        
+        function connectWebSocket(deviceId) {
+            if (ws) ws.close();
+            ws = new WebSocket('ws://localhost:8000/api/emulator/' + deviceId + '/stream');
+            ws.onopen = () => { isConnected = true; document.getElementById('connectionBadge').textContent = 'Bagli'; document.getElementById('connectionBadge').className = 'badge badge-success'; document.getElementById('noDeviceMsg').style.display = 'none'; document.getElementById('screenImage').style.display = 'block'; };
+            ws.onmessage = (e) => { const data = JSON.parse(e.data); if (data.type === 'init') { screenWidth = data.width; screenHeight = data.height; } else if (data.type === 'frame') { if (data.image) document.getElementById('screenImage').src = 'data:image/png;base64,' + data.image; if (data.test_state) updateLogs(data.test_state); } };
+            ws.onclose = () => { isConnected = false; document.getElementById('connectionBadge').textContent = 'Baglanti Kesildi'; document.getElementById('connectionBadge').className = 'badge badge-danger'; };
+        }
+        
+        function setupTouchHandlers() { const screen = document.getElementById('phoneScreen'); screen.addEventListener('mousedown', (e) => { if (!isConnected) return; const rect = screen.getBoundingClientRect(); touchStartX = e.clientX - rect.left; touchStartY = e.clientY - rect.top; touchStartTime = Date.now(); showTouch(touchStartX, touchStartY); }); screen.addEventListener('mouseup', (e) => { if (!isConnected || !touchStartTime) return; const rect = screen.getBoundingClientRect(), endX = e.clientX - rect.left, endY = e.clientY - rect.top; const scaleX = screenWidth / rect.width, scaleY = screenHeight / rect.height; const x1 = Math.round(touchStartX * scaleX), y1 = Math.round(touchStartY * scaleY), x2 = Math.round(endX * scaleX), y2 = Math.round(endY * scaleY); const dist = Math.sqrt(Math.pow(endX - touchStartX, 2) + Math.pow(endY - touchStartY, 2)); if (dist < 10) ws.send(JSON.stringify({ type: 'tap', x: x1, y: y1 })); else ws.send(JSON.stringify({ type: 'swipe', x1, y1, x2, y2, duration: 300 })); touchStartTime = 0; hideTouch(); }); }
+        function showTouch(x, y) { const ind = document.getElementById('touchIndicator'); ind.style.left = x + 'px'; ind.style.top = y + 'px'; ind.classList.add('active'); }
+        function hideTouch() { document.getElementById('touchIndicator').classList.remove('active'); }
+        function sendKey(key) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: key })); }
+        function toggleKeyboard() { const input = document.getElementById('keyboardInput'); input.style.display = input.style.display === 'none' ? 'block' : 'none'; if (input.style.display === 'block') input.focus(); }
+        function sendText(text) { if (text && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'text', text })); }
+        
+        function updateLogs(testState) {
+            const logs = testState.logs || [], state = testState.state;
+            let icon = '⏸️', title = 'Hazir', desc = 'Senaryo secip calistirin';
+            if (state === 'running') { icon = '🔄'; title = 'Calisiyor'; desc = `Adim ${testState.current_step}/${testState.total_steps}`; }
+            else if (state === 'success') { icon = '✅'; title = 'Basarili'; desc = 'Tum adimlar tamamlandi'; }
+            else if (state === 'failed') { icon = '❌'; title = 'Basarisiz'; desc = 'Bir adimda hata olustu'; }
+            else if (state === 'stopped') { icon = '⏹️'; title = 'Durduruldu'; desc = ''; }
+            document.getElementById('statusIcon').textContent = icon;
+            document.getElementById('statusTitle').textContent = title;
+            document.getElementById('statusDesc').textContent = desc;
+            document.getElementById('btnRun').style.display = state === 'running' ? 'none' : 'inline-flex';
+            document.getElementById('btnStop').style.display = state === 'running' ? 'inline-flex' : 'none';
+            if (logs.length === 0) return;
+            const body = document.getElementById('logBody');
+            body.innerHTML = logs.map(log => `<div class="log-item ${log.status}"><span class="log-step">${log.step}</span><div class="log-content"><div class="log-action">${log.action}: ${log.target || ''}</div>${log.message ? `<div class="log-message">${log.message}</div>` : ''}</div><span class="log-icon">${log.status === 'success' ? '✅' : log.status === 'failed' ? '❌' : log.status === 'running' ? '🔄' : '⏳'}</span></div>`).join('');
+            body.scrollTop = body.scrollHeight;
+        }
+        
+        function clearLogs() { document.getElementById('logBody').innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:40px; font-size:0.8rem;">Loglar temizlendi</div>'; document.getElementById('statusIcon').textContent = '⏸️'; document.getElementById('statusTitle').textContent = 'Hazir'; document.getElementById('statusDesc').textContent = 'Senaryo secip calistirin'; }
+        
+        async function runTest() {
+            if (!selectedDevice) { Toast.error('Cihaz secin'); return; }
+            const steps = document.getElementById('stepsEditor').value; if (!steps.trim()) { Toast.error('Adim yazin'); return; }
+            clearLogs();
+            document.getElementById('statusIcon').textContent = '🔄'; document.getElementById('statusTitle').textContent = 'Baslatiliyor...'; document.getElementById('statusDesc').textContent = 'Test hazirlaniyor';
+            document.getElementById('btnRun').style.display = 'none'; document.getElementById('btnStop').style.display = 'inline-flex';
+            testRunning = true;
+            try {
+                const result = await TestAPI.runMobileTest({ device_id: selectedDevice.id, app_package: document.getElementById('appPackage').value, app_activity: document.getElementById('appActivity').value, input_type: 'natural', natural_text: steps, stop_on_fail: document.getElementById('stopOnFail').checked });
+                if (result.success) { document.getElementById('statusIcon').textContent = '✅'; document.getElementById('statusTitle').textContent = 'Basarili'; Toast.success('Test basarili!'); }
+                else { document.getElementById('statusIcon').textContent = '❌'; document.getElementById('statusTitle').textContent = 'Basarisiz'; Toast.error(result.message); }
+            } catch (e) { document.getElementById('statusIcon').textContent = '❌'; document.getElementById('statusTitle').textContent = 'Hata'; Toast.error(e.message); }
+            document.getElementById('btnRun').style.display = 'inline-flex'; document.getElementById('btnStop').style.display = 'none'; testRunning = false;
+        }
+        
+        async function stopTest() { if (selectedDevice) { try { await API.post('/emulator/' + selectedDevice.device_id + '/test/stop'); } catch (e) {} } testRunning = false; document.getElementById('btnRun').style.display = 'inline-flex'; document.getElementById('btnStop').style.display = 'none'; Toast.success('Durduruldu'); }
+        
+        init();
+    </script>
+</body>
+</html>
