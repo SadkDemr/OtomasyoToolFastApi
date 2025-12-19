@@ -1,203 +1,116 @@
 """
-Device Service - Cihaz Yonetimi (CRUD + Kilitleme)
+Device Service - Cihaz Yönetimi ve ADB
+FIXED: Debug Logs for ADB Sync
 """
-
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from datetime import datetime
-from typing import List, Optional
+import subprocess
+import shutil
+import os
 from sqlalchemy.orm import Session
-
-from models.db_models import Device, User, DeviceStatus
-from models.schemas import DeviceCreate, DeviceUpdate
-
+from models.db_models import Device, DeviceStatus
+from models.schemas import DeviceCreate
 
 class DeviceService:
-    """Cihaz Yönetim Servisi"""
     
-    def get_all_devices(self, db: Session, include_inactive: bool = False) -> List[Device]:
-        """Tüm cihazları getir"""
-        query = db.query(Device)
-        if not include_inactive:
-            query = query.filter(Device.is_active == True)
-        return query.all()
-    
-    def get_device_by_id(self, db: Session, device_id: int) -> Optional[Device]:
-        """ID ile cihaz getir"""
+    def get_all_devices(self, db: Session):
+        return db.query(Device).all()
+
+    def get_device_by_id(self, db: Session, device_id: int):
         return db.query(Device).filter(Device.id == device_id).first()
-    
-    def get_device_by_device_id(self, db: Session, device_id: str) -> Optional[Device]:
-        """UDID ile cihaz getir"""
-        return db.query(Device).filter(Device.device_id == device_id).first()
-    
-    def get_devices_by_type(self, db: Session, device_type: str) -> List[Device]:
-        """Tipe göre cihazlar (emulator/physical)"""
-        return db.query(Device).filter(
-            Device.type == device_type,
-            Device.is_active == True
-        ).all()
-    
-    def get_available_devices(self, db: Session) -> List[Device]:
-        """Müsait cihazları getir"""
-        return db.query(Device).filter(
-            Device.status == DeviceStatus.AVAILABLE.value,
-            Device.is_active == True
-        ).all()
-    
-    def create_device(self, db: Session, device_data: DeviceCreate) -> dict:
-        """Yeni cihaz ekle"""
-        
-        # UDID kontrolü
-        existing = self.get_device_by_device_id(db, device_data.device_id)
-        if existing:
-            return {"success": False, "message": "Bu cihaz ID zaten kayıtlı"}
-        
-        new_device = Device(
-            name=device_data.name,
-            device_id=device_data.device_id,
-            type=device_data.type.value,
-            os=device_data.os.value,
-            os_version=device_data.os_version,
-            appium_url=device_data.appium_url,
+
+    def create_device(self, db: Session, device: DeviceCreate):
+        db_device = Device(
+            name=device.name,
+            device_id=device.device_id,
+            type=device.type,
+            os=device.os,
+            os_version=device.os_version,
+            appium_url=device.appium_url,
             status=DeviceStatus.AVAILABLE.value
         )
-        
-        db.add(new_device)
+        db.add(db_device)
         db.commit()
-        db.refresh(new_device)
-        
-        return {"success": True, "message": "Cihaz eklendi", "device": new_device}
-    
-    def update_device(self, db: Session, device_id: int, device_data: DeviceUpdate) -> dict:
-        """Cihaz güncelle"""
-        
-        device = self.get_device_by_id(db, device_id)
-        if not device:
-            return {"success": False, "message": "Cihaz bulunamadı"}
-        
-        if device_data.name is not None:
-            device.name = device_data.name
-        if device_data.os_version is not None:
-            device.os_version = device_data.os_version
-        if device_data.appium_url is not None:
-            device.appium_url = device_data.appium_url
-        if device_data.status is not None:
-            device.status = device_data.status.value
-        
-        db.commit()
-        db.refresh(device)
-        
-        return {"success": True, "message": "Cihaz güncellendi", "device": device}
-    
-    def delete_device(self, db: Session, device_id: int) -> dict:
-        """Cihaz sil (soft delete)"""
-        
-        device = self.get_device_by_id(db, device_id)
-        if not device:
-            return {"success": False, "message": "Cihaz bulunamadı"}
-        
-        if device.status == DeviceStatus.IN_USE.value:
-            return {"success": False, "message": "Cihaz kullanımda, önce serbest bırakın"}
-        
-        device.is_active = False
-        db.commit()
-        
-        return {"success": True, "message": "Cihaz silindi"}
-    
-    def lock_device(self, db: Session, device_id: int, user_id: int) -> dict:
-        """Cihazı kilitle (kullanıcıya ata)"""
-        
-        device = self.get_device_by_id(db, device_id)
-        if not device:
-            return {"success": False, "message": "Cihaz bulunamadı"}
-        
-        if not device.is_active:
-            return {"success": False, "message": "Cihaz aktif değil"}
-        
-        if device.status == DeviceStatus.IN_USE.value:
-            # Başka biri kullanıyor mu?
-            if device.current_user_id != user_id:
-                user = db.query(User).filter(User.id == device.current_user_id).first()
-                user_name = user.username if user else "Bilinmiyor"
-                return {
-                    "success": False, 
-                    "message": f"Cihaz şu anda {user_name} tarafından kullanılıyor"
-                }
-            else:
-                return {"success": True, "message": "Cihaz zaten sizde", "device": device}
-        
-        if device.status == DeviceStatus.OFFLINE.value:
-            return {"success": False, "message": "Cihaz çevrimdışı"}
-        
-        # Kilitle
-        device.status = DeviceStatus.IN_USE.value
-        device.current_user_id = user_id
-        device.locked_at = datetime.utcnow()
-        
-        db.commit()
-        db.refresh(device)
-        
-        return {"success": True, "message": "Cihaz kilitlendi", "device": device}
-    
-    def unlock_device(self, db: Session, device_id: int, user_id: int, is_admin: bool = False) -> dict:
-        """Cihaz kilidini aç"""
-        
-        device = self.get_device_by_id(db, device_id)
-        if not device:
-            return {"success": False, "message": "Cihaz bulunamadı"}
-        
-        if device.status != DeviceStatus.IN_USE.value:
-            return {"success": False, "message": "Cihaz zaten serbest"}
-        
-        # Sadece kilitleyen veya admin açabilir
-        if device.current_user_id != user_id and not is_admin:
-            return {"success": False, "message": "Bu cihazı sadece kilitleyen kişi veya admin açabilir"}
-        
-        # Kilidi aç
-        device.status = DeviceStatus.AVAILABLE.value
-        device.current_user_id = None
-        device.locked_at = None
-        
-        db.commit()
-        db.refresh(device)
-        
-        return {"success": True, "message": "Cihaz serbest bırakıldı", "device": device}
-    
-    def set_device_offline(self, db: Session, device_id: int) -> dict:
-        """Cihazı offline yap"""
-        
-        device = self.get_device_by_id(db, device_id)
-        if not device:
-            return {"success": False, "message": "Cihaz bulunamadı"}
-        
-        device.status = DeviceStatus.OFFLINE.value
-        device.current_user_id = None
-        device.locked_at = None
-        
-        db.commit()
-        db.refresh(device)
-        
-        return {"success": True, "message": "Cihaz çevrimdışı yapıldı", "device": device}
-    
-    def set_device_online(self, db: Session, device_id: int) -> dict:
-        """Cihazı online yap"""
-        
-        device = self.get_device_by_id(db, device_id)
-        if not device:
-            return {"success": False, "message": "Cihaz bulunamadı"}
-        
-        device.status = DeviceStatus.AVAILABLE.value
-        
-        db.commit()
-        db.refresh(device)
-        
-        return {"success": True, "message": "Cihaz çevrimiçi yapıldı", "device": device}
-    
-    def get_user_current_device(self, db: Session, user_id: int) -> Optional[Device]:
-        """Kullanıcının şu an kullandığı cihaz"""
-        return db.query(Device).filter(Device.current_user_id == user_id).first()
+        db.refresh(db_device)
+        return db_device
 
+    def lock_device(self, db: Session, device_id: int, user_id: int):
+        device = self.get_device_by_id(db, device_id)
+        # Status 'available' ise veya 'offline' ise (ama offline iken locklamak riskli)
+        # Sadece available ise kilitle
+        if device and device.status == DeviceStatus.AVAILABLE.value:
+            device.status = DeviceStatus.BUSY.value
+            device.current_user_id = user_id
+            db.commit()
+            return True
+        return False
 
-# Singleton
+    def release_device(self, db: Session, device_id: int, user_id: int):
+        device = self.get_device_by_id(db, device_id)
+        if device:
+            device.status = DeviceStatus.AVAILABLE.value
+            device.current_user_id = None
+            db.commit()
+            return True
+        return False
+
+    def sync_adb_devices(self, db: Session):
+        """ADB ile bağlı cihazları tarar ve veritabanını günceller"""
+        try:
+            adb_path = shutil.which("adb")
+            if not adb_path:
+                # Windows yolları
+                user_path = os.path.expanduser("~")
+                paths = [
+                    os.path.join(user_path, "AppData", "Local", "Android", "Sdk", "platform-tools", "adb.exe"),
+                    "C:\\platform-tools\\adb.exe"
+                ]
+                for p in paths:
+                    if os.path.exists(p):
+                        adb_path = p
+                        break
+            
+            if not adb_path: return
+
+            # Komutu Çalıştır
+            startupinfo = None
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+            output = subprocess.check_output([adb_path, 'devices'], encoding='utf-8', startupinfo=startupinfo)
+            lines = output.strip().split('\n')[1:]
+            
+            connected_ids = []
+            for line in lines:
+                parts = line.split('\t')
+                if len(parts) >= 2 and parts[1] == 'device':
+                    udid = parts[0]
+                    connected_ids.append(udid)
+                    
+                    # Cihazı DB'de bul
+                    dev = db.query(Device).filter(Device.device_id == udid).first()
+                    if not dev:
+                        print(f"🆕 ADB Yeni Cihaz Buldu: {udid}")
+                        new_dev = Device(name=f"Android_{udid[:4]}", device_id=udid, type="physical", os="android", status="available")
+                        db.add(new_dev)
+                    else:
+                        # Eğer cihaz OFFLINE ise AVAILABLE yap
+                        if dev.status == "offline":
+                            dev.status = "available"
+                            print(f"✅ Cihaz {udid} tekrar ONLINE oldu.")
+            
+            # 3. Bağlı olmayanları OFFLINE yap
+            all_devs = db.query(Device).all()
+            for d in all_devs:
+                # Sadece fiziksel cihazları kontrol et
+                if d.type == "physical" and d.device_id not in connected_ids:
+                    # Meşgul değilse offline yap (Meşgulse test koşuyordur, dokunma)
+                    if d.status != "busy" and d.status != "offline":
+                        d.status = "offline"
+                        print(f"❌ Cihaz {d.device_id} bağlantısı koptu (OFFLINE).")
+            
+            db.commit()
+
+        except Exception as e:
+            print(f"Sync Hatası: {e}")
+
 device_service = DeviceService()

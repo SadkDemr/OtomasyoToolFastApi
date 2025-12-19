@@ -1,147 +1,168 @@
 """
-Database Models - SQLAlchemy ORM Modelleri
+Database Models - FINAL ARCHITECTURE v2 (FIXED)
+Includes: DeviceStatus Enum added to fix ImportError
 """
-
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Enum
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy.orm import relationship, backref
 from database import Base
-import enum
+from datetime import datetime
+from enum import Enum as PyEnum
 
-
-# ============ ENUMS ============
-
-class UserRole(str, enum.Enum):
-    ADMIN = "admin"
-    USER = "user"
-
-
-class ScenarioType(str, enum.Enum):
-    WEB = "web"
-    MOBILE = "mobile"
-    DESKTOP = "desktop"
-
-
-class DeviceType(str, enum.Enum):
-    EMULATOR = "emulator"
-    PHYSICAL = "physical"
-
-
-class DeviceOS(str, enum.Enum):
-    ANDROID = "android"
-    IOS = "ios"
-
-
-class DeviceStatus(str, enum.Enum):
+# --- ENUMS (HATAYI DUZELTEN KISIM) ---
+class DeviceStatus(str, PyEnum):
     AVAILABLE = "available"
-    IN_USE = "in_use"
+    BUSY = "busy"
     OFFLINE = "offline"
+    LOCKED = "locked"
 
-
-class TestStatus(str, enum.Enum):
-    SUCCESS = "success"
-    FAILED = "failed"
-    RUNNING = "running"
-    STOPPED = "stopped"
-
-
-# ============ MODELS ============
-
+# --- KULLANICI & YETKI ---
 class User(Base):
-    """Kullanıcı tablosu"""
     __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    full_name = Column(String, nullable=True)
+    role = Column(String, default="user") # admin, user
+    
+    last_login = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Iliskiler
+    device_sessions = relationship("DeviceSession", back_populates="user")
+    test_results = relationship("TestResult", back_populates="user")
+
+# --- KLASOR YAPISI (AGAC) ---
+class Folder(Base):
+    __tablename__ = "folders"
     
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    email = Column(String(100), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(100))
-    role = Column(String(20), default=UserRole.USER.value)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, server_default=func.now())
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String)
+    parent_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     
-    # İlişkiler
-    scenarios = relationship("Scenario", back_populates="owner")
-    test_results = relationship("TestResult", back_populates="user")
-    # Kullanıcının şu an kullandığı cihaz
-    current_device = relationship("Device", back_populates="current_user", uselist=False)
+    children = relationship("Folder", 
+                          backref=backref('parent', remote_side=[id]),
+                          cascade="all, delete-orphan")
+    
+    scenarios = relationship("Scenario", back_populates="folder", cascade="all, delete-orphan")
 
-
+# --- SENARYOLAR ---
 class Scenario(Base):
-    """Test senaryosu tablosu"""
     __tablename__ = "scenarios"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    name = Column(String(100), nullable=False)
-    description = Column(Text)
-    type = Column(String(20), nullable=False)  # web, mobile, desktop
+    user_id = Column(Integer, ForeignKey("users.id"))
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     
-    # Test konfigürasyonu
-    steps_json = Column(Text)  # JSON string - test adımları
-    config_json = Column(Text)  # JSON string - url, app_package, vs.
-    
-    # Natural language formatında adımlar
+    name = Column(String, index=True)
+    description = Column(String, nullable=True)
+    type = Column(String) # web, mobile
     natural_steps = Column(Text)
+    steps_json = Column(Text, nullable=True)
+    config_json = Column(Text, nullable=True)
     
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    
-    # İlişkiler
-    owner = relationship("User", back_populates="scenarios")
-    test_results = relationship("TestResult", back_populates="scenario")
+    is_active = Column(Boolean, default=True) 
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    folder = relationship("Folder", back_populates="scenarios")
+    job_associations = relationship("JobScenario", back_populates="scenario", cascade="all, delete-orphan")
 
-class Device(Base):
-    """Cihaz tablosu (Emulator + Fiziksel)"""
-    __tablename__ = "devices"
+# --- JOB (TEST PAKETLERI) ---
+class Job(Base):
+    __tablename__ = "jobs"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)  # "Samsung S21", "Pixel Emulator"
-    device_id = Column(String(100), unique=True, nullable=False)  # UDID veya emulator-5554
-    type = Column(String(20), nullable=False)  # emulator, physical
-    os = Column(String(20), nullable=False)  # android, ios
-    os_version = Column(String(20))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String, index=True)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Appium bağlantı bilgileri
-    appium_url = Column(String(200))  # http://localhost:4723/wd/hub
-    
-    # Durum
-    status = Column(String(20), default=DeviceStatus.AVAILABLE.value)
-    current_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    locked_at = Column(DateTime, nullable=True)
-    
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, server_default=func.now())
-    
-    # İlişkiler
-    current_user = relationship("User", back_populates="current_device")
-    test_results = relationship("TestResult", back_populates="device")
+    scenarios = relationship("JobScenario", back_populates="job", cascade="all, delete-orphan")
+    executions = relationship("JobExecution", back_populates="job", cascade="all, delete-orphan")
 
+# Ara Tablo
+class JobScenario(Base):
+    __tablename__ = "job_scenarios"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"))
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"))
+    order = Column(Integer, default=0)
+    
+    job = relationship("Job", back_populates="scenarios")
+    scenario = relationship("Scenario", back_populates="job_associations")
 
+# --- JOB EXECUTIONS ---
+class JobExecution(Base):
+    __tablename__ = "job_executions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    
+    status = Column(String, default="pending")
+    start_time = Column(DateTime, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    
+    total_tests = Column(Integer, default=0)
+    passed_tests = Column(Integer, default=0)
+    failed_tests = Column(Integer, default=0)
+    
+    job = relationship("Job", back_populates="executions")
+    results = relationship("TestResult", back_populates="job_execution")
+
+# --- TEST SONUCLARI ---
 class TestResult(Base):
-    """Test sonuçları tablosu"""
     __tablename__ = "test_results"
     
     id = Column(Integer, primary_key=True, index=True)
-    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    device_id = Column(Integer, ForeignKey("devices.id"), nullable=True)  # Mobil testler için
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
     
-    status = Column(String(20), nullable=False)  # success, failed, running, stopped
+    job_execution_id = Column(Integer, ForeignKey("job_executions.id"), nullable=True)
     
-    # Sonuç detayları (JSON)
-    summary_json = Column(Text)  # {"total": 5, "passed": 4, "failed": 1}
-    results_json = Column(Text)  # Adım adım sonuçlar
+    device_name = Column(String, nullable=True)
+    status = Column(String) # success, failed
+    log_json = Column(Text)
+    screenshot_path = Column(String, nullable=True)
     
-    duration = Column(Integer)  # Saniye cinsinden
-    executed_at = Column(DateTime, server_default=func.now())
+    executed_at = Column(DateTime, default=datetime.utcnow)
+    duration_seconds = Column(Integer, default=0)
     
-    # İlişkiler
-    scenario = relationship("Scenario", back_populates="test_results")
+    job_execution = relationship("JobExecution", back_populates="results")
     user = relationship("User", back_populates="test_results")
-    device = relationship("Device", back_populates="test_results")
+
+# --- CIHAZLAR ---
+class Device(Base):
+    __tablename__ = "devices"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    device_id = Column(String, unique=True, index=True) # UDID
+    type = Column(String) # emulator, physical
+    os = Column(String) # android, ios
+    os_version = Column(String, nullable=True)
+    status = Column(String, default=DeviceStatus.AVAILABLE.value) # Enum kullanildi
+    appium_url = Column(String, default="http://localhost:4723")
+    
+    current_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    sessions = relationship("DeviceSession", back_populates="device")
+
+# --- CIHAZ OTURUMLARI ---
+class DeviceSession(Base):
+    __tablename__ = "device_sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    
+    session_type = Column(String, default="manual") # manual, automated
+    start_time = Column(DateTime, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    duration_seconds = Column(Integer, default=0)
+    
+    user = relationship("User", back_populates="device_sessions")
+    device = relationship("Device", back_populates="sessions")

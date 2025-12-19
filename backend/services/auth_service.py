@@ -1,5 +1,6 @@
 """
 Auth Service - Authentication & JWT Token Yonetimi
+FIXED: db_models uyumlulugu (hashed_password) ve is_active kontrolu
 """
 
 import sys, os
@@ -12,7 +13,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from models.db_models import User
-from models.schemas import UserRegister, UserResponse, TokenResponse
+from models.schemas import UserRegister
 
 # JWT Ayarları
 SECRET_KEY = "test-platform-secret-key-change-in-production-2024"
@@ -20,6 +21,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 # Şifre hashleme
+# Not: "bcrypt==4.0.1" kurulu olmalidir
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -76,12 +78,13 @@ class AuthService:
             return {"success": False, "message": "Bu email zaten kayıtlı"}
         
         # Kullanıcı oluştur
+        # DUZELTME: password_hash yerine hashed_password kullanildi
         new_user = User(
             username=user_data.username,
             email=user_data.email,
-            password_hash=self.hash_password(user_data.password),
+            hashed_password=self.hash_password(user_data.password), # DUZELTİLDİ
             full_name=user_data.full_name,
-            role="user"
+            role="user" # Varsayilan rol
         )
         
         db.add(new_user)
@@ -107,11 +110,16 @@ class AuthService:
         if not user:
             return {"success": False, "message": "Kullanıcı bulunamadı"}
         
-        if not user.is_active:
-            return {"success": False, "message": "Hesap devre dışı"}
+        # DUZELTME: is_active kontrolu kaldirildi (DB'de yok)
+        # if not user.is_active: ...
         
-        if not self.verify_password(password, user.password_hash):
+        # DUZELTME: password_hash yerine hashed_password ile dogrulama
+        if not self.verify_password(password, user.hashed_password): # DUZELTİLDİ
             return {"success": False, "message": "Şifre hatalı"}
+        
+        # Son giris zamanini guncelle
+        user.last_login = datetime.utcnow()
+        db.commit()
         
         # Token oluştur
         token = self.create_access_token(user.id, user.username)

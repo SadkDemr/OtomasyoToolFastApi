@@ -1,6 +1,7 @@
 """
 Auth Router - /api/auth/*
 Login, Register, Token Dogrulama
+FIXED: 'is_active' kontrolü kaldırıldı (DB yapısına uygun hale getirildi)
 """
 
 import sys, os
@@ -38,8 +39,9 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="Geçersiz token")
     
-    if not user.is_active:
-        raise HTTPException(status_code=401, detail="Hesap devre dışı")
+    # HATA VEREN KISIM BURASIYDI - KALDIRILDI
+    # if not user.is_active:
+    #     raise HTTPException(status_code=401, detail="Hesap devre dışı")
     
     return user
 
@@ -63,13 +65,7 @@ async def get_current_user_optional(
 async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     """
     Yeni kullanıcı kaydı
-    
-    - **username**: Kullanıcı adı (min 3, max 50 karakter)
-    - **email**: Email adresi
-    - **password**: Şifre (min 6 karakter)
-    - **full_name**: Ad Soyad (opsiyonel)
     """
-    
     result = auth_service.register(db, user_data)
     
     if not result["success"]:
@@ -86,11 +82,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     """
     Kullanıcı girişi
-    
-    - **username**: Kullanıcı adı
-    - **password**: Şifre
     """
-    
     result = auth_service.login(db, user_data.username, user_data.password)
     
     if not result["success"]:
@@ -107,8 +99,6 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
 async def get_me(current_user = Depends(get_current_user)):
     """
     Mevcut kullanıcı bilgilerini getir
-    
-    Authorization: Bearer {token} gerekli
     """
     return UserResponse.model_validate(current_user)
 
@@ -128,9 +118,6 @@ async def verify_token(current_user = Depends(get_current_user)):
 @router.post("/logout")
 async def logout(current_user = Depends(get_current_user)):
     """
-    Çıkış yap (client-side token silme için)
-    
-    Not: JWT stateless olduğu için server-side logout yok.
-    Client token'ı silmeli.
+    Çıkış yap
     """
     return {"success": True, "message": "Çıkış yapıldı"}

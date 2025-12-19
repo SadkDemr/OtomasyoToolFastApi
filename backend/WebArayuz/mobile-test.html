@@ -3,70 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobil Test - Test Otomasyon Platformu</title>
+    <title>Mobil Test</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .mobile-layout { display: grid; grid-template-columns: 280px 1fr 380px; gap: 16px; height: calc(100vh - 130px); }
-        .device-panel, .right-panel { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
-        .emulator-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-        .device-filter { display: flex; gap: 4px; margin-bottom: 10px; }
-        .device-filter .tab { flex: 1; text-align: center; padding: 6px; font-size: 0.75rem; }
-        .device-list { flex: 1; overflow-y: auto; }
-        .device-item { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; cursor: pointer; position: relative; margin-bottom: 8px; }
-        .device-item:hover { border-color: var(--accent-primary); }
-        .device-item.selected { border-color: var(--accent-primary); background: rgba(79,70,229,0.05); }
-        .device-item.unavailable { opacity: 0.5; cursor: not-allowed; }
-        .device-item-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-        .device-item-icon { font-size: 1.2rem; }
-        .device-item-info { flex: 1; }
-        .device-item-name { font-weight: 600; font-size: 0.85rem; }
-        .device-item-meta { font-size: 0.7rem; color: var(--text-muted); }
-        .device-item-status { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; margin-top: 4px; }
-        .device-item-settings { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 4px; border: none; background: var(--bg-tertiary); cursor: pointer; font-size: 0.8rem; }
-        .type-badge { padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 600; }
-        .type-badge.physical { background: rgba(59,130,246,0.1); color: var(--info); }
-        .type-badge.emulator { background: rgba(124,58,237,0.1); color: var(--accent-secondary); }
-        .connection-box { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.85rem; }
-        .panel-tabs { display: flex; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 8px; }
-        .panel-tab { flex: 1; padding: 8px; border-radius: 6px; border: none; background: transparent; font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); cursor: pointer; text-align: center; }
-        .panel-tab.active { background: var(--bg-secondary); color: var(--text-primary); box-shadow: var(--shadow-sm); }
-        .panel-content { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+        /* --- LAYOUT FIX --- */
+        /* Fixed height to prevent overflow issues */
+        .mobile-layout { 
+            display: grid; 
+            grid-template-columns: 300px 1fr 400px; 
+            gap: 16px; 
+            height: calc(100vh - 80px); /* Adjust based on header height */
+            overflow: hidden;
+        }
+        
+        .device-panel, .right-panel { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            overflow: hidden; 
+            height: 100%;
+        }
+        
+        .emulator-panel { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 12px; 
+            overflow-y: auto;
+        }
+
+        /* CARD STYLES */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* RIGHT PANEL SPECIFIC */
+        .right-panel-top {
+            flex: 0 0 40%; /* Top part takes 40% height */
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .right-panel-bottom {
+            flex: 1; /* Bottom part takes remaining space */
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        /* SCENARIO TREE STYLES */
+        .scenario-tree { flex: 1; overflow-y: auto; padding: 5px; }
+        .tree-folder { margin-bottom: 2px; }
+        .tree-folder-header { 
+            display: flex; align-items: center; gap: 6px; padding: 6px 8px; 
+            cursor: pointer; font-size: 0.85rem; font-weight: 500; 
+            border-radius: 4px; color: var(--text-secondary);
+        }
+        .tree-folder-header:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .tree-folder-content { padding-left: 20px; display: none; }
+        .tree-folder.open > .tree-folder-content { display: block; }
+        .tree-folder.open > .tree-folder-header .folder-icon { transform: rotate(90deg); }
+        .folder-icon { transition: transform 0.2s; font-size: 0.8rem; }
+        
+        .tree-item { 
+            padding: 6px 8px; margin: 1px 0; cursor: pointer; border-radius: 4px; 
+            font-size: 0.8rem; display: flex; align-items: center; gap: 8px;
+        }
+        .tree-item:hover { background: var(--bg-tertiary); }
+        .tree-item.active { background: rgba(79,70,229,0.1); color: var(--accent-primary); font-weight: 500; }
+        .item-icon { font-size: 1rem; }
+
+        /* TABS */
+        .panel-tabs { display: flex; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 8px; flex-shrink: 0; }
+        .panel-tab { flex: 1; padding: 8px; border-radius: 6px; border: none; background: transparent; font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; }
+        .panel-tab.active { background: var(--bg-secondary); color: var(--text-primary); box-shadow: var(--shadow-sm); font-weight: 600; }
+        
+        .panel-content { flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; background: var(--bg-secondary); border-radius: 0 0 8px 8px; border: 1px solid var(--border-color); border-top: none; }
         .panel-content.active { display: flex; }
-        .log-container { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
-        .log-header { padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; font-weight: 600; }
-        .log-body { flex: 1; overflow-y: auto; padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
-        .log-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; background: var(--bg-tertiary); }
-        .log-item.running { background: rgba(59,130,246,0.15); border-left: 3px solid var(--info); animation: pulse 1s infinite; }
+
+        /* LOGS & EDITOR */
+        .log-container, .editor-box { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .log-body, .editor-box textarea { flex: 1; overflow-y: auto; padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; border: none; outline: none; background: transparent; color: var(--text-primary); resize: none; }
+        
+        .log-item { display: flex; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); }
+        .log-item.running { background: rgba(59,130,246,0.1); border-left: 3px solid var(--info); }
         .log-item.success { background: rgba(16,185,129,0.1); border-left: 3px solid var(--success); }
-        .log-item.failed { background: rgba(239,68,68,0.15); border-left: 3px solid var(--danger); }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
-        .log-step { min-width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; background: var(--bg-secondary); }
-        .log-item.running .log-step { background: var(--info); color: white; }
-        .log-item.success .log-step { background: var(--success); color: white; }
-        .log-item.failed .log-step { background: var(--danger); color: white; }
-        .log-content { flex: 1; }
-        .log-action { font-weight: 600; }
-        .log-message { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
-        .log-icon { font-size: 1rem; }
-        .status-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-tertiary); border-radius: 8px; }
-        .status-icon { font-size: 1.8rem; }
-        .status-info { flex: 1; }
-        .status-title { font-weight: 600; font-size: 0.95rem; }
-        .status-desc { font-size: 0.75rem; color: var(--text-muted); }
-        .editor-box { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
-        .editor-box textarea { flex: 1; padding: 12px; border: none; background: transparent; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.7; resize: none; }
-        .editor-box textarea:focus { outline: none; }
-        .settings-box { flex: 1; overflow-y: auto; }
-        .settings-section { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 10px; }
-        .settings-section-header { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 0.85rem; }
-        .settings-section-body { padding: 10px 12px; }
-        .scenario-list { max-height: 140px; overflow-y: auto; margin-bottom: 10px; }
-        .scenario-item { padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 4px; cursor: pointer; font-size: 0.8rem; background: var(--bg-secondary); }
-        .scenario-item:hover { border-color: var(--accent-primary); }
-        .scenario-item.selected { border-color: var(--accent-primary); background: rgba(79,70,229,0.05); }
-        .run-controls { display: flex; gap: 8px; padding: 10px; background: var(--bg-tertiary); border-radius: 8px; }
-        .run-controls .btn { flex: 1; }
+        .log-item.failed { background: rgba(239,68,68,0.1); border-left: 3px solid var(--danger); }
+
+        /* DEVICE LIST */
+        .device-filter { display: flex; gap: 4px; margin-bottom: 10px; flex-shrink: 0; }
+        .device-filter .tab { flex: 1; padding: 6px; font-size: 0.75rem; cursor: pointer; background: var(--bg-tertiary); border: 1px solid transparent; border-radius: 6px; color: var(--text-secondary); text-align: center; }
+        .device-filter .tab.active { background: var(--bg-secondary); border-color: var(--border-color); color: var(--text-primary); font-weight: 600; }
+        .device-list { flex: 1; overflow-y: auto; }
+        .device-item { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; cursor: pointer; margin-bottom: 8px; transition: all 0.2s; }
+        .device-item.selected { border-color: var(--accent-primary); background: rgba(79,70,229,0.05); }
+        .device-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .device-name { font-weight: 600; font-size: 0.85rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); display: inline-block; }
+        .status-dot.online { background: var(--success); }
+        .status-dot.busy { background: var(--warning); }
+
+        /* EMULATOR SCREEN */
+        .phone-wrapper { flex: 1; display: flex; justify-content: center; align-items: center; width: 100%; overflow: hidden; padding: 10px; }
+        .phone-frame { width: 280px; height: 560px; border: 8px solid #333; border-radius: 30px; position: relative; background: #000; box-shadow: 0 20px 40px rgba(0,0,0,0.2); overflow: hidden; }
+        .phone-screen { width: 100%; height: 100%; background: #1a1a1a; cursor: crosshair; }
+        .phone-screen img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+        .phone-controls { display: flex; gap: 12px; margin-top: 10px; flex-shrink: 0; }
+        .phone-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .phone-btn:hover { background: var(--bg-tertiary); transform: translateY(-2px); }
+
+        /* FORM ELEMENTS */
+        .form-group { margin-bottom: 10px; }
+        .form-label { display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; }
+        .form-input { width: 100%; padding: 8px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; box-sizing: border-box; }
+        
+        /* MODAL */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(2px); opacity: 0; transition: opacity 0.3s; }
+        .modal-overlay.active { opacity: 1; }
+        .modal { background: var(--bg-secondary); border-radius: 12px; width: 400px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); transform: translateY(20px); transition: transform 0.3s; border: 1px solid var(--border-color); }
+        .modal-overlay.active .modal { transform: translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        .btn-primary { background: var(--accent-primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 6px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -78,6 +145,7 @@
                     <div class="nav-section-title">Ana Menu</div>
                     <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
                     <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Test Turleri</div>
@@ -85,12 +153,7 @@
                     <a href="mobile-test.html" class="nav-item active"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
                 </div>
             </nav>
-            <div class="sidebar-footer">
-                <div class="user-info" onclick="if(confirm('Cikis?')) Auth.logout();">
-                    <div class="user-avatar">?</div>
-                    <div class="user-details"><div class="user-name">Yukleniyor...</div><div class="user-role">-</div></div>
-                </div>
-            </div>
+            <div class="sidebar-footer"><div class="user-info" onclick="if(confirm('Cikis?')) Auth.logout();"><div class="user-avatar">?</div><div class="user-details"><div class="user-name">...</div><div class="user-role">...</div></div></div></div>
         </aside>
         
         <main class="main-content">
@@ -98,118 +161,119 @@
                 <div class="header-left"><h1 class="page-title">Mobil Test</h1></div>
                 <div class="header-right">
                     <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
-                    <button class="btn btn-ghost btn-sm" onclick="loadDevices()">🔄</button>
-                    <button class="btn btn-primary btn-sm" onclick="showAddDevice()">+ Cihaz</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadDevices()">🔄 Yenile</button>
+                    <button class="btn btn-primary btn-sm" onclick="showAddDeviceModal()">+ Cihaz Ekle</button>
                 </div>
             </header>
             
             <div class="page-content">
                 <div class="mobile-layout">
                     <div class="device-panel">
-                        <div class="card" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
-                            <div class="card-header" style="padding:12px;"><h3 class="card-title" style="font-size:0.9rem;">Cihazlar</h3></div>
-                            <div class="card-body" style="flex:1; overflow:hidden; padding:10px; display:flex; flex-direction:column;">
+                        <div class="card" style="height: 100%;">
+                            <div class="card-header" style="padding:12px; border-bottom:1px solid var(--border-color); font-weight:600;">Cihazlar</div>
+                            <div class="card-body" style="padding:10px; display:flex; flex-direction:column; height:100%;">
                                 <div class="device-filter">
-                                    <button class="tab active" onclick="filterDevices('all')">Tumu</button>
-                                    <button class="tab" onclick="filterDevices('physical')">USB</button>
-                                    <button class="tab" onclick="filterDevices('emulator')">AVD</button>
+                                    <div class="tab active" onclick="filterDevices('all')">Tümü</div>
+                                    <div class="tab" onclick="filterDevices('physical')">Fiziksel</div>
+                                    <div class="tab" onclick="filterDevices('emulator')">Emulator</div>
                                 </div>
-                                <div class="device-list" id="deviceList"></div>
+                                <div class="device-list" id="deviceList">Loading...</div>
                             </div>
                         </div>
                     </div>
                     
                     <div class="emulator-panel">
                         <div class="connection-box">
-                            <span>📱</span>
-                            <span id="currentDeviceName" style="font-weight:500;">Cihaz secin</span>
-                            <span class="badge badge-warning" id="connectionBadge">Bagli Degil</span>
+                            <span class="material-icons-round">smartphone</span>
+                            <div style="flex:1; display:flex; flex-direction:column;">
+                                <span id="currentDeviceName" style="font-weight:600; font-size:0.9rem;">Cihaz Seçilmedi</span>
+                                <span id="deviceInfo" style="font-size:0.7rem; color:var(--text-muted);">Bağlantı bekleniyor...</span>
+                            </div>
+                            <span class="badge" id="connectionBadge" style="background:var(--bg-tertiary); padding:2px 8px; border-radius:4px; font-size:0.7rem;">Bağlı Değil</span>
                         </div>
+                        
                         <div class="phone-wrapper">
                             <div class="phone-frame">
                                 <div class="phone-notch"></div>
                                 <div class="phone-screen" id="phoneScreen">
                                     <img id="screenImage" src="" alt="" style="display:none;">
-                                    <div id="noDeviceMsg" style="color:#666; text-align:center; padding-top:180px;">
-                                        <div style="font-size:2.5rem; margin-bottom:12px;">📱</div>
-                                        <div style="font-size:0.85rem;">Cihaz secin</div>
+                                    <div id="noDeviceMsg" style="color:#666; text-align:center; padding-top:200px;">
+                                        <div style="font-size:3rem; margin-bottom:12px; opacity:0.3;">📵</div>
+                                        <div style="font-size:0.85rem; opacity:0.6;">Cihaz seçin</div>
                                     </div>
-                                    <div class="touch-indicator" id="touchIndicator"></div>
                                 </div>
                             </div>
                         </div>
+                        
                         <div class="phone-controls">
-                            <button class="phone-btn" onclick="sendKey('recent')">▢</button>
-                            <button class="phone-btn" onclick="sendKey('home')">●</button>
-                            <button class="phone-btn" onclick="sendKey('back')">◀</button>
-                            <button class="phone-btn" onclick="toggleKeyboard()">⌨</button>
+                            <button class="phone-btn" onclick="sendKey('recent')" title="Son Uygulamalar"><span class="material-icons-round">grid_view</span></button>
+                            <button class="phone-btn" onclick="sendKey('home')" title="Ana Ekran"><span class="material-icons-round">trip_origin</span></button>
+                            <button class="phone-btn" onclick="sendKey('back')" title="Geri"><span class="material-icons-round">arrow_back</span></button>
+                            <button class="phone-btn" onclick="toggleKeyboard()" title="Klavye"><span class="material-icons-round">keyboard</span></button>
                         </div>
-                        <input type="text" class="form-input" id="keyboardInput" placeholder="Metin yaz..." style="display:none; max-width:280px; font-size:0.8rem;" onkeydown="if(event.key==='Enter'){sendText(this.value);this.value='';}">
+                        <input type="text" class="form-input" id="keyboardInput" placeholder="Metin girip Enter'a basın..." style="display:none; max-width:280px; margin-top:8px;" onkeydown="if(event.key==='Enter'){sendText(this.value);this.value='';}">
                     </div>
                     
                     <div class="right-panel">
-                        <div class="scenario-list" id="scenarioList"></div>
-                        <div class="run-controls">
-                            <button class="btn btn-success btn-sm" onclick="runTest()" id="btnRun">▶ Calistir</button>
-                            <button class="btn btn-danger btn-sm" onclick="stopTest()" id="btnStop" style="display:none;">⏹ Durdur</button>
+                        <div class="card right-panel-top">
+                            <div class="card-header" style="padding:10px; background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-weight:600; font-size:0.85rem;">Senaryolar</span>
+                                <button class="btn-icon" onclick="loadScenarios()" title="Yenile">↻</button>
+                            </div>
+                            <div class="scenario-tree" id="scenarioTree">Loading...</div>
                         </div>
-                        <div class="panel-tabs">
-                            <button class="panel-tab active" onclick="showPanel('log')">📋 Log</button>
-                            <button class="panel-tab" onclick="showPanel('editor')">✏️ Editor</button>
-                            <button class="panel-tab" onclick="showPanel('settings')">⚙️ Ayarlar</button>
-                        </div>
-                        
-                        <div class="panel-content active" id="panelLog">
-                            <div class="status-bar">
-                                <span class="status-icon" id="statusIcon">⏸️</span>
-                                <div class="status-info">
-                                    <div class="status-title" id="statusTitle">Hazir</div>
-                                    <div class="status-desc" id="statusDesc">Senaryo secip calistirin</div>
+
+                        <div class="right-panel-bottom">
+                            <div class="run-controls" style="padding:10px 0;">
+                                <button class="btn-primary" style="width:100%; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="runTest()" id="btnRun">
+                                    <span class="material-icons-round" style="font-size:1.1rem;">play_arrow</span> Başlat
+                                </button>
+                                <button class="btn-secondary" style="width:100%; display:none; align-items:center; justify-content:center; gap:8px; background:var(--danger); border-color:var(--danger); color:white;" onclick="stopTest()" id="btnStop">
+                                    <span class="material-icons-round" style="font-size:1.1rem;">stop</span> Durdur
+                                </button>
+                            </div>
+
+                            <div class="panel-tabs">
+                                <button class="panel-tab active" onclick="showPanel('log')">Log & Durum</button>
+                                <button class="panel-tab" onclick="showPanel('editor')">Editör</button>
+                                <button class="panel-tab" onclick="showPanel('settings')">Ayarlar</button>
+                            </div>
+
+                            <div class="panel-content active" id="panelLog">
+                                <div class="status-bar" style="border-bottom:1px solid var(--border-color); padding:8px;">
+                                    <span id="statusIcon">⏸️</span> <span id="statusTitle" style="font-weight:600; font-size:0.85rem;">Hazır</span>
                                 </div>
-                            </div>
-                            <div class="log-container" style="margin-top:10px;">
-                                <div class="log-header"><span>Test Loglari</span><button class="btn btn-ghost btn-sm" onclick="clearLogs()">Temizle</button></div>
-                                <div class="log-body" id="logBody"><div style="color:var(--text-muted); text-align:center; padding:40px; font-size:0.8rem;">Test calistirinca loglar burada gorunecek</div></div>
-                            </div>
-                        </div>
-                        
-                        <div class="panel-content" id="panelEditor">
-                            <div class="editor-box">
-                                <div style="padding:10px 12px; border-bottom:1px solid var(--border-color); display:flex; align-items:center; gap:8px;">
-                                    <input type="text" id="scenarioName" placeholder="Senaryo adi..." style="border:none; background:none; font-weight:600; font-size:0.85rem; flex:1;">
-                                    <button class="btn btn-ghost btn-sm" onclick="saveScenario()">💾</button>
-                                </div>
-                                <textarea id="stepsEditor" placeholder="Turkce test adimlari..."></textarea>
-                            </div>
-                        </div>
-                        
-                        <div class="panel-content" id="panelSettings">
-                            <div class="settings-box">
-                                <div class="settings-section">
-                                    <div class="settings-section-header">📦 Uygulama</div>
-                                    <div class="settings-section-body">
-                                        <div class="form-group" style="margin-bottom:10px;">
-                                            <label class="form-label" style="font-size:0.8rem;">Paket Adi</label>
-                                            <input type="text" class="form-input" id="appPackage" placeholder="com.example.app" style="font-size:0.8rem; padding:8px;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label class="form-label" style="font-size:0.8rem;">Activity</label>
-                                            <input type="text" class="form-input" id="appActivity" placeholder=".MainActivity" style="font-size:0.8rem; padding:8px;">
-                                        </div>
+                                <div class="log-container">
+                                    <div class="log-body" id="logBody">
+                                        <div style="padding:20px; text-align:center; color:var(--text-muted);">Loglar burada görünecek</div>
                                     </div>
                                 </div>
-                                <div class="settings-section">
-                                    <div class="settings-section-header">⚙️ Test</div>
-                                    <div class="settings-section-body">
-                                        <div class="toggle-group" style="padding:6px 0;">
-                                            <span style="font-size:0.8rem;">Hatada Dur</span>
-                                            <label class="toggle-switch"><input type="checkbox" id="stopOnFail" checked><span class="toggle-slider"></span></label>
-                                        </div>
-                                    </div>
+                            </div>
+
+                            <div class="panel-content" id="panelEditor">
+                                <div class="editor-header" style="padding:8px; border-bottom:1px solid var(--border-color); display:flex; gap:8px;">
+                                    <input type="text" id="scenarioName" placeholder="Senaryo Adı..." class="form-input" style="flex:1;">
+                                    <button class="btn-secondary" onclick="saveScenario()" title="Kaydet">💾</button>
                                 </div>
-                                <div class="settings-section">
-                                    <div class="settings-section-header">📱 Cihaz</div>
-                                    <div class="settings-section-body" id="deviceInfo" style="font-size:0.8rem; color:var(--text-muted);">Cihaz secilmedi</div>
+                                <div class="editor-box">
+                                    <textarea id="stepsEditor" placeholder="Adımları buraya yazın..."></textarea>
+                                </div>
+                            </div>
+
+                            <div class="panel-content" id="panelSettings">
+                                <div class="settings-box" style="padding:15px; overflow-y:auto;">
+                                    <div class="form-group">
+                                        <label class="form-label">Klasör</label>
+                                        <select class="form-input" id="scenarioFolderSelect"><option value="">Ana Dizin</option></select>
+                                    </div>
+                                    <div class="form-group"><label class="form-label">Paket (Package)</label><input type="text" class="form-input" id="appPackage"></div>
+                                    <div class="form-group"><label class="form-label">Activity</label><input type="text" class="form-input" id="appActivity"></div>
+                                    <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                                        <input type="checkbox" id="restartApp" checked> <label for="restartApp" style="font-size:0.85rem;">Yeniden Başlat</label>
+                                    </div>
+                                    <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                                        <input type="checkbox" id="stopOnFail" checked> <label for="stopOnFail" style="font-size:0.85rem;">Hatada Durdur</label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -218,129 +282,285 @@
             </div>
         </main>
     </div>
-    
+
     <div class="modal-overlay" id="deviceModal">
         <div class="modal">
-            <div class="modal-header"><h3 class="modal-title" id="modalTitle">Cihaz</h3><button class="modal-close" onclick="Modal.hide('deviceModal')">✕</button></div>
+            <div class="modal-header"><h3 style="margin:0;">Cihaz Ekle</h3><button onclick="closeModal('deviceModal')" style="background:none; border:none; cursor:pointer;">✕</button></div>
             <div class="modal-body">
-                <div class="form-group"><label class="form-label">Cihaz Adi *</label><input type="text" class="form-input" id="modalName"></div>
-                <div class="form-group"><label class="form-label">Device ID *</label><input type="text" class="form-input" id="modalDeviceId"></div>
-                <div class="form-group"><label class="form-label">Tur</label><select class="form-input form-select" id="modalType"><option value="physical">Fiziksel</option><option value="emulator">Emulator</option></select></div>
-                <div class="form-group"><label class="form-label">OS</label><select class="form-input form-select" id="modalOs"><option value="android">Android</option><option value="ios">iOS</option></select></div>
-                <div class="form-group"><label class="form-label">OS Versiyon</label><input type="text" class="form-input" id="modalOsVersion"></div>
-                <div class="form-group"><label class="form-label">Appium URL</label><input type="text" class="form-input" id="modalAppiumUrl" value="http://localhost:4723"></div>
+                <div class="form-group"><label class="form-label">Ad</label><input type="text" class="form-input" id="modalName"></div>
+                <div class="form-group"><label class="form-label">Device ID</label><input type="text" class="form-input" id="modalDeviceId"></div>
+                <div class="form-group"><label class="form-label">Tür</label><select class="form-input" id="modalType"><option value="emulator">Emulator</option><option value="physical">Fiziksel</option></select></div>
+                <div class="form-group"><label class="form-label">OS</label><select class="form-input" id="modalOs"><option value="android">Android</option><option value="ios">iOS</option></select></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-danger" id="btnDeleteDevice" onclick="deleteDevice()" style="margin-right:auto;">Sil</button>
-                <button class="btn btn-secondary" onclick="Modal.hide('deviceModal')">Iptal</button>
-                <button class="btn btn-primary" onclick="saveDevice()">Kaydet</button>
+                <button class="btn-secondary" onclick="closeModal('deviceModal')">İptal</button>
+                <button class="btn-primary" onclick="saveDevice()">Kaydet</button>
             </div>
         </div>
     </div>
-    
+
     <script src="js/app.js"></script>
     <script>
-        let allDevices = [], currentFilter = 'all', selectedDevice = null, selectedScenarioId = null, editingDeviceId = null;
-        let ws = null, isConnected = false, screenWidth = 1080, screenHeight = 1920;
-        let touchStartX = 0, touchStartY = 0, touchStartTime = 0, testRunning = false;
-        
-        async function init() { if (!Auth.checkAuth()) return; UI.renderUserInfo(); await loadDevices(); await loadScenarios(); setupTouchHandlers(); }
-        
+        let allDevices=[], currentFilter='all', selectedDevice=null, selectedScenarioId=null, ws=null, isConnected=false;
+        let screenWidth=1080, screenHeight=1920, touchStartX=0, touchStartY=0, touchStartTime=0;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if(!Auth.checkAuth()) return;
+            UI.renderUserInfo();
+            await init();
+        });
+
+        async function init() {
+            await loadDevices();
+            await loadScenarioTree(); // New Folder Structure
+            await loadFolderSelect();
+            setupTouchHandlers();
+        }
+
+        // --- NEW: SCENARIO TREE STRUCTURE ---
+        async function loadScenarioTree() {
+            try {
+                // Get folders (tree) and mobile scenarios separately or structured
+                // For simplicity, we fetch all mobile scenarios and map them to folders client-side
+                const foldersRes = await API.get('/scenarios/folders');
+                const scenariosRes = await ScenariosAPI.list('mobile');
+                const scenarios = scenariosRes.scenarios;
+
+                const treeContainer = document.getElementById('scenarioTree');
+                treeContainer.innerHTML = buildTreeHTML(foldersRes, scenarios, null);
+            } catch(e) { console.error(e); }
+        }
+
+        function buildTreeHTML(folders, scenarios, parentId) {
+            let html = '';
+            
+            // 1. Filter folders belonging to this parent
+            const currentFolders = folders.filter(f => f.parent_id === parentId);
+            
+            // 2. Filter scenarios belonging to this parent (folder_id)
+            const currentScenarios = scenarios.filter(s => s.folder_id === parentId);
+
+            // Render Folders
+            currentFolders.forEach(folder => {
+                // Recursively get children HTML
+                const childrenHtml = buildTreeHTML(folders, scenarios, folder.id);
+                const hasChildren = childrenHtml.length > 0;
+                
+                html += `
+                    <div class="tree-folder">
+                        <div class="tree-folder-header" onclick="toggleFolder(this)">
+                            <span class="folder-icon">▶</span>
+                            <span class="material-icons-round" style="font-size:1rem; color:#F59E0B;">folder</span>
+                            <span>${folder.name}</span>
+                        </div>
+                        <div class="tree-folder-content">
+                            ${childrenHtml}
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Render Scenarios
+            currentScenarios.forEach(s => {
+                const isActive = selectedScenarioId === s.id ? 'active' : '';
+                html += `
+                    <div class="tree-item ${isActive}" onclick="selectScenario(${s.id})">
+                        <span class="material-icons-round item-icon" style="color:#8B5CF6;">description</span>
+                        <span>${s.name}</span>
+                    </div>
+                `;
+            });
+
+            return html;
+        }
+
+        function toggleFolder(el) {
+            el.parentElement.classList.toggle('open');
+        }
+
+        // --- OLD FUNCTIONS (ADAPTED) ---
         function showPanel(name) {
-            document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+            document.querySelectorAll('.panel-content').forEach(el=>el.style.display='none');
+            document.querySelectorAll('.panel-tab').forEach(el=>el.classList.remove('active'));
+            document.getElementById('panel'+name.charAt(0).toUpperCase()+name.slice(1)).style.display='flex';
+            // Find tab by text content is tricky, use index or add IDs. Assuming index:
+            const tabs = document.querySelectorAll('.panel-tab');
+            if(name==='log') tabs[0].classList.add('active');
+            if(name==='editor') tabs[1].classList.add('active');
+            if(name==='settings') tabs[2].classList.add('active');
         }
+
+        function showAddDeviceModal() { document.getElementById('deviceModal').style.display='flex'; setTimeout(()=>document.getElementById('deviceModal').classList.add('active'),10); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); setTimeout(()=>document.getElementById(id).style.display='none',300); }
         
-        async function loadDevices() { try { const data = await DevicesAPI.list(); allDevices = data.devices; renderDevices(); } catch (e) { Toast.error('Cihazlar yuklenemedi'); } }
-        function filterDevices(type) { currentFilter = type; document.querySelectorAll('.device-filter .tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active'); renderDevices(); }
+        async function loadDevices() {
+            try {
+                const res = await DevicesAPI.list(); allDevices=res.devices; renderDevices();
+            } catch(e){console.error(e);}
+        }
+
+        function filterDevices(type) {
+            currentFilter = type;
+            document.querySelectorAll('.device-filter .tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase().includes(type==='all'?'tümü':type)));
+            renderDevices();
+        }
+
         function renderDevices() {
-            const list = document.getElementById('deviceList'); let devices = currentFilter === 'all' ? allDevices : allDevices.filter(d => d.type === currentFilter);
-            if (devices.length === 0) { list.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px; font-size:0.8rem;">Cihaz yok</p>'; return; }
-            const user = Auth.getUser();
-            list.innerHTML = devices.map(d => {
-                const isAvailable = d.status === 'available', isMyDevice = d.current_user_id === user?.id, canUse = isAvailable || isMyDevice, isSelected = selectedDevice?.id === d.id;
-                return `<div class="device-item ${isSelected ? 'selected' : ''} ${!canUse ? 'unavailable' : ''}" onclick="${canUse ? `selectDevice(${d.id})` : ''}"><button class="device-item-settings" onclick="event.stopPropagation(); openDeviceSettings(${d.id})">⚙</button><div class="device-item-header"><span class="device-item-icon">${d.os === 'android' ? '🤖' : '🍎'}</span><div class="device-item-info"><div class="device-item-name">${d.name}</div><div class="device-item-meta">${d.device_id}</div></div><span class="type-badge ${d.type}">${d.type === 'physical' ? 'USB' : 'AVD'}</span></div><div class="device-item-status"><span class="status-dot ${isAvailable ? 'online' : d.status === 'in_use' ? 'busy' : 'offline'}"></span>${isAvailable ? 'Musait' : isMyDevice ? 'Sizde' : d.current_user_name || 'Mesgul'}</div></div>`;
-            }).join('');
+            const list = document.getElementById('deviceList');
+            const filtered = currentFilter==='all' ? allDevices : allDevices.filter(d=>d.type===currentFilter);
+            if(filtered.length===0) { list.innerHTML='<div style="padding:20px; text-align:center; color:#666;">Cihaz yok</div>'; return; }
+            
+            list.innerHTML = filtered.map(d => `
+                <div class="device-item ${selectedDevice?.id===d.id?'selected':''}" onclick="selectDevice(${d.id})">
+                    <div class="device-item-header">
+                        <span class="device-name">${d.name}</span>
+                        <span class="status-dot ${d.status==='available'?'online':'busy'}"></span>
+                    </div>
+                    <div style="font-size:0.75rem; color:var(--text-muted);">${d.device_id}</div>
+                </div>
+            `).join('');
         }
-        
+
         async function selectDevice(id) {
-            const device = allDevices.find(d => d.id === id); if (!device) return;
+            const d = allDevices.find(x=>x.id===id); if(!d) return;
+            if(d.status==='available') { try { await DevicesAPI.lock(id); } catch(e){ alert(e.message); return; } }
+            selectedDevice=d; renderDevices(); connectWebSocket(d.device_id);
+            document.getElementById('currentDeviceName').textContent=d.name;
+            document.getElementById('deviceInfo').textContent=d.device_id;
+            document.getElementById('connectionBadge').textContent='Bağlı';
+            document.getElementById('connectionBadge').style.background='var(--success)';
+            document.getElementById('connectionBadge').style.color='white';
+        }
+
+        // --- SCENARIO SELECT ---
+        async function selectScenario(id) {
             try {
-                if (device.status === 'available') { const lock = await DevicesAPI.lock(id); if (!lock.success) { Toast.error(lock.message); return; } }
-                selectedDevice = device; await loadDevices();
-                document.getElementById('currentDeviceName').textContent = device.name;
-                document.getElementById('connectionBadge').textContent = 'Baglaniyor...';
-                document.getElementById('connectionBadge').className = 'badge badge-warning';
-                document.getElementById('deviceInfo').innerHTML = `<p><b>Ad:</b> ${device.name}</p><p><b>ID:</b> ${device.device_id}</p><p><b>OS:</b> ${device.os} ${device.os_version || ''}</p>`;
-                connectWebSocket(device.device_id);
-                Toast.success(device.name + ' secildi');
-            } catch (e) { Toast.error(e.message); }
+                const s = await ScenariosAPI.get(id);
+                selectedScenarioId = s.id;
+                document.getElementById('scenarioName').value = s.name;
+                document.getElementById('stepsEditor').value = s.natural_steps || '';
+                document.getElementById('scenarioFolderSelect').value = s.folder_id || "";
+                
+                if(s.config_json) {
+                    const c = JSON.parse(s.config_json);
+                    document.getElementById('appPackage').value = c.app_package||'';
+                    document.getElementById('appActivity').value = c.app_activity||'';
+                }
+                
+                renderInitialLogs(s.natural_steps||'');
+                loadScenarioTree(); // Refresh to highlight active
+                showPanel('editor');
+            } catch(e){ alert(e.message); }
         }
-        
-        function showAddDevice() { editingDeviceId = null; document.getElementById('modalTitle').textContent = 'Yeni Cihaz'; document.getElementById('modalName').value = ''; document.getElementById('modalDeviceId').value = ''; document.getElementById('modalDeviceId').readOnly = false; document.getElementById('modalType').value = 'physical'; document.getElementById('modalOs').value = 'android'; document.getElementById('modalOsVersion').value = ''; document.getElementById('modalAppiumUrl').value = 'http://localhost:4723'; document.getElementById('btnDeleteDevice').style.display = 'none'; Modal.show('deviceModal'); }
-        function openDeviceSettings(id) { const d = allDevices.find(x => x.id === id); if (!d) return; editingDeviceId = id; document.getElementById('modalTitle').textContent = 'Cihaz Ayarlari'; document.getElementById('modalName').value = d.name; document.getElementById('modalDeviceId').value = d.device_id; document.getElementById('modalDeviceId').readOnly = true; document.getElementById('modalType').value = d.type; document.getElementById('modalOs').value = d.os; document.getElementById('modalOsVersion').value = d.os_version || ''; document.getElementById('modalAppiumUrl').value = d.appium_url || 'http://localhost:4723'; document.getElementById('btnDeleteDevice').style.display = 'block'; Modal.show('deviceModal'); }
-        async function saveDevice() { const data = { name: document.getElementById('modalName').value, device_id: document.getElementById('modalDeviceId').value, type: document.getElementById('modalType').value, os: document.getElementById('modalOs').value, os_version: document.getElementById('modalOsVersion').value, appium_url: document.getElementById('modalAppiumUrl').value }; if (!data.name || !data.device_id) { Toast.error('Ad ve ID gerekli'); return; } try { if (editingDeviceId) { await DevicesAPI.update(editingDeviceId, data); Toast.success('Guncellendi'); } else { await DevicesAPI.create(data); Toast.success('Eklendi'); } Modal.hide('deviceModal'); await loadDevices(); } catch (e) { Toast.error(e.message); } }
-        async function deleteDevice() { if (!editingDeviceId || !confirm('Silmek istediginize emin misiniz?')) return; try { await DevicesAPI.delete(editingDeviceId); Toast.success('Silindi'); Modal.hide('deviceModal'); await loadDevices(); } catch (e) { Toast.error(e.message); } }
-        
-        async function loadScenarios() { try { const data = await ScenariosAPI.list('mobile'); const list = document.getElementById('scenarioList'); if (data.scenarios.length === 0) { list.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:12px; font-size:0.75rem;">Mobil senaryo yok</p>'; return; } list.innerHTML = data.scenarios.map(s => `<div class="scenario-item ${selectedScenarioId === s.id ? 'selected' : ''}" onclick="selectScenario(${s.id})"><div style="font-weight:500;">${Utils.escapeHtml(s.name)}</div></div>`).join(''); } catch (e) { console.error(e); } }
-        async function selectScenario(id) { try { const s = await ScenariosAPI.get(id); selectedScenarioId = s.id; document.getElementById('scenarioName').value = s.name; document.getElementById('stepsEditor').value = s.natural_steps || ''; if (s.config_json) { const config = JSON.parse(s.config_json); document.getElementById('appPackage').value = config.app_package || ''; document.getElementById('appActivity').value = config.app_activity || ''; } await loadScenarios(); } catch (e) { Toast.error(e.message); } }
-        async function saveScenario() { const name = document.getElementById('scenarioName').value.trim(), steps = document.getElementById('stepsEditor').value; if (!name) { Toast.error('Senaryo adi gerekli'); return; } const data = { name, type: 'mobile', natural_steps: steps, config_json: JSON.stringify({ app_package: document.getElementById('appPackage').value, app_activity: document.getElementById('appActivity').value }) }; try { if (selectedScenarioId) { await ScenariosAPI.update(selectedScenarioId, data); Toast.success('Guncellendi'); } else { const result = await ScenariosAPI.create(data); selectedScenarioId = result.id; Toast.success('Kaydedildi'); } await loadScenarios(); } catch (e) { Toast.error(e.message); } }
-        
-        function connectWebSocket(deviceId) {
-            if (ws) ws.close();
-            ws = new WebSocket('ws://localhost:8000/api/emulator/' + deviceId + '/stream');
-            ws.onopen = () => { isConnected = true; document.getElementById('connectionBadge').textContent = 'Bagli'; document.getElementById('connectionBadge').className = 'badge badge-success'; document.getElementById('noDeviceMsg').style.display = 'none'; document.getElementById('screenImage').style.display = 'block'; };
-            ws.onmessage = (e) => { const data = JSON.parse(e.data); if (data.type === 'init') { screenWidth = data.width; screenHeight = data.height; } else if (data.type === 'frame') { if (data.image) document.getElementById('screenImage').src = 'data:image/png;base64,' + data.image; if (data.test_state) updateLogs(data.test_state); } };
-            ws.onclose = () => { isConnected = false; document.getElementById('connectionBadge').textContent = 'Baglanti Kesildi'; document.getElementById('connectionBadge').className = 'badge badge-danger'; };
+
+        async function saveScenario() {
+            const name = document.getElementById('scenarioName').value;
+            const steps = document.getElementById('stepsEditor').value;
+            if(!name) { alert("Senaryo adı gerekli"); return; }
+            
+            const folderVal = document.getElementById('scenarioFolderSelect').value;
+            const config = {
+                app_package: document.getElementById('appPackage').value,
+                app_activity: document.getElementById('appActivity').value,
+                restart_app: document.getElementById('restartApp').checked
+            };
+
+            const data = {
+                name, type:'mobile', natural_steps:steps,
+                folder_id: folderVal ? parseInt(folderVal) : null,
+                config_json: JSON.stringify(config)
+            };
+
+            try {
+                if(selectedScenarioId) { await ScenariosAPI.update(selectedScenarioId, data); alert('Güncellendi'); }
+                else { await ScenariosAPI.create(data); alert('Oluşturuldu'); }
+                loadScenarioTree();
+            } catch(e){ alert(e.message); }
         }
-        
-        function setupTouchHandlers() { const screen = document.getElementById('phoneScreen'); screen.addEventListener('mousedown', (e) => { if (!isConnected) return; const rect = screen.getBoundingClientRect(); touchStartX = e.clientX - rect.left; touchStartY = e.clientY - rect.top; touchStartTime = Date.now(); showTouch(touchStartX, touchStartY); }); screen.addEventListener('mouseup', (e) => { if (!isConnected || !touchStartTime) return; const rect = screen.getBoundingClientRect(), endX = e.clientX - rect.left, endY = e.clientY - rect.top; const scaleX = screenWidth / rect.width, scaleY = screenHeight / rect.height; const x1 = Math.round(touchStartX * scaleX), y1 = Math.round(touchStartY * scaleY), x2 = Math.round(endX * scaleX), y2 = Math.round(endY * scaleY); const dist = Math.sqrt(Math.pow(endX - touchStartX, 2) + Math.pow(endY - touchStartY, 2)); if (dist < 10) ws.send(JSON.stringify({ type: 'tap', x: x1, y: y1 })); else ws.send(JSON.stringify({ type: 'swipe', x1, y1, x2, y2, duration: 300 })); touchStartTime = 0; hideTouch(); }); }
-        function showTouch(x, y) { const ind = document.getElementById('touchIndicator'); ind.style.left = x + 'px'; ind.style.top = y + 'px'; ind.classList.add('active'); }
-        function hideTouch() { document.getElementById('touchIndicator').classList.remove('active'); }
-        function sendKey(key) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: key })); }
-        function toggleKeyboard() { const input = document.getElementById('keyboardInput'); input.style.display = input.style.display === 'none' ? 'block' : 'none'; if (input.style.display === 'block') input.focus(); }
-        function sendText(text) { if (text && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'text', text })); }
-        
-        function updateLogs(testState) {
-            const logs = testState.logs || [], state = testState.state;
-            let icon = '⏸️', title = 'Hazir', desc = 'Senaryo secip calistirin';
-            if (state === 'running') { icon = '🔄'; title = 'Calisiyor'; desc = `Adim ${testState.current_step}/${testState.total_steps}`; }
-            else if (state === 'success') { icon = '✅'; title = 'Basarili'; desc = 'Tum adimlar tamamlandi'; }
-            else if (state === 'failed') { icon = '❌'; title = 'Basarisiz'; desc = 'Bir adimda hata olustu'; }
-            else if (state === 'stopped') { icon = '⏹️'; title = 'Durduruldu'; desc = ''; }
-            document.getElementById('statusIcon').textContent = icon;
-            document.getElementById('statusTitle').textContent = title;
-            document.getElementById('statusDesc').textContent = desc;
-            document.getElementById('btnRun').style.display = state === 'running' ? 'none' : 'inline-flex';
-            document.getElementById('btnStop').style.display = state === 'running' ? 'inline-flex' : 'none';
-            if (logs.length === 0) return;
-            const body = document.getElementById('logBody');
-            body.innerHTML = logs.map(log => `<div class="log-item ${log.status}"><span class="log-step">${log.step}</span><div class="log-content"><div class="log-action">${log.action}: ${log.target || ''}</div>${log.message ? `<div class="log-message">${log.message}</div>` : ''}</div><span class="log-icon">${log.status === 'success' ? '✅' : log.status === 'failed' ? '❌' : log.status === 'running' ? '🔄' : '⏳'}</span></div>`).join('');
-            body.scrollTop = body.scrollHeight;
-        }
-        
-        function clearLogs() { document.getElementById('logBody').innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:40px; font-size:0.8rem;">Loglar temizlendi</div>'; document.getElementById('statusIcon').textContent = '⏸️'; document.getElementById('statusTitle').textContent = 'Hazir'; document.getElementById('statusDesc').textContent = 'Senaryo secip calistirin'; }
-        
+
         async function runTest() {
-            if (!selectedDevice) { Toast.error('Cihaz secin'); return; }
-            const steps = document.getElementById('stepsEditor').value; if (!steps.trim()) { Toast.error('Adim yazin'); return; }
-            clearLogs();
-            document.getElementById('statusIcon').textContent = '🔄'; document.getElementById('statusTitle').textContent = 'Baslatiliyor...'; document.getElementById('statusDesc').textContent = 'Test hazirlaniyor';
-            document.getElementById('btnRun').style.display = 'none'; document.getElementById('btnStop').style.display = 'inline-flex';
-            testRunning = true;
+            if(!selectedDevice) { alert('Cihaz seçin'); return; }
+            const steps = document.getElementById('stepsEditor').value;
+            renderInitialLogs(steps);
+            showPanel('log');
+            
+            const payload = {
+                device_id: String(selectedDevice.id),
+                app_package: document.getElementById('appPackage').value || "",
+                app_activity: document.getElementById('appActivity').value || "",
+                input_type: 'natural', natural_text: steps,
+                stop_on_fail: document.getElementById('stopOnFail').checked,
+                restart_app: document.getElementById('restartApp').checked,
+                steps: []
+            };
+            
             try {
-                const result = await TestAPI.runMobileTest({ device_id: selectedDevice.id, app_package: document.getElementById('appPackage').value, app_activity: document.getElementById('appActivity').value, input_type: 'natural', natural_text: steps, stop_on_fail: document.getElementById('stopOnFail').checked });
-                if (result.success) { document.getElementById('statusIcon').textContent = '✅'; document.getElementById('statusTitle').textContent = 'Basarili'; Toast.success('Test basarili!'); }
-                else { document.getElementById('statusIcon').textContent = '❌'; document.getElementById('statusTitle').textContent = 'Basarisiz'; Toast.error(result.message); }
-            } catch (e) { document.getElementById('statusIcon').textContent = '❌'; document.getElementById('statusTitle').textContent = 'Hata'; Toast.error(e.message); }
-            document.getElementById('btnRun').style.display = 'inline-flex'; document.getElementById('btnStop').style.display = 'none'; testRunning = false;
+                await API.post(`/mobile/run-test?restart_app=${payload.restart_app}`, payload);
+            } catch(e) { 
+                document.getElementById('logBody').innerHTML += `<div class="log-item failed"><div style="color:red">Hata: ${e.message}</div></div>`;
+            }
         }
+
+        async function stopTest() { if(selectedDevice) await API.post(`/emulator/${selectedDevice.device_id}/test/stop`); }
+
+        // --- HELPERS ---
+        function renderInitialLogs(t) {
+            const lines = t.split('\n').filter(l=>l.trim());
+            const b = document.getElementById('logBody');
+            if(lines.length===0) { b.innerHTML='<div style="padding:20px;text-align:center;color:#666">Adım yok</div>'; return; }
+            b.innerHTML = lines.map((x,i)=>`<div class="log-item" id="step-${i+1}"><div style="width:24px;height:24px;background:var(--bg-tertiary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;flex-shrink:0;">${i+1}</div><div>${x}<div class="log-msg" id="msg-${i+1}" style="font-size:0.7rem;color:#666;margin-top:2px;">Bekliyor...</div></div></div>`).join('');
+        }
+
+        function updateLogs(s) {
+            if(s.state==='running') {
+                document.getElementById('btnRun').style.display='none';
+                document.getElementById('btnStop').style.display='flex';
+            } else {
+                document.getElementById('btnRun').style.display='flex';
+                document.getElementById('btnStop').style.display='none';
+                document.getElementById('statusTitle').textContent = s.state.toUpperCase();
+            }
+            
+            if(s.logs) s.logs.forEach(l => {
+                const el = document.getElementById(`step-${l.step}`);
+                if(el) {
+                    el.className = `log-item ${l.status}`;
+                    const msg = document.getElementById(`msg-${l.step}`);
+                    if(msg) msg.textContent = l.message;
+                    if(l.status==='running') el.scrollIntoView({behavior:'smooth', block:'center'});
+                }
+            });
+        }
+
+        function connectWebSocket(id) {
+            if(ws) ws.close();
+            ws = new WebSocket('ws://localhost:8000/api/emulator/'+id.trim()+'/stream');
+            ws.onopen=()=>{ isConnected=true; document.getElementById('noDeviceMsg').style.display='none'; document.getElementById('screenImage').style.display='block'; };
+            ws.onmessage=(e)=>{
+                const d=JSON.parse(e.data);
+                if(d.type==='init'){screenWidth=d.width;screenHeight=d.height;}
+                else if(d.type==='frame'&&d.image) document.getElementById('screenImage').src='data:image/jpeg;base64,'+d.image;
+                else if(d.type==='state') updateLogs(d.test_state);
+            };
+            ws.onclose=()=>{ isConnected=false; };
+        }
+
+        async function loadFolderSelect() {
+            try {
+                const folders = await API.get('/scenarios/folders');
+                const select = document.getElementById('scenarioFolderSelect');
+                select.innerHTML = '<option value="">Ana Dizin</option>' + flattenFolders(folders);
+            } catch(e){}
+        }
+        function flattenFolders(n,p=''){let h='';n.forEach(x=>{h+=`<option value="${x.id}">${p}📂 ${x.name}</option>`;if(x.children)h+=flattenFolders(x.children,p+'&nbsp;&nbsp;')});return h;}
         
-        async function stopTest() { if (selectedDevice) { try { await API.post('/emulator/' + selectedDevice.device_id + '/test/stop'); } catch (e) {} } testRunning = false; document.getElementById('btnRun').style.display = 'inline-flex'; document.getElementById('btnStop').style.display = 'none'; Toast.success('Durduruldu'); }
-        
-        init();
+        function setupTouchHandlers(){
+            const s=document.getElementById('phoneScreen');
+            s.addEventListener('mousedown',e=>{if(!isConnected)return;const r=s.getBoundingClientRect();touchStartX=e.clientX-r.left;touchStartY=e.clientY-r.top;touchStartTime=Date.now();});
+            s.addEventListener('mouseup',e=>{if(!isConnected)return;const r=s.getBoundingClientRect(),ex=e.clientX-r.left,ey=e.clientY-r.top,sx=screenWidth/r.width,sy=screenHeight/r.height,tx=Math.round(touchStartX*sx),ty=Math.round(touchStartY*sy);if(Date.now()-touchStartTime<200&&Math.abs(ex-touchStartX)<10){ws.send(JSON.stringify({type:'tap',x:tx,y:ty}));}else{ws.send(JSON.stringify({type:'swipe',x1:tx,y1:ty,x2:Math.round(ex*sx),y2:Math.round(ey*sy)}));}});
+        }
+        function sendKey(k){if(ws)ws.send(JSON.stringify({type:k}));} function sendText(t){if(ws)ws.send(JSON.stringify({type:'text',text:t}));} function toggleKeyboard(){const k=document.getElementById('keyboardInput');k.style.display=k.style.display==='none'?'block':'none';}
+        async function saveDevice(){ /* Implementation */ document.getElementById('deviceModal').classList.remove('active'); setTimeout(()=>document.getElementById('deviceModal').style.display='none',300); }
     </script>
 </body>
 </html>

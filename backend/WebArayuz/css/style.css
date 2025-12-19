@@ -622,3 +622,35 @@ a:hover { color: var(--accent-hover); }
     .main-content { margin-left: 0; }
     .page-content { padding: 16px; }
 }
+
+/* Log Item States - Yeni Eklenenler */
+.log-item.pending {
+    background: var(--bg-tertiary);
+    border-left: 3px solid var(--text-muted);
+    opacity: 0.7;
+}
+.log-item.pending .log-step {
+    background: var(--text-muted);
+    color: var(--bg-primary);
+}
+
+.log-item.running {
+    background: rgba(59,130,246,0.15);
+    border-left: 3px solid var(--info);
+    opacity: 1;
+    transform: scale(1.02);
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.log-item.success {
+    background: rgba(16,185,129,0.1);
+    border-left: 3px solid var(--success);
+    opacity: 1;
+}
+
+.log-item.failed {
+    background: rgba(239,68,68,0.15);
+    border-left: 3px solid var(--danger);
+    opacity: 1;
+}

@@ -3,21 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Senaryolar - Test Otomasyon Platformu</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Senaryo Stüdyosu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* --- SAYFAYA ÖZEL SIFIRLAMA --- */
+        .page-content { padding: 0 !important; height: calc(100vh - 60px); overflow: hidden; display: flex; flex-direction: column; }
+
+        /* --- IDE GRID YAPISI --- */
+        .ide-wrapper { display: grid; grid-template-columns: 280px 1fr 320px; height: 100%; width: 100%; background-color: var(--bg-primary); overflow: hidden; }
+
+        /* --- PANELS --- */
+        .ide-panel { display: flex; flex-direction: column; border-right: 1px solid var(--border-color); background: var(--bg-secondary); min-height: 0; }
+        .ide-panel:last-child { border-right: none; }
+
+        .ide-header { height: 45px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid var(--border-color); background: var(--bg-tertiary); flex-shrink: 0; }
+        .ide-title { font-weight: 600; font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* --- SOL PANEL: TREE --- */
+        .tree-content { flex: 1; overflow-y: auto; padding: 5px; }
+        
+        .tree-node {
+            display: flex; align-items: center; padding: 8px 10px; margin-bottom: 2px;
+            border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: var(--text-primary);
+            border: 2px solid transparent; transition: all 0.1s; user-select: none;
+        }
+        .tree-node:hover { background-color: var(--bg-tertiary); }
+        .tree-node.active { background-color: rgba(79, 70, 229, 0.1); border-color: rgba(79, 70, 229, 0.3); color: var(--accent-primary); font-weight: 600; }
+        
+        /* --- DRAG & DROP GÖRSEL EFEKTLER (DÜZELTİLDİ) --- */
+        .tree-node.dragging { opacity: 0.5; background: var(--bg-tertiary); }
+        .tree-node.drag-over {
+            background-color: rgba(16, 185, 129, 0.15) !important; /* Yeşil Arka Plan */
+            border: 2px dashed #10B981 !important; /* Yeşil Kesikli Çizgi */
+            color: #10B981 !important;
+            transform: scale(1.02);
+            z-index: 10;
+        }
+
+        .node-icon { margin-right: 8px; font-size: 1.1rem; }
+        .folder-arrow { margin-right: 5px; font-size: 0.8rem; color: var(--text-muted); transition: transform 0.2s; }
+        .folder-group { display: flex; flex-direction: column; }
+        .folder-children { padding-left: 18px; display: none; }
+        .folder-group.open > .folder-children { display: block; }
+        .folder-group.open > .tree-node > .folder-arrow { transform: rotate(90deg); }
+
+        /* --- ORTA PANEL: EDİTÖR & TOOLBAR --- */
+        .editor-wrapper { display: flex; flex-direction: column; height: 100%; display: none; }
+        
+        .editor-toolbar {
+            padding: 8px 15px; border-bottom: 1px solid var(--border-color);
+            background: var(--bg-primary); display: flex; gap: 8px; align-items: center;
+            overflow-x: auto; white-space: nowrap;
+        }
+        .toolbar-label { font-size: 0.75rem; color: var(--text-muted); margin-right: 5px; font-weight: 600; }
+        
+        .tool-chip {
+            display: flex; align-items: center; gap: 5px; padding: 4px 10px;
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: 6px; font-size: 0.75rem; cursor: pointer; color: var(--text-primary);
+            transition: all 0.2s; user-select: none;
+        }
+        .tool-chip:hover { background: var(--bg-tertiary); border-color: var(--accent-primary); transform: translateY(-1px); }
+        .tool-chip i { font-size: 0.9rem; }
+
+        .editor-area {
+            flex: 1; padding: 20px; border: none; outline: none; resize: none;
+            background: var(--bg-primary); color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; line-height: 1.6;
+        }
+        
+        .empty-state { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); }
+        .empty-icon { font-size: 4rem; opacity: 0.2; margin-bottom: 15px; }
+
+        /* --- SAĞ PANEL: ÖZELLİKLER --- */
+        .props-content { padding: 20px; overflow-y: auto; }
+        .prop-group { margin-bottom: 15px; }
+        .prop-label { display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 5px; font-weight: 600; }
+        .prop-input, .prop-select, .prop-textarea {
+            width: 100%; padding: 8px 10px; background: var(--bg-primary);
+            border: 1px solid var(--border-color); border-radius: 6px;
+            color: var(--text-primary); font-size: 0.85rem; box-sizing: border-box;
+        }
+        .prop-textarea { min-height: 80px; resize: vertical; }
+        .action-bar { display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); }
+
+        /* --- BUTONLAR --- */
+        .icon-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+        .icon-btn:hover { background: var(--bg-primary); color: var(--text-primary); }
+        
+        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem; font-weight: 500; width: 100%; }
+        .btn-primary { background: var(--accent-primary); color: white; }
+        .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .btn-help { background: rgba(245, 158, 11, 0.1); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.2); width: auto; font-size: 0.75rem; padding: 4px 10px; }
+
+        /* --- MODAL --- */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(2px); opacity: 0; transition: opacity 0.2s; }
+        .modal-overlay.active { opacity: 1; }
+        .modal { background: var(--bg-secondary); border-radius: 12px; width: 400px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); border: 1px solid var(--border-color); transform: translateY(20px); transition: transform 0.2s; }
+        .modal-overlay.active .modal { transform: translateY(0); }
+        .modal.large { width: 700px; max-height: 85vh; overflow-y: auto; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        
+        .guide-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 10px; }
+        .guide-table th, .guide-table td { border: 1px solid var(--border-color); padding: 10px; text-align: left; }
+        .guide-table th { background: var(--bg-tertiary); font-weight: 600; }
+        .code { font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.1); padding: 2px 5px; border-radius: 4px; color: var(--accent-primary); font-size: 0.8rem; border: 1px solid var(--border-color); }
+    </style>
 </head>
 <body>
     <div class="app-container">
         <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo"><div class="logo-icon">🧪</div><span>Test Platform</span></div>
-            </div>
+            <div class="sidebar-header"><div class="logo"><div class="logo-icon">🧪</div><span>Test Platform</span></div></div>
             <nav class="sidebar-nav">
                 <div class="nav-section">
                     <div class="nav-section-title">Ana Menu</div>
                     <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
                     <a href="scenarios.html" class="nav-item active"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Test Turleri</div>
@@ -25,117 +129,382 @@
                     <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
                 </div>
             </nav>
-            <div class="sidebar-footer">
-                <div class="user-info" onclick="if(confirm('Cikis?')) Auth.logout();">
-                    <div class="user-avatar">?</div>
-                    <div class="user-details"><div class="user-name">Yukleniyor...</div><div class="user-role">-</div></div>
-                </div>
-            </div>
+            <div class="sidebar-footer"><div class="user-info" onclick="if(confirm('Cikis?')) Auth.logout();"><div class="user-avatar">?</div><div class="user-details"><div class="user-name">...</div><div class="user-role">...</div></div></div></div>
         </aside>
         
         <main class="main-content">
-            <header class="header">
-                <div class="header-left"><h1 class="page-title">Senaryolar</h1></div>
-                <div class="header-right">
-                    <div class="tabs">
-                        <button class="tab active" onclick="filterType('all')">Tumu</button>
-                        <button class="tab" onclick="filterType('web')">Web</button>
-                        <button class="tab" onclick="filterType('mobile')">Mobil</button>
-                    </div>
-                    <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
-                    <a href="editor.html" class="btn btn-primary">+ Yeni Senaryo</a>
-                </div>
+            <header class="header" style="height: 60px; min-height: 60px; padding: 0 20px;">
+                <div class="header-left"><h1 class="page-title" style="font-size: 1.1rem;">Senaryo Stüdyosu</h1></div>
+                <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">🌙</button></div>
             </header>
             
             <div class="page-content">
-                <div class="scenario-grid" id="scenarioGrid"></div>
-                <div class="empty-state" id="emptyState" style="display:none;">
-                    <div class="empty-state-icon">📝</div>
-                    <h3 class="empty-state-title">Henuz senaryo yok</h3>
-                    <a href="editor.html" class="btn btn-primary">+ Yeni Senaryo</a>
+                <div class="ide-wrapper">
+                    
+                    <div class="ide-panel">
+                        <div class="ide-header">
+                            <span class="ide-title">Gezgin</span>
+                            <div style="display:flex; gap:5px;">
+                                <button class="icon-btn" title="Yeni Klasör" onclick="Actions.openModal('newFolderModal')"><span class="material-icons-round">create_new_folder</span></button>
+                                <button class="icon-btn" title="Yeni Senaryo" onclick="Actions.openModal('newScenarioModal')"><span class="material-icons-round">note_add</span></button>
+                                <button class="icon-btn" title="Yenile" onclick="Tree.load()"><span class="material-icons-round">refresh</span></button>
+                            </div>
+                        </div>
+                        <div class="tree-content" id="treeRoot">
+                            <div style="text-align:center; padding:20px; color:var(--text-muted);">Yükleniyor...</div>
+                        </div>
+                    </div>
+
+                    <div class="ide-panel" style="background: var(--bg-primary);">
+                        <div class="ide-header">
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <span class="material-icons-round" style="color:var(--accent-primary);">edit_note</span>
+                                <span class="ide-title" id="editorTitle">Editör</span>
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn btn-help" onclick="Actions.openModal('guideModal')">❓ Rehber</button>
+                                <button class="btn-primary" style="width:auto; padding: 5px 15px;" onclick="Editor.save()">Kaydet</button>
+                            </div>
+                        </div>
+                        
+                        <div id="emptyState" class="empty-state">
+                            <span class="material-icons-round empty-icon">touch_app</span>
+                            <p>Düzenlemek için soldan bir senaryo seçin<br>veya yeni oluşturun.</p>
+                        </div>
+
+                        <div id="editorWrapper" class="editor-wrapper">
+                            <div class="editor-toolbar">
+                                <span class="toolbar-label">Hızlı Ekle:</span>
+                                <div class="tool-chip" onclick="Editor.insert('Wait')"><i class="material-icons-round">timer</i> Bekle</div>
+                                <div class="tool-chip" onclick="Editor.insert('Click')"><i class="material-icons-round">touch_app</i> Tıkla</div>
+                                <div class="tool-chip" onclick="Editor.insert('Write')"><i class="material-icons-round">keyboard</i> Yaz</div>
+                                <div class="tool-chip" onclick="Editor.insert('Assert')"><i class="material-icons-round">visibility</i> Doğrula</div>
+                                <div class="tool-chip" onclick="Editor.insert('Scroll')"><i class="material-icons-round">swap_vert</i> Scroll</div>
+                                <div class="tool-chip" onclick="Editor.insert('Back')"><i class="material-icons-round">arrow_back</i> Geri</div>
+                            </div>
+                            <textarea id="stepsEditor" class="editor-area" placeholder="Senaryo adımlarını buraya yazın..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="ide-panel">
+                        <div class="ide-header"><span class="ide-title">Özellikler</span></div>
+                        <div class="props-content" id="propsPanel" style="display:none;">
+                            <div class="prop-group">
+                                <label class="prop-label">Senaryo Adı</label>
+                                <input type="text" class="prop-input" id="propName">
+                            </div>
+                            <div class="prop-group">
+                                <label class="prop-label">Platform</label>
+                                <input type="text" class="prop-input" id="propType" disabled style="opacity: 0.7;">
+                            </div>
+                            <div class="prop-group">
+                                <label class="prop-label">Klasör</label>
+                                <select class="prop-select" id="propFolder"><option value="">Ana Dizin</option></select>
+                            </div>
+                            <div class="prop-group">
+                                <label class="prop-label">Açıklama</label>
+                                <textarea class="prop-textarea" id="propDesc"></textarea>
+                            </div>
+
+                            <div id="mobileProps" style="display:none; border-top:1px solid var(--border-color); padding-top:15px;">
+                                <div style="margin-bottom:10px; font-size:0.75rem; color:var(--accent-primary); font-weight:bold;">MOBİL AYARLARI</div>
+                                <div class="prop-group"><label class="prop-label">Paket Adı</label><input type="text" class="prop-input" id="propPkg"></div>
+                                <div class="prop-group"><label class="prop-label">Activity</label><input type="text" class="prop-input" id="propAct"></div>
+                            </div>
+
+                            <div class="action-bar">
+                                <button class="btn btn-danger" onclick="Editor.delete()">Bu Senaryoyu Sil</button>
+                            </div>
+                        </div>
+                        <div id="propsEmpty" style="padding:20px; text-align:center; color:var(--text-muted);">Seçim yapılmadı</div>
+                    </div>
                 </div>
             </div>
         </main>
     </div>
-    
-    <script src="js/app.js"></script>
+
+    <div class="modal-overlay" id="newScenarioModal">
+        <div class="modal">
+            <h3>Yeni Senaryo Oluştur</h3>
+            <div class="prop-group"><label class="prop-label">Senaryo Adı</label><input type="text" class="prop-input" id="newScenName"></div>
+            <div class="prop-group"><label class="prop-label">Platform Türü</label>
+                <select class="prop-select" id="newScenType">
+                    <option value="mobile">📱 Mobil Test</option>
+                    <option value="web">🌐 Web Testi</option>
+                    <option value="desktop">💻 Desktop Test</option>
+                </select>
+            </div>
+            <div class="prop-group"><label class="prop-label">Hedef Klasör</label><select class="prop-select" id="newScenFolder"><option value="">Ana Dizin</option></select></div>
+            <div class="modal-actions">
+                <button class="btn" style="background:var(--bg-tertiary); color:var(--text-primary); width:auto;" onclick="Actions.closeModal('newScenarioModal')">İptal</button>
+                <button class="btn btn-primary" style="width:auto;" onclick="Actions.createScenario()">Oluştur</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="newFolderModal">
+        <div class="modal">
+            <h3>Yeni Klasör Oluştur</h3>
+            <div class="prop-group"><label class="prop-label">Klasör Adı</label><input type="text" class="prop-input" id="newFolderName"></div>
+            <div class="prop-group"><label class="prop-label">Üst Klasör</label><select class="prop-select" id="newFolderParent"><option value="">Yok (Ana Dizin)</option></select></div>
+            <div class="modal-actions">
+                <button class="btn" style="background:var(--bg-tertiary); color:var(--text-primary); width:auto;" onclick="Actions.closeModal('newFolderModal')">İptal</button>
+                <button class="btn btn-primary" style="width:auto;" onclick="Actions.createFolder()">Oluştur</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="guideModal">
+        <div class="modal large">
+            <h3>📜 Senaryo Yazım Rehberi</h3>
+            <p style="color:var(--text-muted); margin-bottom:15px;">Test adımlarını aşağıdaki kalıplara göre yazmalısınız. Büyük/küçük harf fark etmez.</p>
+            <table class="guide-table">
+                <thead><tr><th>İşlem</th><th>Örnek Komut</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><b>Bekleme</b></td><td><span class="code">5 saniye bekle</span></td><td>Sistemi bekletir.</td></tr>
+                    <tr><td><b>Tıklama</b></td><td><span class="code">"Giriş" butonuna tıkla</span></td><td>Ekranda 'Giriş' yazan yere tıklar.</td></tr>
+                    <tr><td><b>Yazma</b></td><td><span class="code">"Kullanıcı" alanına "engin" yaz</span></td><td>Input alanına metin yazar.</td></tr>
+                    <tr><td><b>Doğrulama</b></td><td><span class="code">"Başarılı" yazısını gör</span></td><td>Ekranda metni arar (Assert).</td></tr>
+                    <tr><td><b>Sistem</b></td><td><span class="code">Geri git</span> / <span class="code">Ekranı kaydır</span></td><td>Navigasyon işlemleri.</td></tr>
+                </tbody>
+            </table>
+            <div class="modal-actions"><button class="btn btn-primary" style="width:auto;" onclick="Actions.closeModal('guideModal')">Tamam</button></div>
+        </div>
+    </div>
+
+<script src="js/app.js"></script>
     <script>
-        if (!Auth.checkAuth()) {}
-        
-        let allScenarios = [];
-        let currentFilter = 'all';
-        
-        async function load() {
+        let folders = [], scenarios = [];
+        let selectedNode = null, draggedNode = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if(!Auth.checkAuth()) return;
             UI.renderUserInfo();
-            try {
-                const data = await ScenariosAPI.list();
-                allScenarios = data.scenarios;
-                render();
-            } catch (e) { Toast.error(e.message); }
-        }
-        
-        function filterType(type) {
-            currentFilter = type;
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            render();
-        }
-        
-        function render() {
-            const grid = document.getElementById('scenarioGrid');
-            const empty = document.getElementById('emptyState');
+            await Tree.load();
+        });
+
+        const Tree = {
+            async load() {
+                try {
+                    const [foldersData, scenariosData] = await Promise.all([
+                        API.get('/scenarios/folders'),
+                        ScenariosAPI.list()
+                    ]);
+                    
+                    folders = foldersData; // Nested Tree yapısı geliyor
+                    scenarios = scenariosData.scenarios; // Flat liste geliyor
+                    
+                    this.render();
+                    Actions.populateSelects();
+                } catch(e) { console.error(e); }
+            },
             
-            let list = allScenarios;
-            if (currentFilter !== 'all') {
-                list = allScenarios.filter(s => s.type === currentFilter);
+            render() {
+                // 1. Kök Klasörleri Render Et
+                let html = this.buildFolderTree(folders, scenarios);
+                
+                // 2. Kök Dizindeki (Klasörsüz) Senaryoları Render Et
+                const rootScenarios = scenarios.filter(s => s.folder_id == null || s.folder_id === 0);
+                rootScenarios.forEach(s => {
+                    html += this.buildScenarioHtml(s);
+                });
+
+                document.getElementById('treeRoot').innerHTML = html || '<div style="text-align:center;padding:20px;color:#999">Boş</div>';
+                this.attachDragEvents();
+            },
+
+            // --- YENİ RECURSIVE BUILDER (İÇ İÇE JSON İÇİN) ---
+            buildFolderTree(folderNodes, allScenarios) {
+                let html = '';
+                if (!folderNodes) return '';
+
+                folderNodes.forEach(f => {
+                    // 1. Alt Klasörleri (Children) Oluştur (Recursive)
+                    let childrenHtml = this.buildFolderTree(f.children, allScenarios);
+                    
+                    // 2. Bu Klasöre Ait Senaryoları Bul ve Ekle
+                    const myScenarios = allScenarios.filter(s => s.folder_id === f.id);
+                    myScenarios.forEach(s => {
+                        childrenHtml += this.buildScenarioHtml(s);
+                    });
+
+                    // 3. HTML Birleştir
+                    html += `
+                        <div class="folder-group" data-id="${f.id}">
+                            <div class="tree-node" draggable="true" data-type="folder" data-id="${f.id}" onclick="Tree.select('folder', ${f.id}, this)">
+                                <span class="folder-arrow material-icons-round">arrow_right</span>
+                                <span class="node-icon material-icons-round" style="color:#F59E0B;">folder</span>
+                                <span style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.name}</span>
+                            </div>
+                            <div class="folder-children">${childrenHtml}</div>
+                        </div>`;
+                });
+                return html;
+            },
+
+            buildScenarioHtml(s) {
+                let icon = s.type === 'mobile' ? 'smartphone' : s.type === 'web' ? 'language' : 'computer';
+                let color = s.type === 'mobile' ? '#8B5CF6' : '#3B82F6';
+                return `
+                    <div class="tree-node" draggable="true" data-type="scenario" data-id="${s.id}" onclick="Tree.select('scenario', ${s.id})">
+                        <span class="node-icon material-icons-round" style="color:${color}; margin-left:22px;">${icon}</span>
+                        <span style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${s.name}</span>
+                    </div>`;
+            },
+
+            // ... (Diğer fonksiyonlar aynen kalıyor: select, attachDragEvents, vb.) ...
+            select(type, id, el) {
+                if (type === 'folder' && el) {
+                    el.parentElement.classList.toggle('open');
+                    return;
+                }
+                document.querySelectorAll('.tree-node').forEach(n => n.classList.remove('active'));
+                const target = document.querySelector(`.tree-node[data-type="${type}"][data-id="${id}"]`);
+                if (target) target.classList.add('active');
+                selectedNode = { type, id };
+                if (type === 'scenario') Editor.load(scenarios.find(x => x.id === id));
+                else Editor.clear();
+            },
+            attachDragEvents() {
+                document.querySelectorAll('.tree-node[draggable="true"]').forEach(el => {
+                    el.addEventListener('dragstart', Drag.start);
+                    el.addEventListener('dragover', Drag.over);
+                    el.addEventListener('dragleave', Drag.leave);
+                    el.addEventListener('drop', Drag.drop);
+                    el.addEventListener('dragend', Drag.end);
+                });
             }
-            
-            if (list.length === 0) {
-                grid.style.display = 'none';
-                empty.style.display = 'block';
-                return;
+        };
+
+        const Editor = {
+            load(s) {
+                document.getElementById('emptyState').style.display = 'none';
+                document.getElementById('editorWrapper').style.display = 'flex';
+                document.getElementById('editorTitle').textContent = s.name;
+                document.getElementById('stepsEditor').value = s.natural_steps || '';
+                
+                document.getElementById('propsPanel').style.display = 'block';
+                document.getElementById('propsEmpty').style.display = 'none';
+                document.getElementById('propName').value = s.name;
+                document.getElementById('propType').value = s.type.toUpperCase();
+                document.getElementById('propFolder').value = s.folder_id || "";
+                document.getElementById('propDesc').value = s.description || "";
+
+                const mobProps = document.getElementById('mobileProps');
+                if (s.type === 'mobile') {
+                    mobProps.style.display = 'block';
+                    if (s.config_json) {
+                        try {
+                            const c = JSON.parse(s.config_json);
+                            document.getElementById('propPkg').value = c.app_package || "";
+                            document.getElementById('propAct').value = c.app_activity || "";
+                        } catch(e) {}
+                    }
+                } else {
+                    mobProps.style.display = 'none';
+                }
+            },
+            clear() {
+                document.getElementById('emptyState').style.display = 'flex';
+                document.getElementById('editorWrapper').style.display = 'none';
+                document.getElementById('propsPanel').style.display = 'none';
+                document.getElementById('propsEmpty').style.display = 'block';
+            },
+            insert(t) {
+                const e = document.getElementById('stepsEditor');
+                let x = "";
+                switch(t) {
+                    case 'Wait': x = "2 Saniye Bekle\n"; break;
+                    case 'Click': x = "\"Giriş\" butonuna Tıkla\n"; break;
+                    case 'Write': x = "\"Kullanıcı\" alanına \"admin\" Yaz\n"; break;
+                    case 'Assert': x = "\"Hoş Geldiniz\" yazısını gör\n"; break;
+                    case 'Scroll': x = "Ekranı aşağı Kaydır\n"; break;
+                    case 'Back': x = "Geri git\n"; break;
+                }
+                const s = e.selectionStart;
+                e.value = e.value.substring(0, s) + x + e.value.substring(e.selectionEnd);
+                e.focus(); e.selectionStart = e.selectionEnd = s + x.length;
+            },
+            async save() {
+                if(!selectedNode || selectedNode.type !== 'scenario') return;
+                const s = scenarios.find(x => x.id === selectedNode.id);
+                const d = {
+                    name: document.getElementById('propName').value,
+                    description: document.getElementById('propDesc').value,
+                    folder_id: document.getElementById('propFolder').value ? parseInt(document.getElementById('propFolder').value) : null,
+                    natural_steps: document.getElementById('stepsEditor').value
+                };
+                if (s.type === 'mobile') d.config_json = JSON.stringify({
+                    app_package: document.getElementById('propPkg').value,
+                    app_activity: document.getElementById('propAct').value
+                });
+                try {
+                    await ScenariosAPI.update(s.id, d);
+                    Toast.success('Kaydedildi');
+                    await Tree.load();
+                    setTimeout(() => {
+                        // Seçimi koru
+                        const target = document.querySelector(`.tree-node[data-type="scenario"][data-id="${s.id}"]`);
+                        if(target) {
+                            let parent = target.closest('.folder-group');
+                            if(parent) parent.classList.add('open');
+                            target.classList.add('active');
+                        }
+                    }, 100);
+                } catch(e) { Toast.error(e.message); }
+            },
+            async delete() {
+                if(selectedNode && confirm('Silinsin mi?')) {
+                    try { await ScenariosAPI.delete(selectedNode.id); Editor.clear(); Tree.load(); } 
+                    catch(e) { Toast.error(e.message); }
+                }
             }
-            
-            grid.style.display = 'grid';
-            empty.style.display = 'none';
-            
-            grid.innerHTML = list.map(s => `
-                <div class="scenario-card" onclick="location.href='editor.html?id=${s.id}'">
-                    <div class="scenario-card-header">
-                        <div class="scenario-icon ${s.type}">${s.type === 'web' ? '🌐' : '📲'}</div>
-                        <div>
-                            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); runScenario(${s.id}, '${s.type}')" title="Calistir">▶</button>
-                            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); deleteScenario(${s.id})" title="Sil">🗑</button>
-                        </div>
-                    </div>
-                    <h3 class="scenario-name">${Utils.escapeHtml(s.name)}</h3>
-                    <p class="scenario-description">${Utils.escapeHtml(s.description || 'Aciklama yok')}</p>
-                    <div class="scenario-meta">
-                        <span class="badge badge-${s.type === 'web' ? 'info' : 'success'}">${s.type.toUpperCase()}</span>
-                        <span>${Utils.formatRelativeTime(s.updated_at)}</span>
-                    </div>
-                </div>
-            `).join('');
-        }
-        
-        async function runScenario(id, type) {
-            if (type === 'mobile') {
-                location.href = 'mobile-test.html';
-                return;
+        };
+
+        const Drag = {
+            start(e) { e.stopPropagation(); draggedNode = { type: this.dataset.type, id: parseInt(this.dataset.id) }; this.classList.add('dragging'); },
+            over(e) { e.preventDefault(); e.stopPropagation(); if (this.dataset.type === 'folder' && this.dataset.id != draggedNode.id) this.classList.add('drag-over'); },
+            leave(e) { this.classList.remove('drag-over'); },
+            async drop(e) {
+                e.preventDefault(); e.stopPropagation(); this.classList.remove('drag-over');
+                const tid = parseInt(this.dataset.id);
+                if (draggedNode.type === 'folder' && draggedNode.id === tid) return;
+                try {
+                    if (draggedNode.type === 'scenario') {
+                        await ScenariosAPI.update(draggedNode.id, { folder_id: tid });
+                        await Tree.load();
+                        const folderEl = document.querySelector(`.folder-group[data-id="${tid}"]`);
+                        if(folderEl) folderEl.classList.add('open');
+                    }
+                } catch(e) { Toast.error('Hata'); }
+            },
+            end(e) { this.classList.remove('dragging'); document.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over')); }
+        };
+
+        const Actions = {
+            openModal(id) { document.getElementById(id).style.display = 'flex'; setTimeout(() => document.getElementById(id).classList.add('active'), 10); },
+            closeModal(id) { document.getElementById(id).classList.remove('active'); setTimeout(() => document.getElementById(id).style.display = 'none', 200); },
+            async createScenario() {
+                const n = document.getElementById('newScenName').value; if (!n) return alert('Ad girin');
+                try { await ScenariosAPI.create({ name: n, type: document.getElementById('newScenType').value, folder_id: document.getElementById('newScenFolder').value || null, natural_steps: "" }); this.closeModal('newScenarioModal'); Tree.load(); } catch(e) { alert(e.message); }
+            },
+            async createFolder() {
+                const n = document.getElementById('newFolderName').value; if (!n) return alert('Ad girin');
+                try { await API.post('/scenarios/folders', { name: n, parent_id: document.getElementById('newFolderParent').value || null }); this.closeModal('newFolderModal'); Tree.load(); } catch(e) { alert(e.message); }
+            },
+            populateSelects() {
+                const o = '<option value="">Ana Dizin</option>' + this.flatten(folders);
+                ['propFolder', 'newScenFolder', 'newFolderParent'].forEach(i => { const e = document.getElementById(i); if (e) e.innerHTML = o; });
+            },
+            flatten(n, p='') {
+                let h = '';
+                n.forEach(x => {
+                    h += `<option value="${x.id}">${p}📂 ${x.name}</option>`;
+                    if (x.children) h += this.flatten(x.children, p + '&nbsp;&nbsp;');
+                });
+                return h;
             }
-            location.href = 'web-test.html?scenario=' + id;
-        }
-        
-        async function deleteScenario(id) {
-            if (!confirm('Silmek istediginize emin misiniz?')) return;
-            try {
-                await ScenariosAPI.delete(id);
-                Toast.success('Silindi');
-                load();
-            } catch (e) { Toast.error(e.message); }
-        }
-        
-        load();
+        };
     </script>
 </body>
 </html>
