@@ -1,8 +1,8 @@
 """
-Pydantic Schemas - Data Validation
-FIXED: TestStep action field optional defaults added to prevent validation error
+Pydantic Schemas - FIXED
+Validation Fix: 'order' default value & DeviceType relaxed to string.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List, ForwardRef, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -100,27 +100,62 @@ class ScenarioListResponse(BaseModel):
     scenarios: List[ScenarioResponse]
 
 # --- JOB SCHEMAS ---
-class JobBase(BaseModel):
+class JobCreate(BaseModel):
     name: str
     description: Optional[str] = None
-
-class JobCreate(JobBase):
     scenario_ids: List[int] = []
-    
-    # GUNCELLEME: Senaryo detaylarini iceren yeni sema
+    device_ids: List[int] = [] 
+
 class JobScenarioDetail(BaseModel):
     id: int
     name: str
     type: str
+    order: int = 0
+
+    @model_validator(mode='before')
+    @classmethod
+    def flatten_scenario(cls, v: Any) -> Any:
+        if hasattr(v, 'scenario') and v.scenario:
+            return {
+                "id": v.scenario.id,
+                "name": v.scenario.name,
+                "type": v.scenario.type,
+                "order": v.order if v.order is not None else 0
+            }
+        
+        if isinstance(v, dict):
+            if 'order' not in v:
+                v['order'] = 0
+            return v
+            
+        if hasattr(v, 'name') and hasattr(v, 'type'):
+             return {
+                "id": v.id,
+                "name": v.name,
+                "type": v.type,
+                "order": 0
+            }
+
+        return v
+
     class Config:
         from_attributes = True
 
-class JobResponse(JobBase):
+class JobResponse(BaseModel):
     id: int
+    name: str
+    description: Optional[str] = None
     created_at: datetime
-    # BURASI EKLENDI: Artik job icindeki senaryolari da donuyoruz
-    scenarios: List[JobScenarioDetail] = [] 
-    
+    scenarios: List[JobScenarioDetail] = []
+    device_ids: List[int] = Field(default_factory=list)
+
+    @model_validator(mode='before')
+    @classmethod
+    def extract_device_ids(cls, v: Any) -> Any:
+        if hasattr(v, 'associated_devices'):
+            v.device_ids = [ad.device_id for ad in v.associated_devices]
+        return v
+
     class Config:
         from_attributes = True
 
@@ -132,9 +167,8 @@ class StepResult(BaseModel):
     message: str
     error: Optional[str] = None
 
-# --- FIX BURADA YAPILDI ---
 class TestStep(BaseModel):
-    action: str = ""  # <-- Zorunlu alan kaldirildi, default eklendi
+    action: str = ""
     target: str = ""
     value: str = ""
     locator_type: str = "auto"
@@ -177,7 +211,8 @@ class MobileTestResponse(BaseModel):
 class DeviceBase(BaseModel):
     name: str
     device_id: str
-    type: DeviceType
+    # DÜZELTME: Enum yerine str yaptık. Hata almayı önler.
+    type: str 
     os: str
     os_version: Optional[str] = None
     appium_url: Optional[str] = "http://localhost:4723"

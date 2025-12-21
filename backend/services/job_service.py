@@ -13,6 +13,7 @@ from sqlalchemy import desc
 
 from models.db_models import Job, JobScenario, Scenario, JobExecution, TestResult
 from models.schemas import JobCreate
+from models.db_models import Job, JobScenario, JobDevice
 
 class JobService:
     
@@ -43,42 +44,53 @@ class JobService:
         return db.query(Job).filter(Job.id == job_id).first()
 
     def create_job(self, db: Session, user_id: int, data: JobCreate):
-        new_job = Job(name=data.name, description=data.description, user_id=user_id)
+        new_job = Job(
+            user_id=user_id,
+            name=data.name,
+            description=data.description
+        )
         db.add(new_job)
         db.commit()
         db.refresh(new_job)
         
-        if data.scenario_ids:
-            for index, scen_id in enumerate(data.scenario_ids):
-                # Senaryo var mi kontrol et
-                scenario = db.query(Scenario).filter(Scenario.id == scen_id).first()
-                if scenario:
-                    job_scenario = JobScenario(job_id=new_job.id, scenario_id=scen_id, order=index + 1)
-                    db.add(job_scenario)
-            db.commit()
-            db.refresh(new_job)
+        # Senaryoları ekle
+        for idx, s_id in enumerate(data.scenario_ids):
+            assoc = JobScenario(job_id=new_job.id, scenario_id=s_id, order=idx)
+            db.add(assoc)
             
-        # Olusturulan job'i formatli dondur
-        return self._job_to_dict(new_job)
+        # --- YENI: Cihazları ekle ---
+        for d_id in data.device_ids:
+            dev_assoc = JobDevice(job_id=new_job.id, device_id=d_id)
+            db.add(dev_assoc)
+            
+        db.commit()
+        db.refresh(new_job)
+        return new_job
 
     def update_job(self, db: Session, job_id: int, data: JobCreate):
-        job = self.get_job(db, job_id)
+        job = db.query(Job).filter(Job.id == job_id).first()
         if not job: return None
-
+        
         job.name = data.name
         job.description = data.description
         
-        # Eski iliskileri temizle
-        db.query(JobScenario).filter(JobScenario.job_id == job.id).delete()
+        # Eski ilişkileri temizle
+        db.query(JobScenario).filter(JobScenario.job_id == job_id).delete()
+        db.query(JobDevice).filter(JobDevice.job_id == job_id).delete() # Cihazları da temizle
         
-        if data.scenario_ids:
-            for index, scen_id in enumerate(data.scenario_ids):
-                job_scenario = JobScenario(job_id=job.id, scenario_id=scen_id, order=index + 1)
-                db.add(job_scenario)
-        
+        # Yeniden ekle (Senaryolar)
+        for idx, s_id in enumerate(data.scenario_ids):
+            assoc = JobScenario(job_id=job.id, scenario_id=s_id, order=idx)
+            db.add(assoc)
+            
+        # Yeniden ekle (Cihazlar)
+        for d_id in data.device_ids:
+            dev_assoc = JobDevice(job_id=job.id, device_id=d_id)
+            db.add(dev_assoc)
+            
         db.commit()
         db.refresh(job)
-        return self._job_to_dict(job)
+        return job
 
     def delete_job(self, db: Session, job_id: int):
         job = self.get_job(db, job_id)

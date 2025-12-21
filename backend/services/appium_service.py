@@ -1,8 +1,13 @@
 """
-Appium Service - ROBUST VERSION
-StaleElement ve Retry mekanizması eklendi.
+Appium Service - CLEAN VERSION
+PIL importu kaldırıldı.
+Tuple hatası (virgül eksikliği) giderildi.
+Yazma (Type) işlemi güçlendirildi.
 """
-import sys, os, time, re
+import sys
+import os
+import time
+import re
 from typing import List, Dict, Any
 from models.schemas import TestStep, StepResult
 
@@ -22,22 +27,26 @@ except ImportError:
     APPIUM_AVAILABLE = False
     print("!!! APPIUM KUTUPHANESI EKSIK !!!")
 
+
 class AppiumService:
     def __init__(self):
         self.driver = None
         self.current_device_id = None
-    
+
     def is_available(self) -> bool: return APPIUM_AVAILABLE
-    
+
     def _log(self, step_num, action, target, status, message=""):
         print(f"[TEST-LOG] Adim {step_num}: {action} -> {status} ({message})")
         if self.current_device_id:
-            emulator_service.add_log(self.current_device_id, step_num, action, target, status, message)
-            
+            emulator_service.add_log(
+                self.current_device_id, step_num, action, target, status, message)
+
     def _set_state(self, state, current=0, total=0):
         if self.current_device_id:
-            s_map = {"running": TestRunState.RUNNING, "success": TestRunState.SUCCESS, "failed": TestRunState.FAILED, "stopped": TestRunState.STOPPED}
-            emulator_service.set_test_state(self.current_device_id, s_map.get(state, TestRunState.IDLE), current, total)
+            s_map = {"running": TestRunState.RUNNING, "success": TestRunState.SUCCESS,
+                "failed": TestRunState.FAILED, "stopped": TestRunState.STOPPED}
+            emulator_service.set_test_state(self.current_device_id, s_map.get(
+                state, TestRunState.IDLE), current, total)
 
     def _is_stopped(self):
         if self.current_device_id:
@@ -49,14 +58,14 @@ class AppiumService:
         print(f"[DEBUG] Driver olusturuluyor: {device.device_id}")
         self.current_device_id = device.device_id
         url = device.appium_url or "http://localhost:4723"
-        
+
         options = UiAutomator2Options()
         options.platform_name = 'Android'
         options.udid = device.device_id
         options.automation_name = 'UiAutomator2'
         options.no_reset = True
         options.new_command_timeout = 60
-        
+
         try:
             self.driver = appium_webdriver.Remote(url, options=options)
             self.driver.implicitly_wait(2)
@@ -78,35 +87,40 @@ class AppiumService:
             time.sleep(1)
             self.driver.activate_app(package)
             time.sleep(2)
-        except Exception as e: 
+        except Exception as e:
             print(f"[DEBUG] Restart hatasi: {e}")
 
     def find_element_smart(self, locator_type, value):
         strategies = []
         if locator_type == 'id': strategies.append((AppiumBy.ID, value))
         elif locator_type == 'xpath': strategies.append((AppiumBy.XPATH, value))
-        else: # Auto detection
+        else:  # Auto detection
             strategies = [
                 (AppiumBy.XPATH, f"//*[@text='{value}']"),
                 (AppiumBy.XPATH, f"//*[contains(@text, '{value}')]"),
                 (AppiumBy.XPATH, f"//*[@resource-id='{value}']"),
+                (AppiumBy.XPATH, f"//*[@text='{value}']/following-sibling::android.widget.EditText"),
+                (AppiumBy.XPATH, f"//*[@text='{value}']/parent::*/android.widget.EditText"),
+                # --- DUZELTME: Buraya virgül eklendi ---
+                (AppiumBy.XPATH, f"//*[contains(@text, '{value}')]/following-sibling::android.widget.EditText"),
                 (AppiumBy.ACCESSIBILITY_ID, value),
                 (AppiumBy.XPATH, f"//android.widget.EditText[contains(@text, '{value}')]")
             ]
-            
+
         for by, val in strategies:
             try:
                 # 4 saniye bekle
-                el = WebDriverWait(self.driver, 4).until(EC.presence_of_element_located((by, val)))
+                el = WebDriverWait(self.driver, 4).until(
+                    EC.presence_of_element_located((by, val)))
                 return el
             except: continue
         raise Exception(f"Element bulunamadi: '{value}'")
 
-    # --- RETRY MEKANİZMASI EKLENDİ ---
+    # --- RETRY MEKANİZMASI ---
     def execute_action(self, action, target, value, locator_type="auto"):
         res = {"success": False, "message": ""}
         action = action.lower()
-        
+
         # 3 kereye kadar tekrar dene (StaleElementReferenceException için)
         max_retries = 3
         for attempt in range(max_retries):
@@ -126,72 +140,106 @@ class AppiumService:
                 if action in ['tap', 'tikla', 'bas']:
                     el.click()
                     res = {"success": True, "message": "Tiklandi"}
-                
+
                 elif action in ['type', 'yaz', 'gir']:
+                    # --- YAZMA FIX (Click -> Clear -> Click -> Type) ---
                     el.click()
-                    try: el.clear() 
-                    except: pass # Bazı alanlar clear desteklemez
-                    el.send_keys(value)
+                    time.sleep(0.5) 
+                    
+                    try: el.clear()
+                    except: pass
+                    
+                    try: el.click()
+                    except: pass
+                    
+                    el.send_keys(str(value))
+                    
                     try: self.driver.hide_keyboard()
                     except: pass
                     res = {"success": True, "message": f"'{value}' yazildi"}
-                
+
                 elif action in ['verify', 'dogrula']:
                     res = {"success": True, "message": "Dogrulandi"}
-                
+
                 else:
-                    res = {"success": False, "message": f"Bilinmeyen islem: {action}"}
-                
+                    res = {"success": False,
+                        "message": f"Bilinmeyen islem: {action}"}
+
                 # Hata almadık, döngüden çık
-                break 
+                break
 
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 # Bayat element hatası ise, biraz bekle ve tekrar dene
                 if attempt < max_retries - 1:
-                    print(f"[DEBUG] Bayat element ({action}), tekrar deneniyor... ({attempt+1})")
+                    print(
+                        f"[DEBUG] Bayat element ({action}), tekrar deneniyor... ({attempt+1})")
                     time.sleep(1)
                     continue
                 else:
                     res = {"success": False, "message": str(e)}
             except Exception as e:
                 res = {"success": False, "message": str(e)}
-                break # Diğer hatalarda tekrar deneme
-                
+                break  # Diğer hatalarda tekrar deneme
+
         return res
+
 
     def parse_natural_language(self, text: str) -> List[TestStep]:
         commands = []
         lines = text.strip().split('\n')
-        
+
         for line in lines:
             line = line.strip()
             if not line or line.startswith('#'): continue
+
+            # Satır başındaki maddeleri (1. veya -) temizle
             clean_line = re.sub(r'^\d+[\.\)\-]\s*', '', line)
-            
+
             step = TestStep()
             matched = False
-            
-            # YAZMA: "Alan" alanina "Değer" yaz
-            match = re.search(r'["\']([^"\']+)["\']\s*(?:alanina|kutusuna)\s*(?:["\']([^"\']+)["\']|(\S+))\s*(?:yaz|gir)', clean_line, re.IGNORECASE)
+
+            # 1. YAZMA KOMUTLARI
+            # Örnek: "Şifre" alanına "1234" yaz
+            match = re.search(
+                r'["\']([^"\']+)["\']\s*(?:alanina|kutusuna|inputuna|bölümüne)?\s*["\']([^"\']+)["\']\s*(?:yaz|gir|doldur)', clean_line, re.IGNORECASE)
             if match:
-                step.action = 'type'; step.target = match.group(1); 
-                step.value = match.group(2) if match.group(2) else match.group(3)
+                step.action = 'type'
+                step.target = match.group(1)  # Hedef (Şifre Giriniz)
+                step.value = match.group(2)  # Değer (121212)
                 commands.append(step); matched = True
-            
-            # TIKLAMA: "Buton" tikla
+
+            # 2. DOĞRULAMA KOMUTLARI
+            # Örnek: "Başarılı" metnini kontrol et
             if not matched:
-                match = re.search(r'["\']([^"\']+)["\']\s*(?:butonuna|elementine|tikla|bas)', clean_line, re.IGNORECASE)
-                if match: step.action = 'tap'; step.target = match.group(1); commands.append(step); matched = True
-            
-            # BEKLEME: 5 sn bekle
+                match = re.search(
+                    r'["\']([^"\']+)["\']\s*(?:yazisini|metnini|yazısını)?\s*(?:gör|kontrol et|dogrula|doğrula|var mi)', clean_line, re.IGNORECASE)
+                if match:
+                    step.action = 'verify'
+                    step.target = match.group(1)
+                    commands.append(step); matched = True
+
+            # 3. TIKLAMA KOMUTLARI
+            # Örnek: "Giriş Yap" butonuna tıkla
             if not matched:
-                match = re.search(r'(\d+)\s*(?:sn|saniye)', clean_line, re.IGNORECASE)
-                if match: step.action = 'wait'; step.target = match.group(1); commands.append(step); matched = True
-            
+                match = re.search(
+                    r'["\']([^"\']+)["\']\s*(?:butonuna|tusuna|elementine|linkine)?\s*(?:tikla|tıkla|bas)', clean_line, re.IGNORECASE)
+                if match:
+                    step.action = 'tap'
+                    step.target = match.group(1)
+                    commands.append(step); matched = True
+
+            # 4. BEKLEME KOMUTLARI
             if not matched:
-                # Fallback: Eğer hiçbiri değilse, düz metin olabilir
+                match = re.search(r'(\d+)\s*(?:sn|saniye|san|s)',
+                                  clean_line, re.IGNORECASE)
+                if match:
+                    step.action = 'wait'
+                    step.target = match.group(1)
+                    commands.append(step); matched = True
+
+            if not matched:
                 print(f"[UYARI] Parse edilemedi: {clean_line}")
-                
+
         return commands
 
     def run_test(self, device, steps, app_package="", app_activity="", stop_on_fail=True, restart_app=True, test_id=""):
@@ -235,4 +283,5 @@ class AppiumService:
         finally:
             self.close_driver()
 
+# BU SATIR ÖNEMLİ (Tekil kullanım için)
 appium_service = AppiumService()

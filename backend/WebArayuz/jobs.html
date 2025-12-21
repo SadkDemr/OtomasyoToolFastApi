@@ -23,6 +23,7 @@
         
         /* SAĞ DETAY */
         .job-detail-panel { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; height: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        .job-detail-panel.visible { display: flex; }
         .detail-header { padding: 20px 25px; background: var(--bg-primary); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: start; }
         .detail-title h2 { font-size: 1.4rem; margin: 0 0 5px 0; color: var(--text-primary); }
         
@@ -41,17 +42,159 @@
         .history-entry.open .log-body { display: block; }
         
         .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
-        .st-passed { background: #0e2f18; color: #4ec9b0; border: 1px solid #4ec9b0; }
+        .st-passed, .st-completed { background: #0e2f18; color: #4ec9b0; border: 1px solid #4ec9b0; }
         .st-failed { background: #2f0e0e; color: #f14c4c; border: 1px solid #f14c4c; }
         .st-running { background: #0e1e2f; color: #569cd6; border: 1px solid #569cd6; animation: pulse 1.5s infinite; }
+        .st-pending { background: #2f2f0e; color: #dcdcaa; border: 1px solid #dcdcaa; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
 
         .scenario-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; padding: 25px; }
         .chip { background: var(--bg-secondary); padding: 12px 15px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px; }
 
-        /* MODAL */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
-        .modal { background: var(--bg-secondary); border-radius: 12px; width: 500px; padding: 25px; border: 1px solid var(--border-color); box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        /* MODAL - DUZELTILDI */
+        .modal-overlay { 
+            display: none; 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(0,0,0,0.6); 
+            z-index: 10000; 
+            align-items: center; 
+            justify-content: center; 
+            backdrop-filter: blur(4px); 
+        }
+        .modal-overlay.active { 
+            display: flex !important; 
+        }
+        .modal { 
+            background: var(--bg-secondary); 
+            border-radius: 12px; 
+            width: 500px; 
+            max-width: 90%; 
+            padding: 25px; 
+            border: 1px solid var(--border-color); 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3); 
+            transform: scale(0.9);
+            transition: transform 0.2s ease;
+        }
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+        .modal h3 {
+            margin: 0 0 20px 0;
+            font-size: 1.2rem;
+            color: var(--text-primary);
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* FORM INPUTS */
+        .form-group { margin-bottom: 15px; }
+        .form-label { display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
+        .form-input { 
+            width: 100%; 
+            padding: 10px 12px; 
+            border: 1px solid var(--border-color); 
+            border-radius: 8px; 
+            background: var(--bg-primary); 
+            color: var(--text-primary); 
+            font-size: 0.9rem; 
+            box-sizing: border-box;
+        }
+        .form-input:focus { 
+            outline: none; 
+            border-color: var(--accent-primary); 
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        /* Senaryo Listesi (Modal icinde) */
+        .scenario-checkbox-list {
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+        }
+        .scenario-checkbox-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .scenario-checkbox-item:last-child { border-bottom: none; }
+        .scenario-checkbox-item:hover { background: var(--bg-tertiary); }
+        .scenario-checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .scenario-checkbox-item label {
+            flex: 1;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .scenario-type-icon {
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+
+        /* Butonlar */
+        .btn { 
+            padding: 10px 20px; 
+            border-radius: 8px; 
+            border: none; 
+            cursor: pointer; 
+            font-size: 0.9rem; 
+            font-weight: 500; 
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--accent-primary); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { background: var(--bg-hover); }
+        .btn-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+        .btn-ghost { background: transparent; color: var(--text-secondary); }
+        .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+        .icon-btn { 
+            background: none; 
+            border: none; 
+            color: var(--text-secondary); 
+            cursor: pointer; 
+            padding: 8px; 
+            border-radius: 6px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
+        .icon-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-icon { font-size: 4rem; margin-bottom: 15px; opacity: 0.3; }
+        .empty-state p { margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -71,39 +214,60 @@
                     <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
                 </div>
             </nav>
-            <div class="sidebar-footer"><div class="user-info" onclick="if(confirm('Çıkış?')) Auth.logout();"><div class="user-avatar">?</div><div class="user-details"><div class="user-name">Admin</div><div class="user-role">Tester</div></div></div></div>
+            <div class="sidebar-footer">
+                <div class="user-info" onclick="if(confirm('Çıkış yapmak istiyor musunuz?')) Auth.logout();">
+                    <div class="user-avatar" id="userAvatar">?</div>
+                    <div class="user-details">
+                        <div class="user-name" id="userName">Yükleniyor...</div>
+                        <div class="user-role" id="userRole">-</div>
+                    </div>
+                </div>
+            </div>
         </aside>
 
         <main class="main-content">
-<header class="header">
+            <header class="header">
                 <h1 class="page-title">İş Paketleri Yönetimi</h1>
                 <div class="header-right">
-                    <button class="theme-toggle" onclick="if(typeof Theme !== 'undefined') Theme.toggle()">🌙</button>
-                    <button class="btn btn-primary" onclick="openCreateModal()" style="cursor: pointer; z-index: 1000; position: relative;">
+                    <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+                    <button class="btn btn-primary" id="btnNewJob">
                         <span class="material-icons-round">add</span> Yeni Job Oluştur
                     </button>
                 </div>
             </header>
 
             <div class="jobs-layout">
+                <!-- Sol Panel - Job Listesi -->
                 <div class="job-list-panel">
                     <div class="list-header">
                         <span style="font-weight:600; color:var(--text-secondary);">Paket Listesi</span>
-                        <button class="icon-btn" onclick="loadJobs()"><span class="material-icons-round">refresh</span></button>
+                        <button class="icon-btn" onclick="loadJobs()" title="Yenile">
+                            <span class="material-icons-round">refresh</span>
+                        </button>
                     </div>
-                    <div class="job-list" id="jobList"></div>
+                    <div class="job-list" id="jobList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <p>Yükleniyor...</p>
+                        </div>
+                    </div>
                 </div>
 
+                <!-- Sağ Panel - Job Detay -->
                 <div class="job-detail-panel" id="jobDetail">
                     <div class="detail-header">
                         <div class="detail-title">
                             <h2 id="detailName">-</h2>
-                            <p id="detailDesc" style="color:var(--text-muted); margin:0;">-</p>
+                            <p id="detailDesc" style="color:var(--text-muted); margin:0; font-size:0.9rem;">-</p>
                         </div>
                         <div style="display:flex; gap:10px;">
-                            <button class="btn btn-ghost" onclick="openEditModal()">Düzenle</button>
-                            <button class="btn btn-danger" onclick="deleteCurrentJob()">Sil</button>
-                            <button class="btn btn-danger" style="background:rgba(220,38,38,0.1); color:#dc2626; border:1px solid rgba(220,38,38,0.2);" onclick="stopCurrentJob()">
+                            <button class="btn btn-ghost" onclick="openEditModal()">
+                                <span class="material-icons-round">edit</span> Düzenle
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteCurrentJob()">
+                                <span class="material-icons-round">delete</span> Sil
+                            </button>
+                            <button class="btn btn-danger" onclick="stopCurrentJob()" style="background:rgba(239,68,68,0.1);">
                                 <span class="material-icons-round">stop</span> Durdur
                             </button>
                             <button class="btn btn-primary" onclick="runCurrentJob()">
@@ -113,17 +277,24 @@
                     </div>
 
                     <div class="tabs">
-                        <div class="tab active" onclick="switchTab('details')">Genel Bakış</div>
-                        <div class="tab" onclick="switchTab('history')">Terminal & Loglar</div>
+                        <div class="tab active" data-tab="details">Genel Bakış</div>
+                        <div class="tab" data-tab="history">Terminal & Loglar</div>
                     </div>
 
                     <div id="tab-details" class="tab-content active">
-                        <div class="scenario-grid" id="detailScenarios"></div>
+                        <div class="scenario-grid" id="detailScenarios">
+                            <p style="color:var(--text-muted); grid-column:1/-1; text-align:center; padding:40px;">
+                                Bu pakette henüz senaryo yok.
+                            </p>
+                        </div>
                     </div>
 
                     <div id="tab-history" class="tab-content" style="padding:0; background:#1e1e1e;">
                         <div class="log-terminal" id="historyList">
-                            <div style="text-align:center; padding-top:50px; color:#555;">Log verisi yok.</div>
+                            <div style="text-align:center; padding-top:50px; color:#555;">
+                                <span class="material-icons-round" style="font-size:3rem; opacity:0.3;">terminal</span>
+                                <p>Henüz koşum kaydı yok.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -131,277 +302,520 @@
         </main>
     </div>
 
+    <!-- Job Modal -->
     <div class="modal-overlay" id="jobModal">
         <div class="modal">
-            <h3 id="modalTitle" style="margin-top:0;">Job Oluştur</h3>
-            <input type="hidden" id="editJobId">
-            <div style="margin-bottom:15px;">
-                <label style="display:block; margin-bottom:5px; font-weight:500;">Paket Adı</label>
-                <input type="text" id="jobNameInput" class="form-input" style="width:100%;">
+            <h3 id="modalTitle">Yeni Job Oluştur</h3>
+            <input type="hidden" id="editJobId" value="">
+            
+            
+            <div class="form-group">
+                <label class="form-label">Paket Adı *</label>
+                <input type="text" id="jobNameInput" class="form-input" placeholder="Örn: Smoke Test Paketi">
             </div>
-            <div style="margin-bottom:15px;">
-                <label style="display:block; margin-bottom:5px; font-weight:500;">Açıklama</label>
-                <input type="text" id="jobDescInput" class="form-input" style="width:100%;">
+            
+            <div class="form-group">
+                <label class="form-label">Açıklama</label>
+                <input type="text" id="jobDescInput" class="form-input" placeholder="Kısa bir açıklama...">
             </div>
-            <div style="margin-bottom:20px;">
-                <label style="display:block; margin-bottom:5px; font-weight:500;">Senaryolar</label>
-                <div id="modalScenarios" style="max-height:200px; overflow-y:auto; border:1px solid var(--border-color); padding:10px; border-radius:8px;"></div>
+            
+            <div class="form-group">
+                <label class="form-label">Senaryolar</label>
+                <div class="scenario-checkbox-list" id="modalScenarios">
+                    <div style="padding:20px; text-align:center; color:var(--text-muted);">
+                        Senaryolar yükleniyor...
+                    </div>
+                </div>
             </div>
-            <div style="text-align:right; display:flex; justify-content:flex-end; gap:10px;">
-                <button class="btn btn-ghost" onclick="closeModal()">İptal</button>
+
+            <div class="form-group">
+                <label class="form-label">Koşulacak Cihazlar</label>
+                <div class="scenario-checkbox-list" id="modalDevices" style="height: 150px;">
+                    <div style="padding:20px; text-align:center; color:var(--text-muted);">
+                        Cihazlar yükleniyor...
+                    </div>
+                </div>
+                <small style="color:var(--text-muted); font-size:0.8rem;">
+                    * Seçilen cihazlar havuz mantığıyla (Queue) çalışır.
+                </small>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeJobModal()">İptal</button>
                 <button class="btn btn-primary" onclick="saveJob()">Kaydet</button>
             </div>
         </div>
     </div>
 
-<script src="js/app.js"></script>
+    <script src="js/app.js"></script>
     <script>
-        // Global değişkenleri güvenli başlat
-        let allJobs = [];
-        let allScenarios = [];
-        let selectedJobId = null;
+        // ========== GLOBAL STATE ==========
+    let allJobs = [];
+    let allScenarios = [];
+    let selectedJobId = null;
+    let allDevices = []; // Cihazları tutacak global dizi
 
-        // Sayfa Yüklendiğinde
-        document.addEventListener('DOMContentLoaded', async () => {
-            if(typeof Auth !== 'undefined' && !Auth.checkAuth()) return;
-            if(typeof UI !== 'undefined') UI.renderUserInfo();
-            
-            // Hataları yutarak yükle ki sayfa kilitlenmesin
-            try { await loadScenarios(); } catch(e) { console.error("Senaryo hatası:", e); allScenarios = []; }
-            try { await loadJobs(); } catch(e) { console.error("Job hatası:", e); allJobs = []; }
+    // ========== SAYFA YUKLENDIGINDE ==========
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log('[JOBS] Sayfa yüklendi');
+        
+        // Auth kontrolü
+        if (typeof Auth !== 'undefined' && !Auth.checkAuth()) return;
+        
+        // UI render
+        if (typeof UI !== 'undefined') UI.renderUserInfo();
+        
+        // Event Listeners
+        setupEventListeners();
+        
+        // Verileri yükle
+        await Promise.all([
+            loadScenarios(),
+            loadDevices(), // Cihazları yükle
+            loadJobs()
+        ]);
+    });
+
+    // ========== EVENT LISTENERS ==========
+    function setupEventListeners() {
+        // Yeni Job butonu
+        const btnNewJob = document.getElementById('btnNewJob');
+        if (btnNewJob) {
+            btnNewJob.addEventListener('click', function(e) {
+                e.preventDefault();
+                openCreateModal();
+            });
+        }
+
+        // Tab switching
+        document.querySelectorAll('.tabs .tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                switchTab(this.dataset.tab);
+            });
         });
 
-        // --- VERİ ÇEKME ---
-        async function loadJobs() {
+        // Modal kapatma işlemleri
+        const modalOverlay = document.getElementById('jobModal');
+        if (modalOverlay) {
+            modalOverlay.addEventListener('click', function(e) {
+                if (e.target === this) closeJobModal();
+            });
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeJobModal();
+        });
+    }
+
+    // ========== VERİ YÜKLEME ==========
+    async function loadJobs() {
+        try {
+            const res = await API.get('/jobs');
+            allJobs = Array.isArray(res) ? res : [];
+            renderJobList();
+        } catch (e) {
+            console.error('[JOBS] Job yükleme hatası:', e);
+            allJobs = [];
+            renderJobList();
+        }
+    }
+
+    async function loadScenarios() {
+        try {
+            const res = await ScenariosAPI.list();
+            allScenarios = (res && Array.isArray(res.scenarios)) ? res.scenarios : [];
+        } catch (e) {
+            console.error('[JOBS] Senaryo yükleme hatası:', e);
+            allScenarios = [];
+        }
+    }
+
+    async function loadDevices() {
             try {
-                const res = await API.get('/jobs');
-                allJobs = Array.isArray(res) ? res : [];
-                renderJobList();
-            } catch(e) { 
-                console.error("Job listesi alınamadı", e);
-                allJobs = [];
-                renderJobList();
-            }
-        }
-        
-        async function loadScenarios() {
-            try {
-                const r = await ScenariosAPI.list();
-                // API'den gelen veri yapısına göre senaryoları al
-                allScenarios = (r && Array.isArray(r.scenarios)) ? r.scenarios : [];
-            } catch(e) { 
-                console.error("Senaryolar alınamadı", e);
-                allScenarios = [];
-            }
-        }
-
-        // --- MODAL İŞLEMLERİ ---
-        function openCreateModal() {
-            console.log("Yeni Job butonu tıklandı.");
-            prepareModal(null);
-        }
-
-        function openEditModal() { 
-            if(selectedJobId) prepareModal(selectedJobId); 
-        }
-
-        function prepareModal(jobId) {
-            const modal = document.getElementById('jobModal');
-            if(!modal) { alert("Modal bulunamadı!"); return; }
-            
-            modal.style.display = 'flex';
-
-            const isEdit = !!jobId;
-            document.getElementById('modalTitle').textContent = isEdit ? 'Job Düzenle' : 'Job Oluştur';
-            document.getElementById('editJobId').value = jobId || '';
-            
-            // Formu temizle
-            document.getElementById('jobNameInput').value = '';
-            document.getElementById('jobDescInput').value = '';
-            
-            // Edit ise verileri doldur
-            let currentScenarios = [];
-            if(jobId) {
-                const job = allJobs.find(j => j.id === jobId);
-                if(job) {
-                    document.getElementById('jobNameInput').value = job.name || '';
-                    document.getElementById('jobDescInput').value = job.description || '';
-                    currentScenarios = job.scenarios || [];
-                }
-            }
-
-            // Senaryo listesini oluştur (Hata korumalı)
-            const list = document.getElementById('modalScenarios');
-            const safeList = Array.isArray(allScenarios) ? allScenarios : [];
-            
-            if (safeList.length === 0) {
-                list.innerHTML = '<div style="padding:15px; text-align:center; color:#888;">Listelenecek senaryo yok.</div>';
-            } else {
-                list.innerHTML = safeList.map(s => {
-                    // Eğer job düzenleniyorsa ve senaryo seçiliyse işaretle
-                    const isChecked = currentScenarios.some(cs => cs.id === s.id) ? 'checked' : '';
-                    return `
-                    <div style="padding:8px; border-bottom:1px solid var(--border-color); display:flex; align-items:center;">
-                        <label style="cursor:pointer; display:flex; align-items:center; gap:10px; width:100%;">
-                            <input type="checkbox" value="${s.id}" ${isChecked} style="width:16px; height:16px;"> 
-                            <span class="material-icons-round" style="font-size:18px; color:var(--text-secondary);">${s.type==='mobile'?'smartphone':'language'}</span>
-                            <span>${s.name}</span>
-                        </label>
-                    </div>`;
-                }).join('');
-            }
-        }
-
-        function closeModal() {
-            document.getElementById('jobModal').style.display = 'none';
-        }
-
-        async function saveJob() {
-            const id = document.getElementById('editJobId').value;
-            const name = document.getElementById('jobNameInput').value;
-            const desc = document.getElementById('jobDescInput').value;
-            
-            if(!name) { alert("Lütfen paket adı girin"); return; }
-
-            const checkboxes = document.querySelectorAll('#modalScenarios input:checked');
-            const scenarioIds = Array.from(checkboxes).map(c => parseInt(c.value));
-            const data = { name: name, description: desc, scenario_ids: scenarioIds };
-
-            try {
-                if(id) await API.put(`/jobs/${id}`, data);
-                else await API.post('/jobs', data);
+                // Backend'den cihazları çek
+                const res = await API.get('/devices'); 
                 
-                closeModal();
-                await loadJobs();
-                if(id) selectJob(parseInt(id));
-            } catch(e) { alert("Kaydetme hatası: " + e.message); }
+                // DÜZELTME BURADA: 
+                // Yanıt { "devices": [...] } objesi mi yoksa direkt [...] listesi mi kontrol et
+                if (res && res.devices && Array.isArray(res.devices)) {
+                    allDevices = res.devices;
+                } else if (Array.isArray(res)) {
+                    allDevices = res;
+                } else {
+                    allDevices = [];
+                }
+
+                console.log('[JOBS] Cihazlar yüklendi:', allDevices.length);
+                
+                // Eğer o an modal açıksa listeyi güncelle (renderModalDevices fonksiyonunu çağır)
+                if (document.getElementById('jobModal').classList.contains('active')) {
+                   // Seçili olanları korumak için basit bir kontrol gerekebilir ama 
+                   // şimdilik sadece listeyi tazeleyelim
+                   const currentJob = allJobs.find(j => j.id === selectedJobId);
+                   let selectedIds = [];
+                   if (currentJob && currentJob.device_ids) selectedIds = currentJob.device_ids;
+                   
+                   renderModalDevices(selectedIds);
+                }
+
+            } catch (e) {
+                console.error('[JOBS] Cihaz yükleme hatası:', e);
+                allDevices = [];
+            }
         }
 
-        // --- ARAYÜZ FONKSİYONLARI ---
-        function renderJobList() {
-            const list = document.getElementById('jobList');
-            if(!list) return;
+    // ========== RENDER FUNCTIONS (Main Page) ==========
+    function renderJobList() {
+        const list = document.getElementById('jobList');
+        if (!list) return;
 
-            if(!allJobs || allJobs.length === 0) {
-                list.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-muted);">Kayıtlı paket yok.</div>';
-                return;
-            }
+        if (!allJobs || allJobs.length === 0) {
+            list.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📦</div>
+                    <p>Henüz iş paketi oluşturulmamış</p>
+                    <button class="btn btn-primary" onclick="openCreateModal()">
+                        <span class="material-icons-round">add</span> İlk Paketi Oluştur
+                    </button>
+                </div>
+            `;
+            return;
+        }
 
-            list.innerHTML = allJobs.map(j => `
-                <div class="job-card ${selectedJobId === j.id ? 'active' : ''}" onclick="selectJob(${j.id})">
-                    <div style="font-weight:600;">${j.name}</div>
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:5px; display:flex; justify-content:space-between;">
-                        <span>${j.scenarios ? j.scenarios.length : 0} Senaryo</span>
-                        <span>${new Date(j.created_at).toLocaleDateString()}</span>
-                    </div>
+        list.innerHTML = allJobs.map(job => `
+            <div class="job-card ${selectedJobId === job.id ? 'active' : ''}" onclick="selectJob(${job.id})">
+                <div style="font-weight:600; font-size:0.95rem; margin-bottom:5px;">${escapeHtml(job.name)}</div>
+                <div style="font-size:0.8rem; color:var(--text-muted); display:flex; justify-content:space-between;">
+                    <span>${job.scenarios ? job.scenarios.length : 0} Senaryo</span>
+                    <span>${formatDate(job.created_at)}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function selectJob(id) {
+        selectedJobId = id;
+        renderJobList(); // Active class güncellemek için
+
+        const job = allJobs.find(j => j.id === id);
+        if (!job) return;
+
+        // Detay panelini göster
+        document.getElementById('jobDetail').classList.add('visible');
+
+        // Başlık ve açıklama
+        document.getElementById('detailName').textContent = job.name;
+        document.getElementById('detailDesc').textContent = job.description || 'Açıklama yok';
+
+        // Senaryoları Listele
+        const scenContainer = document.getElementById('detailScenarios');
+        const scenList = job.scenarios || [];
+
+        if (scenList.length === 0) {
+            scenContainer.innerHTML = `<p style="color:var(--text-muted); grid-column:1/-1; text-align:center; padding:40px;">Bu pakette henüz senaryo yok.</p>`;
+        } else {
+            scenContainer.innerHTML = scenList.map(s => `
+                <div class="chip">
+                    <span class="material-icons-round scenario-type-icon">
+                        ${s.type === 'mobile' ? 'smartphone' : 'language'}
+                    </span>
+                    <span>${escapeHtml(s.name)}</span>
                 </div>
             `).join('');
         }
+        
+        // Eğer history tab açıksa güncelle
+        const historyTab = document.querySelector('.tab[data-tab="history"]');
+        if (historyTab && historyTab.classList.contains('active')) {
+            loadHistory();
+        }
+    }
 
-        function selectJob(id) {
-            selectedJobId = id;
-            renderJobList();
-            const job = allJobs.find(j => j.id === id);
-            if(!job) return;
+    // ========== MODAL FUNCTIONS (Create/Edit) ==========
+    
+    // Cihazları Modal İçine Çizen Fonksiyon
+    function renderModalDevices(selectedIds = []) {
+        const container = document.getElementById('modalDevices');
+        if (!container) return; 
+        
+        if (!allDevices || allDevices.length === 0) {
+            container.innerHTML = '<div style="padding:10px; color:var(--text-muted);">Sistemde kayıtlı cihaz bulunamadı.</div>';
+            return;
+        }
 
-            document.getElementById('jobDetail').style.display = 'flex';
-            document.getElementById('detailName').textContent = job.name;
-            document.getElementById('detailDesc').textContent = job.description || '-';
-
-            const cont = document.getElementById('detailScenarios');
-            const scenList = job.scenarios || [];
+        container.innerHTML = allDevices.map(d => {
+            const isChecked = selectedIds.includes(d.id) ? 'checked' : '';
             
-            if(scenList.length === 0) {
-                cont.innerHTML = '<span style="color:var(--text-muted);">Bu pakette senaryo yok.</span>';
+            // Status Renkleri
+            let statusColor = '#666'; // offline/unknown
+            let statusIcon = 'phonelink_off';
+            let statusText = d.status;
+
+            if (d.status === 'available') {
+                statusColor = '#4ec9b0';
+                statusIcon = 'smartphone';
+            } else if (d.status === 'busy') {
+                statusColor = '#fca5a5'; // Açık kırmızı
+                statusIcon = 'phonelink_ring'; 
+            }
+
+            return `
+                <div class="scenario-checkbox-item">
+                    <input type="checkbox" id="dev_${d.id}" value="${d.id}" ${isChecked}>
+                    <span class="material-icons-round" style="color:${statusColor}; font-size:1.1rem; margin-right:8px;">${statusIcon}</span>
+                    <label for="dev_${d.id}" style="display:flex; flex-direction:column; justify-content:center; line-height:1.2; cursor:pointer; width:100%;">
+                        <div style="font-weight:500;">${escapeHtml(d.name)}</div>
+                        <div style="font-size:0.75rem; color:${statusColor}; display:flex; align-items:center; gap:5px;">
+                            <span>${d.type}</span> • <span>${statusText.toUpperCase()}</span>
+                        </div>
+                    </label>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Senaryoları Modal İçine Çizen Fonksiyon
+    function renderModalScenarios(selectedIds = []) {
+        const container = document.getElementById('modalScenarios');
+        
+        if (!allScenarios || allScenarios.length === 0) {
+            container.innerHTML = `
+                <div style="padding:20px; text-align:center; color:var(--text-muted);">
+                    Henüz senaryo oluşturulmamış.<br>
+                    <a href="scenarios.html" style="color:var(--accent-primary);">Senaryo oluşturun</a>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = allScenarios.map(s => {
+            const isChecked = selectedIds.includes(s.id) ? 'checked' : '';
+            const icon = s.type === 'mobile' ? 'smartphone' : 'language';
+            
+            return `
+                <div class="scenario-checkbox-item">
+                    <input type="checkbox" id="scen_${s.id}" value="${s.id}" ${isChecked}>
+                    <span class="material-icons-round scenario-type-icon">${icon}</span>
+                    <label for="scen_${s.id}">${escapeHtml(s.name)}</label>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function openCreateModal() {
+        console.log('[JOBS] Create modal açılıyor');
+        
+        document.getElementById('editJobId').value = '';
+        document.getElementById('jobNameInput').value = '';
+        document.getElementById('jobDescInput').value = '';
+        document.getElementById('modalTitle').textContent = 'Yeni Job Oluştur';
+        
+        // Listeleri temiz/boş yükle
+        renderModalScenarios([]); 
+        renderModalDevices([]); // Cihazları boş yükle
+        
+        document.getElementById('jobModal').classList.add('active');
+        setTimeout(() => document.getElementById('jobNameInput').focus(), 100);
+    }
+
+    function openEditModal() {
+        if (!selectedJobId) {
+            alert('Lütfen önce bir job seçin');
+            return;
+        }
+
+        const job = allJobs.find(j => j.id === selectedJobId);
+        if (!job) return;
+
+        console.log('[JOBS] Edit modal açılıyor:', job.name);
+
+        document.getElementById('editJobId').value = job.id;
+        document.getElementById('jobNameInput').value = job.name || '';
+        document.getElementById('jobDescInput').value = job.description || '';
+        document.getElementById('modalTitle').textContent = 'Job Düzenle';
+
+        // 1. Senaryoları İşaretle
+        const selectedScenarios = (job.scenarios || []).map(s => s.id);
+        renderModalScenarios(selectedScenarios);
+
+        // 2. Cihazları İşaretle
+        // Backend'den gelen 'device_ids' array'i veya 'associated_devices' array'i kontrol ediliyor
+        let selectedDevices = [];
+        if (job.device_ids && Array.isArray(job.device_ids)) {
+            selectedDevices = job.device_ids;
+        } else if (job.associated_devices && Array.isArray(job.associated_devices)) {
+            // Eğer backend obje dönüyorsa ID'leri topla
+            selectedDevices = job.associated_devices.map(d => d.id || d.device_id);
+        }
+        
+        renderModalDevices(selectedDevices);
+
+        document.getElementById('jobModal').classList.add('active');
+    }
+
+    function closeJobModal() {
+        document.getElementById('jobModal').classList.remove('active');
+    }
+
+    async function saveJob() {
+        const jobId = document.getElementById('editJobId').value;
+        const name = document.getElementById('jobNameInput').value.trim();
+        const desc = document.getElementById('jobDescInput').value.trim();
+
+        if (!name) {
+            alert('Lütfen paket adı girin');
+            return;
+        }
+
+        // Seçili Senaryolar
+        const scenarioIds = Array.from(
+            document.querySelectorAll('#modalScenarios input[type="checkbox"]:checked')
+        ).map(cb => parseInt(cb.value));
+
+        // Seçili Cihazlar (YENİ)
+        const deviceIds = Array.from(
+            document.querySelectorAll('#modalDevices input[type="checkbox"]:checked')
+        ).map(cb => parseInt(cb.value));
+
+        const data = {
+            name: name,
+            description: desc,
+            scenario_ids: scenarioIds,
+            device_ids: deviceIds // Backend'e gönderiyoruz
+        };
+
+        try {
+            if (jobId) {
+                await API.put(`/jobs/${jobId}`, data);
+                Toast.success('Job güncellendi');
             } else {
-                cont.innerHTML = scenList.map(s => `
-                    <div class="chip">
-                        <span class="material-icons-round" style="font-size:1rem; color:var(--accent-primary);">${s.type==='mobile'?'smartphone':'language'}</span>
-                        ${s.name}
+                await API.post('/jobs', data);
+                Toast.success('Job oluşturuldu');
+            }
+
+            closeJobModal();
+            await loadJobs(); // Listeyi yenile
+
+            if (jobId) selectJob(parseInt(jobId));
+        } catch (e) {
+            console.error('[JOBS] Kaydetme hatası:', e);
+            Toast.error('Hata: ' + e.message);
+        }
+    }
+
+    // ========== JOB ACTIONS (Run/Stop/Delete/History) ==========
+    
+    async function runCurrentJob() {
+        if (!selectedJobId) return;
+        if (!confirm('Job başlatılsın mı?')) return;
+
+        try {
+            await API.post(`/jobs/${selectedJobId}/run`, {});
+            Toast.success('Job kuyruğa eklendi ve başlatıldı.');
+            switchTab('history');
+            loadHistory();
+        } catch (e) {
+            Toast.error('Başlatma hatası: ' + e.message);
+        }
+    }
+
+    async function stopCurrentJob() {
+        if (!selectedJobId) return;
+        if (!confirm('Çalışan job durdurulsun mu?')) return;
+        try {
+            await API.post(`/jobs/${selectedJobId}/stop`, {});
+            Toast.success('Job durduruldu');
+            loadHistory();
+        } catch (e) {
+            Toast.error('Durdurma hatası: ' + e.message);
+        }
+    }
+
+    async function deleteCurrentJob() {
+        if (!selectedJobId) return;
+        if (!confirm('Bu job silinecek. Emin misiniz?')) return;
+        try {
+            await API.delete(`/jobs/${selectedJobId}`);
+            Toast.success('Job silindi');
+            selectedJobId = null;
+            document.getElementById('jobDetail').classList.remove('visible');
+            await loadJobs();
+        } catch (e) {
+            Toast.error('Silme hatası: ' + e.message);
+        }
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.tabs .tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === tabName);
+        });
+        document.querySelectorAll('.tab-content').forEach(c => {
+            c.classList.toggle('active', c.id === `tab-${tabName}`);
+        });
+        if (tabName === 'history') loadHistory();
+    }
+
+    async function loadHistory() {
+        if (!selectedJobId) return;
+        const container = document.getElementById('historyList');
+        
+        try {
+            const history = await API.get(`/jobs/${selectedJobId}/history`);
+            if (!history || history.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:50px; color:#666;"><p>Henüz koşum kaydı yok.</p></div>';
+                return;
+            }
+            
+            // History render logic (Aynı kalabilir)
+            container.innerHTML = history.map(h => `
+                <div class="history-entry">
+                    <div class="history-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <span class="status-badge st-${h.status}">${h.status}</span>
+                            <span style="font-size:0.8rem; color:#aaa;">${formatDateTime(h.start_time)}</span>
+                        </div>
+                        <div style="font-size:0.85rem;">
+                            <span style="color:#4ec9b0;">✓ ${h.passed || 0}</span>
+                            <span style="color:#f14c4c; margin-left:8px;">✗ ${h.failed || 0}</span>
+                        </div>
                     </div>
-                `).join('');
-            }
-
-            // Eğer history tabı açıksa logları güncelle
-            if(document.querySelector('.tab[onclick*="history"]').classList.contains('active')) {
-                loadHistory();
-            }
-        }
-
-        // --- LOGLAR VE HISTORY ---
-        async function loadHistory() {
-            if(!selectedJobId) return;
-            const container = document.getElementById('historyList');
-            try {
-                const history = await API.get(`/jobs/${selectedJobId}/history`);
-                if(!history || !history.length) {
-                    container.innerHTML = '<div style="text-align:center; padding:30px; color:#666;">Henüz koşum kaydı yok.</div>';
-                    return;
-                }
-                
-                container.innerHTML = history.map(h => `
-                    <div class="history-entry" onclick="this.classList.toggle('open')">
-                        <div class="history-header">
-                            <div style="display:flex; align-items:center; gap:10px;">
-                                <span class="status-badge st-${h.status}">${h.status}</span>
-                                <span style="font-size:0.8rem; color:#aaa;">${new Date(h.start_time).toLocaleString()}</span>
-                            </div>
-                            <div style="font-size:0.8rem; font-weight:bold;">
-                                <span style="color:#4ec9b0;">Pass: ${h.passed}</span> <span style="color:#f14c4c;">Fail: ${h.failed}</span>
-                            </div>
-                        </div>
-                        <div class="log-body" style="${h.status==='running'?'display:block':''}">
-                            ${(h.results || []).map(r => `
-                                <div style="margin-bottom:5px; padding-bottom:5px; border-bottom:1px solid #333;">
-                                    <strong style="color:#eee;">${r.scenario_name}:</strong> 
-                                    <span style="color:${r.status==='passed'?'#4ec9b0':(r.status==='running'?'#569cd6':'#f14c4c')}">${r.status ? r.status.toUpperCase() : 'UNK'}</span>
+                    <div class="log-body">
+                         ${(h.results || []).map(r => `
+                            <div style="padding:8px 0; border-bottom:1px solid #333;">
+                                <div style="display:flex; justify-content:space-between;">
+                                    <strong style="color:#eee;">${escapeHtml(r.scenario_name || 'Senaryo')}</strong>
+                                    <div style="font-size:0.75rem;">
+                                        <span style="color:#aaa;">${r.device_name || 'Cihaz Yok'}</span>
+                                        <span class="status-badge st-${r.status}" style="margin-left:8px;">${r.status}</span>
+                                    </div>
                                 </div>
-                            `).join('')}
-                        </div>
-                    </div>`).join('');
-            } catch(e) { container.innerHTML = '<div style="padding:20px; color:#f14c4c;">Log hatası.</div>'; }
+                                ${r.log_json ? '<div style="margin-top:5px; font-size:0.8rem; color:#888;">Log detayı mevcut</div>' : ''}
+                            </div>
+                         `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            console.error(e);
         }
+    }
 
-        // --- TAB SİSTEMİ ---
-        function switchTab(t) {
-            document.querySelectorAll('.tab').forEach(e => e.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
-            
-            const btn = document.querySelector(`.tab[onclick*="${t}"]`);
-            if(btn) btn.classList.add('active');
-            
-            const content = document.getElementById(`tab-${t}`);
-            if(content) content.classList.add('active');
+    // ========== UTILITY ==========
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    function formatDate(d) { return d ? new Date(d).toLocaleDateString('tr-TR') : '-'; }
+    function formatDateTime(d) { return d ? new Date(d).toLocaleString('tr-TR') : '-'; }
 
-            if(t === 'history') loadHistory();
+    // Auto Refresh History
+    setInterval(() => {
+        const historyTab = document.getElementById('tab-history');
+        if (selectedJobId && historyTab && historyTab.classList.contains('active')) {
+            loadHistory();
         }
-
-        // --- BUTON AKSİYONLARI ---
-        async function runCurrentJob() {
-            if(!selectedJobId) return;
-            if(!confirm('Başlat?')) return;
-            try { await API.post(`/jobs/${selectedJobId}/run`, {}); switchTab('history'); loadHistory(); } catch(e) { alert(e.message); }
-        }
-
-        async function stopCurrentJob() {
-            if(!selectedJobId) return;
-            if(confirm('Durdur?')) { await API.post(`/jobs/${selectedJobId}/stop`, {}); setTimeout(loadHistory, 1000); }
-        }
-
-        async function deleteCurrentJob() {
-            if(!selectedJobId) return;
-            if(confirm('Sil?')) { await API.delete(`/jobs/${selectedJobId}`); window.location.reload(); }
-        }
-
-        // --- OTOMATİK YENİLEME ---
-        setInterval(() => {
-            const histTab = document.getElementById('tab-history');
-            // Sadece history sekmesi açıksa ve seçili job varsa yenile
-            if(selectedJobId && histTab && histTab.classList.contains('active')) {
-                // Opsiyonel: Sadece çalışan varsa yenilemek için kontrol eklenebilir
-                loadHistory();
-            }
-        }, 5000);
+    }, 5000);
     </script>
 </body>
 </html>

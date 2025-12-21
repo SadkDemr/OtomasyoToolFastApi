@@ -1,6 +1,5 @@
 """
-Database Models - FINAL ARCHITECTURE v2 (FIXED)
-Includes: DeviceStatus Enum added to fix ImportError
+Database Models - FINAL FIXED VERSION
 """
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship, backref
@@ -8,7 +7,7 @@ from database import Base
 from datetime import datetime
 from enum import Enum as PyEnum
 
-# --- ENUMS (HATAYI DUZELTEN KISIM) ---
+# --- ENUMS ---
 class DeviceStatus(str, PyEnum):
     AVAILABLE = "available"
     BUSY = "busy"
@@ -69,6 +68,17 @@ class Scenario(Base):
     folder = relationship("Folder", back_populates="scenarios")
     job_associations = relationship("JobScenario", back_populates="scenario", cascade="all, delete-orphan")
 
+# --- JOB CIHAZ ILISKISI (YENI TABLO) ---
+class JobDevice(Base):
+    __tablename__ = "job_devices"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"))
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    
+    job = relationship("Job", back_populates="associated_devices")
+    device = relationship("Device")
+
 # --- JOB (TEST PAKETLERI) ---
 class Job(Base):
     __tablename__ = "jobs"
@@ -81,8 +91,11 @@ class Job(Base):
     
     scenarios = relationship("JobScenario", back_populates="job", cascade="all, delete-orphan")
     executions = relationship("JobExecution", back_populates="job", cascade="all, delete-orphan")
+    
+    # YENI EKLENEN ILISKI:
+    associated_devices = relationship("JobDevice", back_populates="job", cascade="all, delete-orphan")
 
-# Ara Tablo
+# --- JOB SENARYO ARA TABLO ---
 class JobScenario(Base):
     __tablename__ = "job_scenarios"
     

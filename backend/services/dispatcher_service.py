@@ -1,167 +1,216 @@
-"""
-Dispatcher Service - Akıllı Job Dağıtıcı
-FIXED: Saves Logs to Database (Persistent History)
-"""
 import asyncio
 import json
-import time
 from datetime import datetime
-from sqlalchemy.exc import OperationalError
-from services.device_service import device_service
-from services.appium_service import appium_service
-from services.job_service import job_service
-from models.db_models import DeviceStatus, JobExecution, TestResult
+from sqlalchemy.orm import Session
 from database import SessionLocal
+from models.db_models import Job, JobExecution, TestResult, Device, JobDevice, DeviceStatus
+from services.device_service import device_service
+
+# --- DÜZELTME 1: appium_service nesnesi yerine SINIFIN KENDISINI import et ---
+# Böylece her worker kendine özel bir kopyasını oluşturabilir.
+from services.appium_service import AppiumService 
+from models.schemas import TestStep
 
 class DispatcherService:
+
     async def run_job(self, job_id: int):
-        # 1. Job Hazırlığı
-        temp_db = SessionLocal()
-        queue = []
-        job_name = ""
-        execution_id = None
-        
+        """
+        Job'ı başlatır. Eğer cihaz seçilmemişse otomatik havuz oluşturur.
+        """
+        db: Session = SessionLocal()
         try:
-            job = job_service.get_job(temp_db, job_id)
-            if not job or not job.scenarios:
-                print("❌ Job boş.")
+            # 1. Job Bilgilerini Çek
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if not job:
+                print(f"❌ Job #{job_id} bulunamadı.")
                 return
-            job_name = job.name
-            
-            # Execution Kaydı (Retry Mekanizması ile)
-            for attempt in range(3):
-                try:
-                    new_exec = JobExecution(
-                        job_id=job.id, user_id=job.user_id, status="running",
-                        total_tests=len(job.scenarios), start_time=datetime.now(),
-                        passed_tests=0, failed_tests=0
-                    )
-                    temp_db.add(new_exec)
-                    temp_db.commit()
-                    temp_db.refresh(new_exec)
-                    execution_id = new_exec.id
-                    break
-                except OperationalError:
-                    time.sleep(1); temp_db.rollback()
-            
-            print(f"🚀 JOB BAŞLATILDI: {job_name} (Exec ID: {execution_id})")
-            
-            # Kuyruk ve TestResult Kayıtları
-            for s in job.scenarios:
-                t_scen = s.scenario if hasattr(s, 'scenario') else s
-                if t_scen:
-                    # TestResult kaydı oluştur (Pending)
-                    tr = TestResult(
-                        scenario_id=t_scen.id, user_id=job.user_id,
-                        job_execution_id=execution_id, status="pending", log_json="[]"
-                    )
-                    temp_db.add(tr)
-                    temp_db.commit()
-                    temp_db.refresh(tr)
-                    
-                    queue.append({
-                        "result_id": tr.id, # DB ID'si önemli
-                        "id": t_scen.id,
-                        "name": t_scen.name,
-                        "natural_steps": t_scen.natural_steps,
-                        "config_json": t_scen.config_json
-                    })
 
-        except Exception as e:
-            print(f"❌ Başlatma hatası: {e}"); return
-        finally:
-            temp_db.close()
+            # Job'a atanmış cihazları bul
+            assigned_job_devices = db.query(JobDevice).filter(
+                JobDevice.job_id == job_id).all()
+            target_device_ids = [jd.device_id for jd in assigned_job_devices]
 
-        # 2. Döngü
-        while queue:
-            db = SessionLocal()
-            try:
-                # Durdurma Kontrolü
-                curr = db.query(JobExecution).filter(JobExecution.id == execution_id).first()
-                if curr and curr.status == "stopped":
-                    print("🛑 Döngü durduruldu."); break
+            devices = []
 
-                # Cihaz Bul
-                devs = [d for d in device_service.get_all_devices(db) if d.status == DeviceStatus.AVAILABLE.value]
-                if not devs:
-                    await asyncio.sleep(2); continue
+            # --- OTOMATİK CİHAZ SEÇİMİ ---
+            if target_device_ids:
+                print(f"🎯 Job #{job_id} için özel seçilmiş {len(target_device_ids)} cihaz var.")
+                devices = db.query(Device).filter(Device.id.in_(target_device_ids)).all()
+            else:
+                print(f"⚠️ Job #{job_id} için cihaz seçilmemiş. Tüm uygun cihazlar taranıyor...")
+                devices = db.query(Device).filter(Device.status == DeviceStatus.AVAILABLE.value).all()
 
-                device = devs[0]
-                item = queue.pop(0)
-                
-                print(f"▶️ {item['name']} -> {device.name}")
-                device_service.lock_device(db, device.id, 1)
-                
-                # Testi Çalıştır (Asenkron)
-                asyncio.create_task(self._run_and_save(device.id, item, execution_id))
-                
-            except Exception as e:
-                print(f"Döngü hatası: {e}"); await asyncio.sleep(3)
-            finally:
-                db.close()
-        
-        # Bitiş (Basit kontrol, gerçekte tüm taskların bitmesini beklemek gerekir)
-        await asyncio.sleep(2) 
+            # Offline olanları ele
+            available_devices = [d for d in devices if d.status != DeviceStatus.OFFLINE.value]
 
-    async def _run_and_save(self, device_id, item, exec_id):
-        db = SessionLocal()
-        try:
-            # Durumu Running yap
-            tr = db.query(TestResult).filter(TestResult.id == item['result_id']).first()
-            if tr: tr.status = "running"; db.commit()
+            if not available_devices:
+                print("❌ Hata: Çalıştırılabilecek uygun (Online/Available) cihaz bulunamadı!")
+                return
 
-            device = device_service.get_device_by_id(db, device_id)
-            steps = appium_service.parse_natural_language(item['natural_steps'])
-            cfg = json.loads(item['config_json']) if item.get('config_json') else {}
-
-            # Testi Koş
-            res = await asyncio.to_thread(
-                appium_service.run_test, device=device, steps=steps,
-                app_package=cfg.get("app_package"), app_activity=cfg.get("app_activity"),
-                stop_on_fail=True, restart_app=cfg.get("restart_app", True),
-                test_id=f"EXEC-{exec_id}"
+            # 2. Execution Kaydı Oluştur
+            execution = JobExecution(
+                job_id=job.id,
+                user_id=job.user_id,
+                status="running",
+                start_time=datetime.now(),
+                total_tests=len(job.scenarios)
             )
+            db.add(execution)
+            db.commit()
+            db.refresh(execution)
 
-            # Sonucu Kaydet
-            status = "passed" if res['success'] else "failed"
+            # 3. Kuyruğu (Queue) Oluştur ve Doldur
+            queue = asyncio.Queue()
+            sorted_scenarios = sorted(job.scenarios, key=lambda x: x.order if x.order is not None else 0)
             
-            # Yeniden DB bağlantısı (Thread güvenliği için)
-            save_db = SessionLocal()
-            try:
-                # TestResult Güncelle
-                final_tr = save_db.query(TestResult).filter(TestResult.id == item['result_id']).first()
-                if final_tr:
-                    final_tr.status = status
-                    # Logları JSON olarak kaydet
-                    logs = []
-                    for r in res['results']:
-                        logs.append({
-                            "step": r.step_number, "action": r.action, 
-                            "success": r.success, "message": r.message
-                        })
-                    final_tr.log_json = json.dumps(logs)
-                
-                # JobExecution İstatistiklerini Güncelle
-                job_exec = save_db.query(JobExecution).filter(JobExecution.id == exec_id).first()
-                if job_exec:
-                    if status == "passed": job_exec.passed_tests += 1
-                    else: job_exec.failed_tests += 1
-                    
-                    # Eğer hepsi bittiyse Completed yap (Basit mantık)
-                    if (job_exec.passed_tests + job_exec.failed_tests) >= job_exec.total_tests:
-                        job_exec.status = "completed"
-                        job_exec.end_time = datetime.now()
+            if not sorted_scenarios:
+                print("⚠️ Job içinde senaryo yok!")
+                return
 
-                save_db.commit()
-                print(f"🏁 Kaydedildi: {item['name']} -> {status}")
-            finally:
-                save_db.close()
+            for job_scenario in sorted_scenarios:
+                queue.put_nowait((job_scenario.scenario, execution.id))
+
+            print(f"🚀 Job #{job_id} BAŞLADI. Kuyruk: {queue.qsize()} senaryo | Havuz: {len(available_devices)} cihaz.")
+
+            # 4. Worker'ları (Cihazları) Hazırla
+            tasks = []
+            for device in available_devices:
+                device_service.update_status(db, device.id, DeviceStatus.BUSY.value)
+                task = asyncio.create_task(self.device_worker(device.id, device.appium_url, queue, db))
+                tasks.append(task)
+
+            # 5. Tüm işlerin bitmesini bekle
+            await queue.join()
+
+            # 6. İşçileri bitir
+            for task in tasks:
+                task.cancel()
+
+            # 7. Job Status Güncelle
+            execution.status = "completed"
+            execution.end_time = datetime.now()
+            
+            # Cihazları boşa çıkar
+            for device in available_devices:
+                device_service.update_status(db, device.id, DeviceStatus.AVAILABLE.value)
+
+            db.commit()
+            print(f"🏁 Job #{job_id} Tamamlandı.")
 
         except Exception as e:
-            print(f"Test hatası: {e}")
+            print(f"🔥 Job Dispatcher Error: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
-            try: device_service.release_device(db, device_id, 1)
-            except: pass
             db.close()
+
+
+    async def device_worker(self, device_id: int, appium_url: str, queue: asyncio.Queue, db: Session):
+        """
+        Bu fonksiyon her cihaz için ayrı bir thread gibi çalışır.
+        """
+        device = db.query(Device).filter(Device.id == device_id).first()
+        dev_name = device.name if device else f"Device-{device_id}"
+
+        # --- DÜZELTME 2: Her Worker için YENİ bir AppiumService Örneği ---
+        # Bu sayede 'self.driver' değişkenleri birbirine karışmaz.
+        local_service = AppiumService()
+
+        print(f"📱 Worker Hazır: {dev_name}")
+
+        while True:
+            try:
+                item = await queue.get()
+                scenario_obj, execution_id = item
+            except asyncio.CancelledError:
+                print(f"🛑 Worker Durduruldu (Boşta): {dev_name}")
+                break
+
+            try:
+                print(f"▶️ {dev_name} -> {scenario_obj.name} çalışıyor...")
+
+                # A) Senaryo adımlarını parse et
+                steps = []
+                if scenario_obj.natural_steps:
+                    steps = local_service.parse_natural_language(scenario_obj.natural_steps)
+                elif scenario_obj.steps_json:
+                    try:
+                        raw_steps = json.loads(scenario_obj.steps_json)
+                        for s in raw_steps: steps.append(TestStep(**s))
+                    except: pass
+                
+                # B) Config'den paket bilgilerini al
+                app_package = ""
+                app_activity = ""
+                if scenario_obj.config_json:
+                    try:
+                        conf = json.loads(scenario_obj.config_json)
+                        app_package = conf.get("appPackage", "") or conf.get("app_package", "")
+                        app_activity = conf.get("appActivity", "") or conf.get("app_activity", "")
+                    except: pass
+
+                # C) Testi Paralel Çalıştır
+                loop = asyncio.get_running_loop()
+                
+                # --- DÜZELTME 3: local_service kullanıyoruz ---
+                test_result_data = await loop.run_in_executor(
+                    None, 
+                    lambda: local_service.run_test(
+                        device=device,
+                        steps=steps,
+                        app_package=app_package,
+                        app_activity=app_activity,
+                        test_id=f"{execution_id}_{scenario_obj.id}",
+                        restart_app=True
+                    )
+                )
+
+                success = test_result_data.get("success", False)
+                result_logs = test_result_data.get("results", [])
+                
+                log_json_data = [
+                    {
+                        "step": r.step_number,
+                        "action": r.action,
+                        "success": r.success,
+                        "message": r.message
+                    } for r in result_logs
+                ]
+
+                try:
+                    result = TestResult(
+                        scenario_id=scenario_obj.id,
+                        user_id=1,
+                        job_execution_id=execution_id,
+                        device_name=dev_name,
+                        status="success" if success else "failed",
+                        log_json=json.dumps(log_json_data),
+                        executed_at=datetime.now(),
+                        duration_seconds=0
+                    )
+                    db.add(result)
+
+                    exc = db.query(JobExecution).filter(JobExecution.id == execution_id).first()
+                    if exc:
+                        if success: exc.passed_tests += 1
+                        else: exc.failed_tests += 1
+                    db.commit()
+                except Exception as db_err:
+                    print(f"❌ DB Yazma Hatası: {db_err}")
+                    db.rollback()
+
+                status_icon = "✅" if success else "❌"
+                print(f"{status_icon} {dev_name} -> {scenario_obj.name} bitti.")
+
+            except asyncio.CancelledError:
+                print(f"🛑 Worker Durduruldu (İşlem Sırasında): {dev_name}")
+                queue.task_done()
+                break
+
+            except Exception as e:
+                print(f"❌ Worker Kritik Hata ({dev_name}): {e}")
+
+            finally:
+                queue.task_done()
 
 dispatcher = DispatcherService()
