@@ -1,6 +1,8 @@
 """
 Devices Router - Cihaz Yonetimi API
 FIXED: Auto Sync ADB on list.
+FIXED: DeviceListResponse total field added.
+FIXED: DeviceResponse schema mapping (os -> platform).
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -15,13 +17,15 @@ from models.db_models import Device
 router = APIRouter(prefix="/api/devices", tags=["Devices"])
 
 def device_to_response(device: Device, db: Session) -> DeviceResponse:
+    # Schema ve DB Model arasındaki uyumsuzlukları manuel eşleyelim
+    # Schema 'platform' bekliyor, DB 'os' veriyor.
     return DeviceResponse(
         id=device.id,
         name=device.name,
         device_id=device.device_id,
         type=device.type,
-        os=device.os,
-        os_version=device.os_version,
+        platform=device.os, # os -> platform
+        # os_version şemada yok, kaldırdık.
         appium_url=device.appium_url,
         status=device.status,
         current_user_id=device.current_user_id
@@ -29,12 +33,14 @@ def device_to_response(device: Device, db: Session) -> DeviceResponse:
 
 @router.get("", response_model=DeviceListResponse)
 def list_devices(db: Session = Depends(get_db)):
-    # DÜZELTME: Listelemeden önce ADB'yi kontrol et
+    # Listelemeden önce ADB'yi kontrol et
     device_service.sync_adb_devices(db)
     
     devices = device_service.get_all_devices(db)
     response_list = [device_to_response(d, db) for d in devices]
-    return DeviceListResponse(devices=response_list)
+    
+    # FIX: total alanını ekledik, pydantic hatası buradaydı
+    return DeviceListResponse(total=len(response_list), devices=response_list)
 
 @router.post("", response_model=DeviceResponse)
 def create_device(data: DeviceCreate, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
