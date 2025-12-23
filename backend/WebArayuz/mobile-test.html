@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobil Test - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .mobile-layout { 
+            display: grid; 
+            grid-template-columns: 280px 1fr 380px; 
+            gap: 16px; 
+            height: calc(100vh - 80px);
+            overflow: hidden;
+        }
+        
+        .device-panel, .right-panel { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            overflow: hidden; 
+            height: 100%;
+        }
+        
+        .emulator-panel { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 12px; 
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .right-panel-top {
+            flex: 0 0 35%;
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .right-panel-bottom {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        /* SCENARIO TREE */
+        .scenario-tree { flex: 1; overflow-y: auto; padding: 8px; }
+        .tree-folder { margin-bottom: 2px; }
+        .tree-folder-header { 
+            display: flex; align-items: center; gap: 6px; padding: 8px 10px; 
+            cursor: pointer; font-size: 0.85rem; font-weight: 500; 
+            border-radius: 6px; color: var(--text-secondary);
+            transition: all 0.15s;
+        }
+        .tree-folder-header:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .tree-folder-content { padding-left: 20px; display: none; }
+        .tree-folder.open > .tree-folder-content { display: block; }
+        .tree-folder.open > .tree-folder-header .folder-icon { transform: rotate(90deg); }
+        .folder-icon { transition: transform 0.2s; font-size: 0.9rem; }
+        
+        .tree-item { 
+            padding: 8px 10px; margin: 2px 0; cursor: pointer; border-radius: 6px; 
+            font-size: 0.85rem; display: flex; align-items: center; gap: 10px;
+            transition: all 0.15s;
+        }
+        .tree-item:hover { background: var(--bg-tertiary); }
+        .tree-item.active { background: rgba(79,70,229,0.15); color: var(--accent-primary); font-weight: 600; }
+        .item-icon { font-size: 1.1rem; }
+
+        /* TABS */
+        .panel-tabs { display: flex; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 8px; flex-shrink: 0; }
+        .panel-tab { flex: 1; padding: 8px; border-radius: 6px; border: none; background: transparent; font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; }
+        .panel-tab.active { background: var(--bg-secondary); color: var(--text-primary); box-shadow: var(--shadow-sm); font-weight: 600; }
+        
+        .panel-content { flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; background: var(--bg-secondary); border-radius: 0 0 8px 8px; border: 1px solid var(--border-color); border-top: none; }
+        .panel-content.active { display: flex; }
+
+        /* LOGS & EDITOR */
+        .log-container, .editor-box { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .log-body, .editor-box textarea { flex: 1; overflow-y: auto; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; border: none; outline: none; background: transparent; color: var(--text-primary); resize: none; }
+        
+        .log-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid var(--border-color); align-items: flex-start; }
+        .log-item.running { background: rgba(59,130,246,0.1); border-left: 3px solid var(--info); }
+        .log-item.success { background: rgba(16,185,129,0.1); border-left: 3px solid var(--success); }
+        .log-item.failed { background: rgba(239,68,68,0.1); border-left: 3px solid var(--danger); }
+        .log-step { width: 26px; height: 26px; background: var(--bg-tertiary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; }
+        .log-item.success .log-step { background: var(--success); color: white; }
+        .log-item.failed .log-step { background: var(--danger); color: white; }
+        .log-item.running .log-step { background: var(--info); color: white; }
+
+        /* DEVICE LIST */
+        .device-filter { display: flex; gap: 4px; margin-bottom: 10px; flex-shrink: 0; }
+        .device-filter .tab { flex: 1; padding: 6px; font-size: 0.75rem; cursor: pointer; background: var(--bg-tertiary); border: 1px solid transparent; border-radius: 6px; color: var(--text-secondary); text-align: center; transition: all 0.15s; }
+        .device-filter .tab:hover { background: var(--bg-hover); }
+        .device-filter .tab.active { background: var(--bg-secondary); border-color: var(--accent-primary); color: var(--accent-primary); font-weight: 600; }
+        .device-list { flex: 1; overflow-y: auto; }
+        .device-item { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; cursor: pointer; margin-bottom: 8px; transition: all 0.2s; }
+        .device-item:hover { border-color: var(--accent-primary); transform: translateY(-1px); }
+        .device-item.selected { border-color: var(--accent-primary); background: rgba(79,70,229,0.08); }
+        .device-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .device-name { font-weight: 600; font-size: 0.9rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); display: inline-block; }
+        .status-dot.online { background: var(--success); }
+        .status-dot.busy { background: var(--warning); }
+
+        /* EMULATOR SCREEN */
+        .phone-wrapper { flex: 1; display: flex; justify-content: center; align-items: center; width: 100%; overflow: hidden; padding: 10px; }
+        .phone-frame { width: 280px; height: 560px; border: 8px solid #222; border-radius: 32px; position: relative; background: #000; box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow: hidden; }
+        .phone-notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 100px; height: 24px; background: #222; border-radius: 0 0 16px 16px; z-index: 10; }
+        .phone-screen { width: 100%; height: 100%; background: #1a1a1a; cursor: crosshair; }
+        .phone-screen img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+        .phone-controls { display: flex; gap: 12px; margin-top: 12px; flex-shrink: 0; }
+        .phone-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .phone-btn:hover { background: var(--bg-tertiary); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+        /* CONNECTION BOX */
+        .connection-box { 
+            display: flex; align-items: center; gap: 12px; padding: 12px 16px; 
+            background: var(--bg-secondary); border: 1px solid var(--border-color); 
+            border-radius: 10px; width: 100%; max-width: 300px;
+        }
+        .connection-box.connected { border-color: var(--success); background: rgba(16,185,129,0.05); }
+
+        /* FORM */
+        .form-group { margin-bottom: 12px; }
+        .form-label { display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
+        .form-input { width: 100%; padding: 10px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; box-sizing: border-box; }
+        .form-input:focus { outline: none; border-color: var(--accent-primary); }
+
+        /* BUTTONS */
+        .btn-primary { background: var(--accent-primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 8px; justify-content: center; transition: all 0.2s; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-danger { background: var(--danger); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+        .btn-icon { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 4px; display: flex; align-items: center; }
+        .btn-icon:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+        /* HELP BOX */
+        .help-box { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 12px; margin-top: 12px; }
+        .help-box h4 { font-size: 0.8rem; color: var(--info); margin-bottom: 8px; }
+        .help-box code { display: block; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); margin: 4px 0; padding: 4px 8px; background: var(--bg-primary); border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header"><div class="logo"><div class="logo-icon">🧪</div><span>Test Platform</span></div></div>
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">Ana Menü</div>
+                    <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
+                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Test Türleri</div>
+                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
+                    <a href="mobile-test.html" class="nav-item active"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
+                    <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
+                </div>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info" onclick="if(confirm('Çıkış?')) Auth.logout();">
+                    <div class="user-avatar">?</div>
+                    <div class="user-details"><div class="user-name">...</div><div class="user-role">...</div></div>
+                </div>
+            </div>
+        </aside>
+        
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left"><h1 class="page-title">📲 Mobil Test</h1></div>
+                <div class="header-right">
+                    <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+                    <button class="btn-secondary" onclick="loadDevices()" style="padding:8px 16px; font-size:0.85rem;">🔄 Yenile</button>
+                </div>
+            </header>
+            
+            <div class="page-content">
+                <div class="mobile-layout">
+                    <!-- SOL: CİHAZLAR -->
+                    <div class="device-panel">
+                        <div class="card" style="height: 100%;">
+                            <div class="card-header" style="padding:12px; border-bottom:1px solid var(--border-color); font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+                                <span>📱 Cihazlar</span>
+                                <span class="badge" id="deviceCount" style="background:var(--bg-tertiary); padding:2px 8px; border-radius:4px; font-size:0.75rem;">0</span>
+                            </div>
+                            <div class="card-body" style="padding:12px; display:flex; flex-direction:column; flex:1; overflow:hidden;">
+                                <div class="device-filter">
+                                    <div class="tab active" onclick="filterDevices('all')">Tümü</div>
+                                    <div class="tab" onclick="filterDevices('physical')">Fiziksel</div>
+                                    <div class="tab" onclick="filterDevices('emulator')">Emülatör</div>
+                                </div>
+                                <div class="device-list" id="deviceList">
+                                    <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
+                                        <div style="font-size:2rem; margin-bottom:8px;">📱</div>
+                                        <div>Cihazlar yükleniyor...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- ORTA: EMÜLATÖR -->
+                    <div class="emulator-panel">
+                        <div class="connection-box" id="connectionBox">
+                            <span class="material-icons-round" style="font-size:1.5rem; color:var(--text-muted);">smartphone</span>
+                            <div style="flex:1; display:flex; flex-direction:column;">
+                                <span id="currentDeviceName" style="font-weight:600; font-size:0.9rem;">Cihaz Seçilmedi</span>
+                                <span id="deviceInfo" style="font-size:0.75rem; color:var(--text-muted);">Bağlantı bekleniyor...</span>
+                            </div>
+                            <span class="badge" id="connectionBadge" style="background:var(--bg-tertiary); padding:4px 10px; border-radius:6px; font-size:0.75rem;">Bağlı Değil</span>
+                        </div>
+                        
+                        <div class="phone-wrapper">
+                            <div class="phone-frame">
+                                <div class="phone-notch"></div>
+                                <div class="phone-screen" id="phoneScreen">
+                                    <img id="screenImage" src="" alt="" style="display:none;">
+                                    <div id="noDeviceMsg" style="color:#666; text-align:center; padding-top:200px;">
+                                        <div style="font-size:3rem; margin-bottom:12px; opacity:0.3;">📵</div>
+                                        <div style="font-size:0.85rem; opacity:0.6;">Cihaz seçin ve bağlanın</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="phone-controls">
+                            <button class="phone-btn" onclick="sendKey('recent')" title="Son Uygulamalar">
+                                <span class="material-icons-round">grid_view</span>
+                            </button>
+                            <button class="phone-btn" onclick="sendKey('home')" title="Ana Ekran">
+                                <span class="material-icons-round">trip_origin</span>
+                            </button>
+                            <button class="phone-btn" onclick="sendKey('back')" title="Geri">
+                                <span class="material-icons-round">arrow_back</span>
+                            </button>
+                            <button class="phone-btn" onclick="toggleKeyboard()" title="Klavye">
+                                <span class="material-icons-round">keyboard</span>
+                            </button>
+                        </div>
+                        
+                        <input type="text" class="form-input" id="keyboardInput" placeholder="Metin girip Enter'a basın..." 
+                               style="display:none; max-width:280px; margin-top:8px;" 
+                               onkeydown="if(event.key==='Enter'){sendText(this.value);this.value='';}">
+                    </div>
+                    
+                    <!-- SAĞ: SENARYOLAR & LOG -->
+                    <div class="right-panel">
+                        <!-- Senaryo Listesi -->
+                        <div class="card right-panel-top">
+                            <div class="card-header" style="padding:12px; background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-weight:600; font-size:0.9rem;">📲 Mobil Senaryolar</span>
+                                <button class="btn-icon" onclick="loadScenarioTree()" title="Yenile">
+                                    <span class="material-icons-round">refresh</span>
+                                </button>
+                            </div>
+                            <div class="scenario-tree" id="scenarioTree">
+                                <div style="text-align:center; padding:30px; color:var(--text-muted);">Yükleniyor...</div>
+                            </div>
+                        </div>
+
+                        <!-- Kontrol & Log -->
+                        <div class="right-panel-bottom">
+                            <div class="run-controls" style="padding:12px 0;">
+                                <button class="btn-primary" style="width:100%;" onclick="runTest()" id="btnRun">
+                                    <span class="material-icons-round">play_arrow</span> Testi Başlat
+                                </button>
+                                <button class="btn-danger" style="width:100%; display:none;" onclick="stopTest()" id="btnStop">
+                                    <span class="material-icons-round">stop</span> Durdur
+                                </button>
+                            </div>
+
+                            <div class="panel-tabs">
+                                <button class="panel-tab active" onclick="showPanel('log')">📋 Log</button>
+                                <button class="panel-tab" onclick="showPanel('editor')">✏️ Editör</button>
+                                <button class="panel-tab" onclick="showPanel('settings')">⚙️ Ayarlar</button>
+                            </div>
+
+                            <!-- LOG PANELİ -->
+                            <div class="panel-content active" id="panelLog">
+                                <div class="status-bar" style="border-bottom:1px solid var(--border-color); padding:10px 12px; display:flex; align-items:center; gap:10px;">
+                                    <span id="statusIcon" style="font-size:1.2rem;">⏸️</span>
+                                    <span id="statusTitle" style="font-weight:600; font-size:0.9rem;">Hazır</span>
+                                    <span id="statusProgress" style="margin-left:auto; font-size:0.8rem; color:var(--text-muted);"></span>
+                                </div>
+                                <div class="log-container">
+                                    <div class="log-body" id="logBody">
+                                        <div style="padding:30px; text-align:center; color:var(--text-muted);">
+                                            <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">📋</div>
+                                            <div>Loglar burada görünecek</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- EDİTÖR PANELİ -->
+                            <div class="panel-content" id="panelEditor">
+                                <div class="editor-header" style="padding:10px 12px; border-bottom:1px solid var(--border-color); display:flex; gap:8px; align-items:center;">
+                                    <input type="text" id="scenarioName" placeholder="Senaryo Adı..." class="form-input" style="flex:1;">
+                                    <button class="btn-secondary" onclick="saveScenario()" title="Kaydet" style="padding:8px 16px;">💾 Kaydet</button>
+                                </div>
+                                <div class="editor-box">
+                                    <textarea id="stepsEditor" placeholder="Test adımlarını buraya yazın...
+
+Örnek Komutlar:
+━━━━━━━━━━━━━━
+• 2 saniye bekle
+• &quot;Giriş&quot; butonuna tıkla
+• &quot;Email&quot; alanına &quot;test@test.com&quot; yaz
+• &quot;Hoş Geldiniz&quot; yazısını gör
+• Ekranı aşağı kaydır
+• Geri git
+
+Gelişmiş Komutlar:
+━━━━━━━━━━━━━━━━
+• 2. &quot;Ürün&quot; elementine tıkla (ikinci element)
+• Eğer &quot;Popup&quot; varsa tıkla
+• [opsiyonel] &quot;Reklam&quot; varsa kapat
+"></textarea>
+                                </div>
+                                
+                                <div class="help-box">
+                                    <h4>💡 İpuçları</h4>
+                                    <code>Eğer "X" varsa tıkla yoksa "Y" tıkla</code>
+                                    <code>2. "Ürün" elementine tıkla (index)</code>
+                                    <code>[opsiyonel] "Reklam" varsa kapat</code>
+                                </div>
+                            </div>
+
+                            <!-- AYARLAR PANELİ -->
+                            <div class="panel-content" id="panelSettings">
+                                <div class="settings-box" style="padding:16px; overflow-y:auto;">
+                                    <div class="form-group">
+                                        <label class="form-label">Klasör</label>
+                                        <select class="form-input" id="scenarioFolderSelect">
+                                            <option value="">Ana Dizin</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Uygulama Paketi (Package)</label>
+                                        <input type="text" class="form-input" id="appPackage" placeholder="com.example.app">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Activity (opsiyonel)</label>
+                                        <input type="text" class="form-input" id="appActivity" placeholder=".MainActivity">
+                                    </div>
+                                    <div class="form-group" style="display:flex; align-items:center; gap:10px; padding:8px 0;">
+                                        <input type="checkbox" id="restartApp" checked style="width:18px; height:18px;">
+                                        <label for="restartApp" style="font-size:0.85rem; cursor:pointer;">Uygulamayı yeniden başlat</label>
+                                    </div>
+                                    <div class="form-group" style="display:flex; align-items:center; gap:10px; padding:8px 0;">
+                                        <input type="checkbox" id="stopOnFail" checked style="width:18px; height:18px;">
+                                        <label for="stopOnFail" style="font-size:0.85rem; cursor:pointer;">Hatada durdur</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        // ========== GLOBAL STATE ==========
+        let allDevices = [];
+        let allFolders = [];
+        let allScenarios = [];
+        let currentFilter = 'all';
+        let selectedDevice = null;
+        let selectedScenarioId = null;
+        let ws = null;
+        let isConnected = false;
+        let screenWidth = 1080;
+        let screenHeight = 1920;
+        let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+
+        // ========== INIT ==========
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!Auth.checkAuth()) return;
+            UI.renderUserInfo();
+            await init();
+        });
+
+        async function init() {
+            await loadDevices();
+            await loadScenarioTree();
+            await loadFolderSelect();
+            setupTouchHandlers();
+        }
+
+        // ========== DEVICE FUNCTIONS ==========
+        async function loadDevices() {
+            try {
+                const res = await DevicesAPI.list();
+                allDevices = res.devices || [];
+                document.getElementById('deviceCount').textContent = allDevices.length;
+                renderDevices();
+            } catch (e) {
+                console.error('Device load error:', e);
+            }
+        }
+
+        function filterDevices(type) {
+            currentFilter = type;
+            document.querySelectorAll('.device-filter .tab').forEach(t => {
+                t.classList.toggle('active', 
+                    (type === 'all' && t.textContent.includes('Tümü')) ||
+                    (type === 'physical' && t.textContent.includes('Fiziksel')) ||
+                    (type === 'emulator' && t.textContent.includes('Emülatör'))
+                );
+            });
+            renderDevices();
+        }
+
+        function renderDevices() {
+            const list = document.getElementById('deviceList');
+            const filtered = currentFilter === 'all' ? allDevices : allDevices.filter(d => d.type === currentFilter);
+            
+            if (filtered.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
+                        <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">📱</div>
+                        <div style="font-size:0.85rem;">Cihaz bulunamadı</div>
+                    </div>`;
+                return;
+            }
+            
+            list.innerHTML = filtered.map(d => `
+                <div class="device-item ${selectedDevice?.id === d.id ? 'selected' : ''}" onclick="selectDevice(${d.id})">
+                    <div class="device-item-header">
+                        <span class="device-name">${d.name}</span>
+                        <span class="status-dot ${d.status === 'available' ? 'online' : 'busy'}"></span>
+                    </div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between;">
+                        <span>${d.device_id}</span>
+                        <span style="text-transform:uppercase; font-size:0.7rem;">${d.type}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function selectDevice(id) {
+            const d = allDevices.find(x => x.id === id);
+            if (!d) return;
+            
+            // Cihazı kilitle
+            if (d.status === 'available') {
+                try {
+                    await DevicesAPI.lock(id);
+                } catch (e) {
+                    Toast.error(e.message);
+                    return;
+                }
+            }
+            
+            selectedDevice = d;
+            renderDevices();
+            connectWebSocket(d.device_id);
+            
+            document.getElementById('currentDeviceName').textContent = d.name;
+            document.getElementById('deviceInfo').textContent = d.device_id;
+            document.getElementById('connectionBadge').textContent = 'Bağlanıyor...';
+            document.getElementById('connectionBadge').style.background = 'var(--warning)';
+            document.getElementById('connectionBadge').style.color = 'white';
+        }
+
+        // ========== WEBSOCKET ==========
+        function connectWebSocket(deviceId) {
+            if (ws) ws.close();
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//localhost:8000/api/emulator/${deviceId.trim()}/stream`);
+            
+            ws.onopen = () => {
+                isConnected = true;
+                document.getElementById('noDeviceMsg').style.display = 'none';
+                document.getElementById('screenImage').style.display = 'block';
+                document.getElementById('connectionBadge').textContent = 'Bağlı';
+                document.getElementById('connectionBadge').style.background = 'var(--success)';
+                document.getElementById('connectionBox').classList.add('connected');
+                Toast.success('Cihaza bağlandı');
+            };
+            
+            ws.onmessage = (e) => {
+                const d = JSON.parse(e.data);
+                if (d.type === 'init') {
+                    screenWidth = d.width;
+                    screenHeight = d.height;
+                } else if (d.type === 'frame' && d.image) {
+                    document.getElementById('screenImage').src = 'data:image/jpeg;base64,' + d.image;
+                } else if (d.type === 'state') {
+                    updateTestState(d.test_state);
+                }
+            };
+            
+            ws.onclose = () => {
+                isConnected = false;
+                document.getElementById('connectionBadge').textContent = 'Bağlı Değil';
+                document.getElementById('connectionBadge').style.background = 'var(--bg-tertiary)';
+                document.getElementById('connectionBadge').style.color = 'var(--text-secondary)';
+                document.getElementById('connectionBox').classList.remove('connected');
+            };
+            
+            ws.onerror = () => Toast.error('Bağlantı hatası');
+        }
+
+        // ========== SCENARIO TREE (SADECE MOBİL) ==========
+        async function loadScenarioTree() {
+            try {
+                // Sadece MOBİL senaryoları çek
+                const foldersRes = await API.get('/scenarios/folders');
+                const scenariosRes = await API.get('/scenarios?type=mobile');
+                
+                allFolders = foldersRes || [];
+                allScenarios = scenariosRes.scenarios || [];
+                
+                const treeContainer = document.getElementById('scenarioTree');
+                const html = buildTreeHTML(allFolders, allScenarios, null);
+                
+                if (html) {
+                    treeContainer.innerHTML = html;
+                } else {
+                    treeContainer.innerHTML = `
+                        <div style="text-align:center; padding:30px; color:var(--text-muted);">
+                            <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">📲</div>
+                            <div style="font-size:0.85rem;">Mobil senaryo yok</div>
+                            <a href="scenarios.html" style="color:var(--accent-primary); font-size:0.8rem;">+ Yeni Oluştur</a>
+                        </div>`;
+                }
+            } catch (e) {
+                console.error('Scenario load error:', e);
+            }
+        }
+
+        function buildTreeHTML(folders, scenarios, parentId) {
+            let html = '';
+            
+            const currentFolders = folders.filter(f => f.parent_id === parentId);
+            const currentScenarios = scenarios.filter(s => s.folder_id === parentId);
+            
+            currentFolders.forEach(folder => {
+                const childrenHtml = buildTreeHTML(folders, scenarios, folder.id);
+                
+                if (childrenHtml) {
+                    html += `
+                        <div class="tree-folder">
+                            <div class="tree-folder-header" onclick="toggleFolder(this)">
+                                <span class="folder-icon material-icons-round" style="font-size:1rem;">chevron_right</span>
+                                <span class="material-icons-round" style="font-size:1rem; color:#F59E0B;">folder</span>
+                                <span style="flex:1;">${folder.name}</span>
+                            </div>
+                            <div class="tree-folder-content">${childrenHtml}</div>
+                        </div>`;
+                }
+            });
+            
+            currentScenarios.forEach(s => {
+                const isActive = selectedScenarioId === s.id ? 'active' : '';
+                html += `
+                    <div class="tree-item ${isActive}" onclick="selectScenario(${s.id})">
+                        <span class="material-icons-round item-icon" style="color:#8B5CF6;">smartphone</span>
+                        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.name}</span>
+                    </div>`;
+            });
+            
+            return html;
+        }
+
+        function toggleFolder(el) {
+            el.parentElement.classList.toggle('open');
+        }
+
+        // ========== SCENARIO SELECT ==========
+        async function selectScenario(id) {
+            try {
+                const s = await ScenariosAPI.get(id);
+                selectedScenarioId = s.id;
+                
+                document.getElementById('scenarioName').value = s.name;
+                document.getElementById('stepsEditor').value = s.natural_steps || '';
+                document.getElementById('scenarioFolderSelect').value = s.folder_id || "";
+                
+                if (s.config_json) {
+                    try {
+                        const c = JSON.parse(s.config_json);
+                        document.getElementById('appPackage').value = c.app_package || c.appPackage || '';
+                        document.getElementById('appActivity').value = c.app_activity || c.appActivity || '';
+                    } catch (e) {}
+                }
+                
+                renderInitialLogs(s.natural_steps || '');
+                loadScenarioTree();
+                showPanel('editor');
+                
+                Toast.success(`"${s.name}" seçildi`);
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        // ========== SAVE SCENARIO ==========
+        async function saveScenario() {
+            const name = document.getElementById('scenarioName').value.trim();
+            const steps = document.getElementById('stepsEditor').value;
+            
+            if (!name) {
+                Toast.error('Senaryo adı gerekli');
+                return;
+            }
+            
+            const folderVal = document.getElementById('scenarioFolderSelect').value;
+            const config = {
+                app_package: document.getElementById('appPackage').value,
+                app_activity: document.getElementById('appActivity').value,
+                restart_app: document.getElementById('restartApp').checked
+            };
+
+            const data = {
+                name,
+                type: 'mobile',
+                natural_steps: steps,
+                folder_id: folderVal ? parseInt(folderVal) : null,
+                config_json: JSON.stringify(config)
+            };
+
+            try {
+                if (selectedScenarioId) {
+                    await ScenariosAPI.update(selectedScenarioId, data);
+                    Toast.success('Güncellendi');
+                } else {
+                    const res = await ScenariosAPI.create(data);
+                    selectedScenarioId = res.id;
+                    Toast.success('Oluşturuldu');
+                }
+                loadScenarioTree();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        // ========== RUN TEST ==========
+        async function runTest() {
+            if (!selectedDevice) {
+                Toast.error('Önce bir cihaz seçin');
+                return;
+            }
+            
+            const steps = document.getElementById('stepsEditor').value;
+            if (!steps.trim()) {
+                Toast.error('Test adımları boş');
+                return;
+            }
+            
+            renderInitialLogs(steps);
+            showPanel('log');
+            
+            document.getElementById('btnRun').style.display = 'none';
+            document.getElementById('btnStop').style.display = 'flex';
+            document.getElementById('statusIcon').textContent = '▶️';
+            document.getElementById('statusTitle').textContent = 'Test Çalışıyor...';
+            
+            const payload = {
+                device_id: String(selectedDevice.id),
+                app_package: document.getElementById('appPackage').value || "",
+                app_activity: document.getElementById('appActivity').value || "",
+                input_type: 'natural',
+                natural_text: steps,
+                stop_on_fail: document.getElementById('stopOnFail').checked,
+                restart_app: document.getElementById('restartApp').checked,
+                steps: []
+            };
+            
+            try {
+                await API.post(`/mobile/run-test?restart_app=${payload.restart_app}`, payload);
+            } catch (e) {
+                Toast.error(e.message);
+                document.getElementById('btnRun').style.display = 'flex';
+                document.getElementById('btnStop').style.display = 'none';
+            }
+        }
+
+        async function stopTest() {
+            if (selectedDevice) {
+                await API.post(`/emulator/${selectedDevice.device_id}/test/stop`);
+                Toast.info('Test durduruldu');
+            }
+            document.getElementById('btnRun').style.display = 'flex';
+            document.getElementById('btnStop').style.display = 'none';
+        }
+
+        // ========== LOGS ==========
+        function renderInitialLogs(text) {
+            const lines = text.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+            const body = document.getElementById('logBody');
+            
+            if (lines.length === 0) {
+                body.innerHTML = '<div style="padding:30px; text-align:center; color:var(--text-muted);">Adım yok</div>';
+                return;
+            }
+            
+            body.innerHTML = lines.map((line, i) => {
+                const cleanLine = line.replace(/^\d+[\.\)\-]\s*/, '').trim();
+                return `
+                    <div class="log-item" id="step-${i+1}">
+                        <div class="log-step">${i+1}</div>
+                        <div style="flex:1;">
+                            <div style="font-size:0.85rem;">${cleanLine}</div>
+                            <div class="log-msg" id="msg-${i+1}" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Bekliyor...</div>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function updateTestState(state) {
+            const statusIcon = document.getElementById('statusIcon');
+            const statusTitle = document.getElementById('statusTitle');
+            const statusProgress = document.getElementById('statusProgress');
+            
+            if (state.state === 'running') {
+                statusIcon.textContent = '▶️';
+                statusTitle.textContent = 'Çalışıyor...';
+                document.getElementById('btnRun').style.display = 'none';
+                document.getElementById('btnStop').style.display = 'flex';
+            } else if (state.state === 'success') {
+                statusIcon.textContent = '✅';
+                statusTitle.textContent = 'Başarılı';
+                document.getElementById('btnRun').style.display = 'flex';
+                document.getElementById('btnStop').style.display = 'none';
+            } else if (state.state === 'failed') {
+                statusIcon.textContent = '❌';
+                statusTitle.textContent = 'Başarısız';
+                document.getElementById('btnRun').style.display = 'flex';
+                document.getElementById('btnStop').style.display = 'none';
+            } else if (state.state === 'stopped') {
+                statusIcon.textContent = '⏹️';
+                statusTitle.textContent = 'Durduruldu';
+                document.getElementById('btnRun').style.display = 'flex';
+                document.getElementById('btnStop').style.display = 'none';
+            }
+            
+            if (state.total_steps > 0) {
+                statusProgress.textContent = `${state.current_step} / ${state.total_steps}`;
+            }
+            
+            // Log güncellemeleri
+            if (state.logs) {
+                state.logs.forEach(log => {
+                    const el = document.getElementById(`step-${log.step}`);
+                    const msg = document.getElementById(`msg-${log.step}`);
+                    
+                    if (el) {
+                        el.className = `log-item ${log.status}`;
+                        if (msg) msg.textContent = log.message || log.status;
+                        
+                        if (log.status === 'running') {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }
+                });
+            }
+        }
+
+        // ========== HELPERS ==========
+        function showPanel(name) {
+            document.querySelectorAll('.panel-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.panel-tab').forEach(el => el.classList.remove('active'));
+            
+            const panel = document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1));
+            if (panel) panel.classList.add('active');
+            
+            const tabs = document.querySelectorAll('.panel-tab');
+            if (name === 'log') tabs[0].classList.add('active');
+            if (name === 'editor') tabs[1].classList.add('active');
+            if (name === 'settings') tabs[2].classList.add('active');
+        }
+
+        async function loadFolderSelect() {
+            try {
+                const folders = await API.get('/scenarios/folders');
+                const select = document.getElementById('scenarioFolderSelect');
+                select.innerHTML = '<option value="">Ana Dizin</option>' + flattenFolders(folders);
+            } catch (e) {}
+        }
+
+        function flattenFolders(nodes, prefix = '') {
+            let html = '';
+            nodes.forEach(f => {
+                html += `<option value="${f.id}">${prefix}📂 ${f.name}</option>`;
+                if (f.children) html += flattenFolders(f.children, prefix + '&nbsp;&nbsp;');
+            });
+            return html;
+        }
+
+        function setupTouchHandlers() {
+            const screen = document.getElementById('phoneScreen');
+            
+            screen.addEventListener('mousedown', (e) => {
+                if (!isConnected) return;
+                const rect = screen.getBoundingClientRect();
+                touchStartX = e.clientX - rect.left;
+                touchStartY = e.clientY - rect.top;
+                touchStartTime = Date.now();
+            });
+            
+            screen.addEventListener('mouseup', (e) => {
+                if (!isConnected || touchStartTime === 0) return;
+                const rect = screen.getBoundingClientRect();
+                const endX = e.clientX - rect.left;
+                const endY = e.clientY - rect.top;
+                
+                const scaleX = screenWidth / rect.width;
+                const scaleY = screenHeight / rect.height;
+                
+                const realX = Math.round(touchStartX * scaleX);
+                const realY = Math.round(touchStartY * scaleY);
+                const realEndX = Math.round(endX * scaleX);
+                const realEndY = Math.round(endY * scaleY);
+                
+                const dist = Math.sqrt(Math.pow(endX - touchStartX, 2) + Math.pow(endY - touchStartY, 2));
+                
+                if (dist < 10) {
+                    if (ws) ws.send(JSON.stringify({ type: 'tap', x: realX, y: realY }));
+                } else {
+                    if (ws) ws.send(JSON.stringify({ type: 'swipe', x1: realX, y1: realY, x2: realEndX, y2: realEndY }));
+                }
+                
+                touchStartTime = 0;
+            });
+        }
+
+        function sendKey(key) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: key }));
+            }
+        }
+
+        function sendText(text) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'text', text }));
+            }
+        }
+
+        function toggleKeyboard() {
+            const input = document.getElementById('keyboardInput');
+            input.style.display = input.style.display === 'none' ? 'block' : 'none';
+            if (input.style.display === 'block') input.focus();
+        }
+    </script>
+</body>
+</html>

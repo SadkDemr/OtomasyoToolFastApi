@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cihazlar - Test Otomasyon Platformu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .device-card-actions { display: flex; gap: 8px; margin-top: 12px; }
+        .btn-open-emulator {
+            flex: 1;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: white;
+            border: none;
+        }
+        .btn-open-emulator:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .adb-status {
+            display: flex; align-items: center; gap: 8px;
+            padding: 12px 16px; background: var(--bg-tertiary);
+            border-radius: var(--radius-md); margin-bottom: 16px;
+        }
+        .adb-status.connected { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .adb-status.disconnected { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">🧪</div>
+                    <span>Test Platform</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">Ana Menü</div>
+                    <a href="index.html" class="nav-item">
+                        <span class="nav-item-icon">📊</span>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="devices.html" class="nav-item active">
+                        <span class="nav-item-icon">📱</span>
+                        <span>Cihazlar</span>
+                    </a>
+                    <a href="emulator.html" class="nav-item">
+                        <span class="nav-item-icon">🖥️</span>
+                        <span>Emülatör Kontrol</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section" id="adminSection" style="display: none;">
+                    <div class="nav-section-title">Yönetim</div>
+                    <a href="#" class="nav-item" onclick="showAddDeviceModal(); return false;">
+                        <span class="nav-item-icon">➕</span>
+                        <span>Cihaz Ekle</span>
+                    </a>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">?</div>
+                    <div class="user-details">
+                        <div class="user-name">Yükleniyor...</div>
+                        <div class="user-role">-</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left">
+                    <h1 class="page-title">Cihazlar</h1>
+                </div>
+                <div class="header-right">
+                    <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+                    <div class="tabs">
+                        <button class="tab active" onclick="filterDevices('all')">Tümü</button>
+                        <button class="tab" onclick="filterDevices('emulator')">Emülatör</button>
+                        <button class="tab" onclick="filterDevices('physical')">Fiziksel</button>
+                    </div>
+                </div>
+            </header>
+            
+            <div class="page-content">
+                <div class="adb-status disconnected" id="adbStatus">
+                    <span>🔌</span>
+                    <span id="adbStatusText">ADB durumu kontrol ediliyor...</span>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-title">Toplam Cihaz</span>
+                            <div class="stat-card-icon" style="background: rgba(79, 70, 229, 0.1); color: var(--accent-primary);">📱</div>
+                        </div>
+                        <div class="stat-card-value" id="statTotal">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-title">Müsait</span>
+                            <div class="stat-card-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">✅</div>
+                        </div>
+                        <div class="stat-card-value" id="statAvailable">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <span class="stat-card-title">ADB Bağlı</span>
+                            <div class="stat-card-icon" style="background: rgba(59, 130, 246, 0.1); color: var(--info);">🔗</div>
+                        </div>
+                        <div class="stat-card-value" id="statAdbConnected">0</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Cihaz Listesi</h2>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-ghost btn-sm" onclick="loadDevices()">🔄 Yenile</button>
+                            <a href="emulator.html" class="btn btn-primary btn-sm">🖥️ Emülatör Kontrol</a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="device-grid" id="deviceGrid"></div>
+                        <div class="empty-state" id="emptyState" style="display: none;">
+                            <div class="empty-state-icon">📱</div>
+                            <h3 class="empty-state-title">Henüz cihaz yok</h3>
+                            <p class="empty-state-description">Admin panelinden cihaz ekleyebilirsiniz</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <div class="modal-overlay" id="addDeviceModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">➕ Yeni Cihaz Ekle</h3>
+                <button class="modal-close" onclick="Modal.hide('addDeviceModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="addDeviceForm">
+                    <div class="form-group">
+                        <label class="form-label">Cihaz Adı *</label>
+                        <input type="text" class="form-input" id="deviceName" placeholder="Samsung Galaxy S21" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cihaz ID *</label>
+                        <input type="text" class="form-input" id="deviceId" placeholder="emulator-5554" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tür *</label>
+                        <select class="form-input form-select" id="deviceType" required>
+                            <option value="emulator">Emülatör</option>
+                            <option value="physical">Fiziksel Cihaz</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">İşletim Sistemi *</label>
+                        <select class="form-input form-select" id="deviceOS" required>
+                            <option value="android">Android</option>
+                            <option value="ios">iOS</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">OS Versiyon</label>
+                        <input type="text" class="form-input" id="deviceOSVersion" placeholder="14.0">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Modal.hide('addDeviceModal')">İptal</button>
+                <button class="btn btn-primary" onclick="addDevice()">Ekle</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/app.js"></script>
+    <script>
+        if (!Auth.checkAuth()) {}
+        
+        let allDevices = [];
+        let adbDevices = [];
+        let currentFilter = 'all';
+        
+        async function init() {
+            UI.renderUserInfo();
+            const user = Auth.getUser();
+            if (user && user.role === 'admin') {
+                document.getElementById('adminSection').style.display = 'block';
+            }
+            await checkAdbStatus();
+            await loadDevices();
+        }
+        
+        async function checkAdbStatus() {
+            try {
+                const status = await API.get('/emulator/status');
+                const statusEl = document.getElementById('adbStatus');
+                const textEl = document.getElementById('adbStatusText');
+                
+                if (status.adb_available) {
+                    statusEl.classList.remove('disconnected');
+                    statusEl.classList.add('connected');
+                    textEl.textContent = `ADB bağlı - ${status.connected_devices.length} cihaz bulundu`;
+                    adbDevices = status.connected_devices;
+                    document.getElementById('statAdbConnected').textContent = status.connected_devices.length;
+                } else {
+                    statusEl.classList.remove('connected');
+                    statusEl.classList.add('disconnected');
+                    textEl.textContent = 'ADB bulunamadı';
+                }
+            } catch (error) {
+                console.error('ADB status error:', error);
+            }
+        }
+        
+        async function loadDevices() {
+            try {
+                const data = await DevicesAPI.list();
+                allDevices = data.devices;
+                document.getElementById('statTotal').textContent = data.total;
+                document.getElementById('statAvailable').textContent = data.available;
+                renderDevices();
+            } catch (error) {
+                Toast.error('Cihazlar yüklenemedi');
+            }
+        }
+        
+        function filterDevices(type) {
+            currentFilter = type;
+            document.querySelectorAll('.tabs .tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            renderDevices();
+        }
+        
+        function renderDevices() {
+            const grid = document.getElementById('deviceGrid');
+            const empty = document.getElementById('emptyState');
+            
+            let devices = allDevices;
+            if (currentFilter !== 'all') {
+                devices = allDevices.filter(d => d.type === currentFilter);
+            }
+            
+            if (devices.length === 0) {
+                grid.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
+            
+            grid.style.display = 'grid';
+            empty.style.display = 'none';
+            
+            const user = Auth.getUser();
+            
+            grid.innerHTML = devices.map(device => {
+                const isMyDevice = device.current_user_id === user?.id;
+                const isAdbConnected = adbDevices.some(d => d.device_id === device.device_id);
+                
+                return `
+                    <div class="device-card ${device.status}">
+                        <div class="device-header">
+                            <div class="device-icon">${device.os === 'android' ? '🤖' : '🍎'}</div>
+                            <div class="device-info">
+                                <div class="device-name">${device.name}</div>
+                                <div class="device-os">${device.os} ${device.os_version || ''}</div>
+                            </div>
+                            <span class="badge badge-${device.type === 'emulator' ? 'info' : 'primary'}">
+                                ${device.type === 'emulator' ? 'EMU' : 'FİZİK'}
+                            </span>
+                        </div>
+                        
+                        <div class="device-status">
+                            <span class="status-dot ${device.status === 'available' ? 'online' : device.status === 'in_use' ? 'busy' : 'offline'}"></span>
+                            ${device.status === 'available' ? 'Müsait' : 
+                              device.status === 'in_use' ? `<span class="device-user">${device.current_user_name || 'Biri'} kullanıyor</span>` :
+                              'Çevrimdışı'}
+                            ${isAdbConnected ? '<span style="margin-left: 8px; color: var(--success);">🔗 ADB</span>' : ''}
+                        </div>
+                        
+                        <div class="device-card-actions">
+                            ${device.status === 'available' ? `
+                                <button class="btn btn-success btn-sm" style="flex: 1;" onclick="lockDevice(${device.id})">🔒 Kullan</button>
+                            ` : isMyDevice ? `
+                                <button class="btn btn-danger btn-sm" onclick="unlockDevice(${device.id})">🔓 Bırak</button>
+                            ` : `
+                                <button class="btn btn-secondary btn-sm" style="flex: 1;" disabled>Kullanılamaz</button>
+                            `}
+                            
+                            ${isAdbConnected && device.type === 'emulator' ? `
+                                <a href="emulator.html?device=${device.device_id}" class="btn btn-open-emulator btn-sm">🖥️ Aç</a>
+                            ` : ''}
+                            
+                            ${user?.role === 'admin' ? `
+                                <button class="btn btn-ghost btn-sm btn-icon" onclick="deleteDevice(${device.id})" title="Sil">🗑️</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        async function lockDevice(id) {
+            try {
+                const result = await DevicesAPI.lock(id);
+                if (result.success) { Toast.success('Cihaz kilitlendi'); await loadDevices(); }
+                else Toast.error(result.message);
+            } catch (error) { Toast.error(error.message); }
+        }
+        
+        async function unlockDevice(id) {
+            try {
+                const result = await DevicesAPI.unlock(id);
+                if (result.success) { Toast.success('Cihaz serbest bırakıldı'); await loadDevices(); }
+                else Toast.error(result.message);
+            } catch (error) { Toast.error(error.message); }
+        }
+        
+        function showAddDeviceModal() {
+            document.getElementById('addDeviceForm').reset();
+            Modal.show('addDeviceModal');
+        }
+        
+        async function addDevice() {
+            const data = {
+                name: document.getElementById('deviceName').value,
+                device_id: document.getElementById('deviceId').value,
+                type: document.getElementById('deviceType').value,
+                os: document.getElementById('deviceOS').value,
+                os_version: document.getElementById('deviceOSVersion').value
+            };
+            
+            if (!data.name || !data.device_id) { Toast.error('Cihaz adı ve ID gerekli'); return; }
+            
+            try {
+                await DevicesAPI.create(data);
+                Toast.success('Cihaz eklendi');
+                Modal.hide('addDeviceModal');
+                await loadDevices();
+            } catch (error) { Toast.error(error.message); }
+        }
+        
+        async function deleteDevice(id) {
+            if (!confirm('Bu cihazı silmek istediğinize emin misiniz?')) return;
+            try {
+                await DevicesAPI.delete(id);
+                Toast.success('Cihaz silindi');
+                await loadDevices();
+            } catch (error) { Toast.error(error.message); }
+        }
+        
+        init();
+    </script>
+</body>
+</html>
