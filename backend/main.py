@@ -28,6 +28,9 @@ from routers.web import router as web_router
 from routers.mobile import router as mobile_router
 from routers.emulator import router as emulator_router
 from routers.jobs import router as jobs_router
+# Git Integration
+from routers.admin_repositories_router import router as admin_repos_router
+from routers.workspace_router import router as workspace_router
 
 app = FastAPI(title="Test Otomasyon Platformu API", version="2.1.0")
 
@@ -46,6 +49,9 @@ app.include_router(web_router)
 app.include_router(mobile_router)
 app.include_router(emulator_router)
 app.include_router(jobs_router)
+# Git Integration
+app.include_router(admin_repos_router, prefix="/api")
+app.include_router(workspace_router, prefix="/api")
 
 web_ui = os.path.join(BASE_DIR, "WebArayuz")
 if os.path.exists(web_ui):

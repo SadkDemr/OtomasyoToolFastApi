@@ -1,5 +1,5 @@
 """
-Database Models - FINAL FIXED VERSION
+Database Models - FINAL FIXED VERSION + GIT INTEGRATION
 """
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship, backref
@@ -30,6 +30,10 @@ class User(Base):
     # Iliskiler
     device_sessions = relationship("DeviceSession", back_populates="user")
     test_results = relationship("TestResult", back_populates="user")
+    
+    # Git integration ilişkileri
+    created_repositories = relationship("Repository", back_populates="creator")
+    workspaces = relationship("UserWorkspace", back_populates="user")
 
 # --- KLASOR YAPISI (AGAC) ---
 class Folder(Base):
@@ -179,3 +183,64 @@ class DeviceSession(Base):
     
     user = relationship("User", back_populates="device_sessions")
     device = relationship("Device", back_populates="sessions")
+
+
+# ========================================================================
+# GIT INTEGRATION MODELS
+# ========================================================================
+
+class Repository(Base):
+    """
+    Admin tarafından eklenen Git repository'ler (Azure Repos / GitHub).
+    Örn: Mobil iOS, Mobil Android, Web, Desktop, API
+    """
+    __tablename__ = "repositories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, unique=True)
+    repo_url = Column(String(500), nullable=False)
+    repo_type = Column(String(50), nullable=False)  # mobile-ios, mobile-android, web, desktop, api
+    description = Column(Text, nullable=True)
+    
+    # Git credentials (optional - admin sağlar)
+    git_username = Column(String(100), nullable=True)
+    git_token = Column(String(500), nullable=True)  # ⚠️ Production'da encrypt et!
+    
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # İlişkiler
+    creator = relationship("User", back_populates="created_repositories")
+    workspaces = relationship("UserWorkspace", back_populates="repository", cascade="all, delete-orphan")
+
+
+class UserWorkspace(Base):
+    """
+    Kullanıcının clone'ladığı repository'ler (workspace).
+    Her kullanıcı kendi branch'inde çalışır: user-{username}
+    """
+    __tablename__ = "user_workspaces"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    repository_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
+    
+    # Lokal path: /workspaces/{user_id}/{repo_name}/
+    local_path = Column(String(500), nullable=False)
+    
+    # Branch bilgisi: user-{username}
+    branch_name = Column(String(100), nullable=False)
+    
+    # Durum
+    is_cloned = Column(Boolean, default=False)
+    has_changes = Column(Boolean, default=False)  # git status --porcelain sonucu
+    
+    # Timestamps
+    cloned_at = Column(DateTime, nullable=True)
+    last_pulled = Column(DateTime, nullable=True)
+    last_pushed = Column(DateTime, nullable=True)
+    
+    # İlişkiler
+    user = relationship("User", back_populates="workspaces")
+    repository = relationship("Repository", back_populates="workspaces")

@@ -276,3 +276,110 @@ class DashboardStats(BaseModel):
     total_jobs: int = 0
     success_rate: float = 0
     recent_jobs: List[JobResponse] = []
+
+
+# ========================================================================
+# GIT INTEGRATION SCHEMAS
+# ========================================================================
+
+# ========== REPOSITORIES (Admin) ==========
+
+class RepositoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, description="Örn: Mobil iOS Testleri")
+    repo_url: str = Field(..., description="Azure Repos / GitHub URL")
+    repo_type: str = Field(..., description="mobile-ios | mobile-android | web | desktop | api")
+    description: Optional[str] = Field(default="", max_length=500)
+    git_username: Optional[str] = None
+    git_token: Optional[str] = None
+
+
+class RepositoryUpdate(BaseModel):
+    name: Optional[str] = None
+    repo_url: Optional[str] = None
+    description: Optional[str] = None
+    git_username: Optional[str] = None
+    git_token: Optional[str] = None
+
+
+class RepositoryResponse(BaseModel):
+    id: int
+    name: str
+    repo_url: str
+    repo_type: str
+    description: str
+    created_by: int
+    created_at: datetime
+    workspace_count: int = 0  # Kaç kullanıcı clone'ladı
+    
+    class Config:
+        from_attributes = True
+
+
+class RepositoryListResponse(BaseModel):
+    repositories: List[RepositoryResponse]
+
+
+# ========== WORKSPACES (User) ==========
+
+class CloneRequest(BaseModel):
+    repository_id: int = Field(..., description="Clone edilecek repository ID")
+
+
+class CommitRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=200, description="Commit mesajı")
+
+
+class WorkspaceResponse(BaseModel):
+    id: int
+    repository_id: int
+    repository_name: str
+    repository_type: str
+    branch_name: str
+    is_cloned: bool
+    has_changes: bool
+    cloned_at: Optional[datetime]
+    last_pulled: Optional[datetime]
+    last_pushed: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceListResponse(BaseModel):
+    workspaces: List[WorkspaceResponse]
+
+
+class CatalogItemResponse(BaseModel):
+    id: int
+    name: str
+    repo_url: str
+    repo_type: str
+    description: str
+    is_cloned_by_me: bool
+    my_workspace_id: Optional[int]
+    my_branch: Optional[str]
+    has_changes: bool
+
+
+class CatalogResponse(BaseModel):
+    catalog: List[CatalogItemResponse]
+
+
+class GitStatusResponse(BaseModel):
+    is_cloned: bool
+    branch: Optional[str]
+    has_changes: bool = False
+    changed_files: List[str] = []
+    untracked_files: List[str] = []
+    total_changes: int = 0
+    message: Optional[str] = None
+
+
+class PullResponse(BaseModel):
+    success: bool
+    message: str
+    has_conflicts: bool
+
+
+class CommitHistoryResponse(BaseModel):
+    commits: List[Dict[str, str]]  # hash, author, date, message

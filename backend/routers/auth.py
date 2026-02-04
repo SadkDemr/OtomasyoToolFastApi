@@ -3,7 +3,6 @@ Auth Router - /api/auth/*
 Login, Register, Token Dogrulama
 FIXED: 'is_active' kontrolü kaldırıldı (DB yapısına uygun hale getirildi)
 """
-
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -57,6 +56,24 @@ async def get_current_user_optional(
     
     token = credentials.credentials
     return auth_service.get_current_user(db, token)
+
+
+async def require_admin(
+    current_user = Depends(get_current_user)
+):
+    """
+    Admin kontrolü - role='admin' olmalı.
+    
+    Raises:
+        HTTPException 403: Kullanıcı admin değilse
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403, 
+            detail="Bu işlem için admin yetkisi gerekli"
+        )
+    
+    return current_user
 
 
 # ============ ENDPOINTS ============

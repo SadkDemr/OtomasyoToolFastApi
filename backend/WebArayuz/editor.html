@@ -3,9 +3,267 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Senaryo Editoru - Test Otomasyon Platformu</title>
+    <title>Senaryo Editörü - Test Otomasyon Platformu</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .editor-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr 350px;
+            gap: 16px;
+            height: calc(100vh - 200px);
+        }
+        
+        .file-tree-panel {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+        
+        .file-tree-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .file-tree-item {
+            padding: 8px 12px;
+            margin: 2px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        
+        .file-tree-item:hover {
+            background: var(--hover-bg);
+        }
+        
+        .file-tree-item.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .file-tree-folder {
+            font-weight: 600;
+            color: var(--text-primary);
+            cursor: default;
+            padding: 8px 12px;
+            margin: 8px 0 4px 0;
+        }
+        
+        .file-tree-folder-children {
+            margin-left: 16px;
+        }
+        
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+        }
+        
+        .steps-editor {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+            background: var(--card-bg);
+            border-radius: 12px;
+        }
+        
+        .step-item {
+            background: var(--hover-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        
+        .step-number {
+            background: var(--primary-color);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .add-step-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .add-step-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .file-tree-panel {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+        
+        .file-tree-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .file-tree-item {
+            padding: 8px 12px;
+            margin: 2px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        
+        .file-tree-item:hover {
+            background: var(--hover-bg);
+        }
+        
+        .file-tree-item.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .file-tree-folder {
+            font-weight: 600;
+            color: var(--text-primary);
+            cursor: default;
+            padding: 8px 12px;
+            margin: 8px 0 4px 0;
+            font-size: 0.9rem;
+        }
+        
+        .file-tree-folder-children {
+            margin-left: 0;
+        }
+        
+        .sidebar-panel {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            background: var(--bg-color);
+            color: var(--text-primary);
+        }
+        
+        .action-list {
+            display: grid;
+            gap: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .action-btn {
+            padding: 10px;
+            background: var(--hover-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+        
+        .action-btn:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .git-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        
+        .status-saved {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-unsaved {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .context-menu-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        
+        .context-menu-item:hover {
+            background: var(--hover-bg);
+        }
+        
+        .context-menu-item:first-child {
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .context-menu-item:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -17,7 +275,12 @@
                 <div class="nav-section">
                     <div class="nav-section-title">Ana Menu</div>
                     <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
-                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+                    <a href="workspace.html" class="nav-item"><span class="nav-item-icon">💼</span><span>Projeler</span></a>
+                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
+                </div>
+                <div class="nav-section" id="adminSection" style="display:none;">
+                    <div class="nav-section-title">Admin</div>
+                    <a href="admin-repos.html" class="nav-item"><span class="nav-item-icon">🔧</span><span>Repository Yönetimi</span></a>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Test Turleri</div>
@@ -37,272 +300,1085 @@
         <main class="main-content">
             <header class="header">
                 <div class="header-left">
-                    <a href="scenarios.html" class="btn btn-ghost btn-sm">← Geri</a>
-                    <h1 class="page-title" id="pageTitle">Yeni Senaryo</h1>
+                    <a href="workspace.html" class="btn btn-ghost btn-sm">← Projeler</a>
+                    <h1 class="page-title" id="pageTitle">📝 Senaryo Editörü</h1>
+                    <span id="saveStatus" class="status-badge status-saved">Kaydedildi</span>
                 </div>
                 <div class="header-right">
+                    <select id="langSelect" class="form-control" style="width:auto; margin-right:12px;" onchange="switchLanguage()">
+                        <option value="tr">🇹🇷 Türkçe</option>
+                        <option value="en">🇬🇧 English</option>
+                    </select>
                     <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
-                    <button class="btn btn-secondary" onclick="parseSteps()">🔍 Kontrol Et</button>
-                    <button class="btn btn-primary" onclick="saveScenario()">💾 Kaydet</button>
+                    <button class="btn btn-secondary" onclick="pullChanges()">⬇️ Pull</button>
+                    <button class="btn btn-success" onclick="openCommitModal()">📤 Push</button>
+                    <button class="btn btn-ghost" onclick="exportCode()">☕ Export Java</button>
                 </div>
             </header>
             
             <div class="page-content">
                 <div class="editor-layout">
-                    <div class="editor-main">
-                        <div class="editor-toolbar">
-                            <span style="font-weight: 600;">✏️ Test Adimlari</span>
-                            <button class="btn btn-ghost btn-sm" onclick="Modal.show('helpModal')">❓ Yardim</button>
+                    <!-- File Tree -->
+                    <div class="file-tree-panel">
+                        <div class="file-tree-header">
+                            <h3 style="margin:0; font-size:1rem;">📁 Dosyalar</h3>
+                            <div style="display:flex; gap:4px;">
+                                <button class="btn btn-ghost btn-sm" onclick="openNewFileModal()" title="Yeni Senaryo">📄+</button>
+                                <button class="btn btn-ghost btn-sm" onclick="openNewFolderModal()" title="Yeni Klasör">📁+</button>
+                                <button class="btn btn-ghost btn-sm" onclick="loadFileTree()" title="Yenile">🔄</button>
+                            </div>
                         </div>
-                        <div class="editor-content">
-                            <textarea class="code-editor" id="stepsEditor" placeholder="Test adimlarinizi Turkce yazin...
-
-Ornek:
-1. 2 saniye beklenir
-2. &quot;Giris Yap&quot; butonuna tiklanir
-3. &quot;Email&quot; alanina test@test.com yazilir
-4. &quot;Sifre&quot; alanina 123456 yazilir
-5. &quot;Gonder&quot; butonuna tiklanir
-6. &quot;Hos geldiniz&quot; yazisi gorulur"></textarea>
+                        <div id="fileTree">
+                            <p style="text-align:center; color:var(--text-muted); padding:20px;">Yükleniyor...</p>
                         </div>
                     </div>
                     
-                    <div class="editor-sidebar">
-                        <div class="settings-card">
-                            <div class="settings-card-header">📝 Senaryo Bilgileri</div>
-                            <div class="settings-card-body">
-                                <div class="form-group">
-                                    <label class="form-label">Senaryo Adi *</label>
-                                    <input type="text" class="form-input" id="scenarioName" placeholder="Ornek: Login Testi">
+                    <!-- Editor -->
+                    <div class="editor-container">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title" id="scenarioName">Dosya seçin</h2>
+                            </div>
+                            <div class="card-body" style="padding:0;">
+                                <div class="steps-editor" id="stepsContainer">
+                                    <p style="text-align:center; color:var(--text-muted); padding:40px;">Sol taraftan bir dosya seçin</p>
                                 </div>
-                                <div class="form-group">
-                                    <label class="form-label">Aciklama</label>
-                                    <textarea class="form-input" id="scenarioDesc" rows="2" placeholder="Kisa aciklama..."></textarea>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Test Turu *</label>
-                                    <select class="form-input form-select" id="scenarioType" onchange="updateSettings()">
-                                        <option value="web">🌐 Web Test</option>
-                                        <option value="mobile">📲 Mobil Test</option>
-                                    </select>
+                                <div style="padding:16px;">
+                                    <button class="add-step-btn" onclick="addStep()" id="addStepBtn" disabled>+ Yeni Adım Ekle</button>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="settings-card" id="webSettings">
-                            <div class="settings-card-header">🌐 Web Ayarlari</div>
-                            <div class="settings-card-body">
-                                <div class="form-group">
-                                    <label class="form-label">Baslangic URL</label>
-                                    <input type="url" class="form-input" id="webUrl" placeholder="https://example.com">
-                                </div>
-                                <div class="toggle-group">
-                                    <span>Headless Mod</span>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="webHeadless">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                                <div class="toggle-group">
-                                    <span>Hatada Dur</span>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="webStopOnFail" checked>
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
+                        <!-- JSON Preview -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">JSON Preview (Selenium Format)</h3>
+                            </div>
+                            <div class="card-body">
+                                <pre id="jsonPreview" style="background:var(--hover-bg); padding:16px; border-radius:8px; font-family:'JetBrains Mono'; font-size:0.85rem; max-height:300px; overflow:auto;">{}</pre>
                             </div>
                         </div>
+                    </div>
+                    
+                    <!-- Sidebar -->
+                    <div class="sidebar-panel">
+                        <h3 style="margin-top:0;">⚙️ Ayarlar</h3>
                         
-                        <div class="settings-card" id="mobileSettings" style="display:none;">
-                            <div class="settings-card-header">📲 Mobil Ayarlari</div>
-                            <div class="settings-card-body">
-                                <div class="form-group">
-                                    <label class="form-label">Uygulama Paketi</label>
-                                    <input type="text" class="form-input" id="appPackage" placeholder="com.example.app">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Activity</label>
-                                    <input type="text" class="form-input" id="appActivity" placeholder=".MainActivity">
-                                </div>
-                            </div>
+                        <div class="form-group">
+                            <label class="form-label">Açıklama</label>
+                            <textarea id="scenarioDesc" class="form-control" rows="3" placeholder="Senaryo açıklaması..." onchange="markAsUnsaved()"></textarea>
                         </div>
                         
-                        <div class="settings-card" id="parseResult" style="display:none;">
-                            <div class="settings-card-header">🔍 Adim Onizleme</div>
-                            <div class="settings-card-body" id="parseContent"></div>
+                        <!-- Web için Base URL -->
+                        <div class="form-group" id="baseUrlGroup" style="display:none;">
+                            <label class="form-label">🌐 Base URL</label>
+                            <input type="text" id="baseUrl" class="form-control" placeholder="https://example.com" onchange="updateConfig()">
+                        </div>
+                        
+                        <!-- Mobile için Package Name -->
+                        <div class="form-group" id="packageNameGroup" style="display:none;">
+                            <label class="form-label">📦 Package Name</label>
+                            <input type="text" id="packageName" class="form-control" placeholder="com.example.app" onchange="updateConfig()">
+                        </div>
+                        
+                        <hr style="margin:20px 0; border-color:var(--border-color);">
+                        
+                        <h3>📋 Kullanılabilir Action'lar</h3>
+                        <div class="action-list" id="actionsList">
+                            <p style="color:var(--text-muted);">Yükleniyor...</p>
+                        </div>
+                        
+                        <div class="git-buttons">
+                            <button class="btn btn-secondary btn-sm" onclick="showStatus()" style="flex:1;">📊 Status</button>
+                            <button class="btn btn-ghost btn-sm" onclick="showHistory()" style="flex:1;">📜 History</button>
                         </div>
                     </div>
                 </div>
             </div>
         </main>
     </div>
-    
-    <!-- Help Modal -->
-    <div class="modal-overlay" id="helpModal">
-        <div class="modal" style="max-width: 600px;">
-            <div class="modal-header">
-                <h3 class="modal-title">Test Adimlari Nasil Yazilir?</h3>
-                <button class="modal-close" onclick="Modal.hide('helpModal')">✕</button>
+
+    <!-- Commit Modal -->
+    <div id="commitModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:999999; align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg); border-radius:12px; width:90%; max-width:500px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <h2 style="margin-top:0;">📤 Commit & Push</h2>
+            <div class="form-group">
+                <label class="form-label">Commit Mesajı *</label>
+                <textarea id="commitMessage" class="form-control" rows="3" placeholder="Örn: Login senaryosu güncellendi"></textarea>
             </div>
-            <div class="modal-body">
-                <h4 style="margin-bottom:8px;">Tiklama</h4>
-                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
-                    "Giris Yap" butonuna tiklanir<br>
-                    "Devam Et" linkine tiklanir
-                </code>
-                
-                <h4 style="margin-bottom:8px;">Yazma</h4>
-                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
-                    "Email" alanina test@test.com yazilir<br>
-                    "Sifre" kutusuna 123456 girilir
-                </code>
-                
-                <h4 style="margin-bottom:8px;">Dogrulama</h4>
-                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
-                    "Hos geldiniz" yazisi gorulur<br>
-                    "Basarili" metni goruntulenir
-                </code>
-                
-                <h4 style="margin-bottom:8px;">Bekleme</h4>
-                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px; margin-bottom:16px;">
-                    2 saniye beklenir<br>
-                    5 sn beklenir
-                </code>
-                
-                <h4 style="margin-bottom:8px;">Diger</h4>
-                <code style="display:block; padding:12px; background:var(--bg-tertiary); border-radius:8px;">
-                    Sayfa asagi kaydirilir<br>
-                    Geri tusuna basilir<br>
-                    Sayfa yenilenir
-                </code>
+            <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeCommitModal()">İptal</button>
+                <button class="btn btn-primary" onclick="commitAndPush()">Commit & Push</button>
             </div>
         </div>
     </div>
-    
+
+    <!-- Status Modal -->
+    <div id="statusModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:999999; align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg); border-radius:12px; width:90%; max-width:600px; max-height:80vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div style="padding:24px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                <h2 style="margin:0; font-size:1.25rem;">📊 Git Status</h2>
+                <button onclick="closeStatusModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
+            </div>
+            <div id="statusContent" style="padding:24px; overflow-y:auto; flex:1;">
+                <p style="text-align:center; color:var(--text-muted);">Yükleniyor...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div id="historyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:999999; align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg); border-radius:12px; width:90%; max-width:700px; max-height:80vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div style="padding:24px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                <h2 style="margin:0; font-size:1.25rem;">📜 Commit History</h2>
+                <button onclick="closeHistoryModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
+            </div>
+            <div id="historyContent" style="padding:24px; overflow-y:auto; flex:1;">
+                <p style="text-align:center; color:var(--text-muted);">Yükleniyor...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- New File Modal -->
+    <div id="newFileModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:999999; align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg); border-radius:12px; width:90%; max-width:500px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <h2 style="margin-top:0;">📄 Yeni Senaryo</h2>
+            <div class="form-group">
+                <label class="form-label">Senaryo Adı *</label>
+                <input type="text" id="newFileName" class="form-control" placeholder="Örn: Login_Test" />
+                <small style="color:var(--text-muted); display:block; margin-top:4px;">Dosya adı otomatik olarak .json uzantısıyla oluşturulacak</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Klasör Yolu</label>
+                <input type="text" id="newFilePath" class="form-control" placeholder="scenarios/" value="scenarios/" />
+                <small style="color:var(--text-muted); display:block; margin-top:4px;">Boş bırakırsanız root dizinde oluşturulur</small>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeNewFileModal()">İptal</button>
+                <button class="btn btn-primary" onclick="createNewFile()">Oluştur</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Folder Modal -->
+    <div id="newFolderModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:999999; align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg); border-radius:12px; width:90%; max-width:500px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <h2 style="margin-top:0;">📁 Yeni Klasör</h2>
+            <div class="form-group">
+                <label class="form-label">Klasör Adı *</label>
+                <input type="text" id="newFolderName" class="form-control" placeholder="Örn: login_scenarios" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Üst Klasör</label>
+                <input type="text" id="newFolderParent" class="form-control" placeholder="scenarios/" value="scenarios/" />
+                <small style="color:var(--text-muted); display:block; margin-top:4px;">Boş bırakırsanız root dizinde oluşturulur</small>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeNewFolderModal()">İptal</button>
+                <button class="btn btn-primary" onclick="createNewFolder()">Oluştur</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:999999; align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg); border-radius:12px; width:90%; max-width:450px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <h2 style="margin-top:0; color:#ef4444;">🗑️ Silme Onayı</h2>
+            <p id="deleteMessage" style="margin:16px 0; color:var(--text-primary);"></p>
+            <div style="background:#fef2f2; border-left:4px solid #ef4444; padding:12px; border-radius:4px; margin:16px 0;">
+                <strong style="color:#991b1b;">⚠️ Bu işlem geri alınamaz!</strong>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeDeleteModal()">İptal</button>
+                <button class="btn" style="background:#ef4444; color:white;" onclick="confirmDelete()">Sil</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="renameModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:999999; align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg); border-radius:12px; width:90%; max-width:500px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <h2 style="margin-top:0;">✏️ Yeniden Adlandır</h2>
+            <div class="form-group">
+                <label class="form-label">Yeni İsim *</label>
+                <input type="text" id="renameInput" class="form-control" placeholder="Yeni isim" />
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="closeRenameModal()">İptal</button>
+                <button class="btn btn-primary" onclick="confirmRename()">Kaydet</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="contextMenu" style="display:none; position:fixed; background:var(--card-bg); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2); z-index:9999999; min-width:180px;">
+        <div class="context-menu-item" onclick="contextMenuAction('open')">📄 Aç</div>
+        <div class="context-menu-item" onclick="contextMenuAction('rename')">✏️ Yeniden Adlandır</div>
+        <div class="context-menu-item" onclick="contextMenuAction('delete')" style="color:#ef4444;">🗑️ Sil</div>
+    </div>
+
     <script src="js/app.js"></script>
     <script>
-        if (!Auth.checkAuth()) {}
+    (function() {
+        "use strict";
         
-        let currentId = null;
+        if (!Auth.checkAuth()) return;
+
+        // URL parametreleri
+        const urlParams = new URLSearchParams(window.location.search);
+        const workspaceId = urlParams.get('workspace');
+        let currentFilePath = urlParams.get('file'); // Opsiyonel
+        
+        if (!workspaceId) {
+            Toast.error("Workspace ID gerekli");
+            setTimeout(() => window.location.href = 'workspace.html', 2000);
+            return;
+        }
+        
+        // Global state
+        let scenarioData = {
+            id: null,
+            name: "",
+            description: "",
+            type: "web",
+            steps: [],
+            config_json: {}
+        };
+        
+        let availableActions = [];
+        let currentLang = "tr";
+        let autoSaveTimer = null;
+        let hasUnsavedChanges = false;
+        let workspaceInfo = null; // Workspace bilgisi
+        
+        // ============================================================
+        // INIT
+        // ============================================================
         
         async function init() {
             UI.renderUserInfo();
+            await loadWorkspaceInfo();
+            await loadAvailableActions();
+            await loadFileTree();
             
-            const params = new URLSearchParams(location.search);
-            const id = params.get('id');
-            if (id) {
-                currentId = parseInt(id);
-                await loadScenario(currentId);
+            // Eğer URL'de file parametresi varsa o dosyayı yükle
+            if (currentFilePath) {
+                await loadScenarioFile(currentFilePath);
+            }
+            
+            setupAutoSave();
+        }
+        
+        // ============================================================
+        // WORKSPACE INFO
+        // ============================================================
+        
+        async function loadWorkspaceInfo() {
+            try {
+                workspaceInfo = await API.get(`/workspaces/${workspaceId}`);
+                
+                // Sayfa başlığını güncelle
+                document.getElementById('pageTitle').textContent = `📝 ${workspaceInfo.repository_name}`;
+                
+                // Senaryo tipini workspace'den al
+                scenarioData.type = workspaceInfo.repository_type;
+                
+                // Config alanlarını göster/gizle
+                updateConfigFields(workspaceInfo.repository_type);
+                
+            } catch (err) {
+                console.error("Workspace info yüklenemedi:", err);
+                Toast.error("Workspace bilgisi alınamadı");
             }
         }
         
-        async function loadScenario(id) {
+        function updateConfigFields(type) {
+            const baseUrlGroup = document.getElementById('baseUrlGroup');
+            const packageNameGroup = document.getElementById('packageNameGroup');
+            
+            if (type === 'web') {
+                baseUrlGroup.style.display = 'block';
+                packageNameGroup.style.display = 'none';
+            } else if (type.startsWith('mobile-')) {
+                baseUrlGroup.style.display = 'none';
+                packageNameGroup.style.display = 'block';
+            } else {
+                baseUrlGroup.style.display = 'none';
+                packageNameGroup.style.display = 'none';
+            }
+        }
+        
+        // ============================================================
+        // FILE TREE
+        // ============================================================
+        
+        async function loadFileTree() {
             try {
-                const s = await ScenariosAPI.get(id);
-                document.getElementById('pageTitle').textContent = 'Senaryo Duzenle';
-                document.getElementById('scenarioName').value = s.name;
-                document.getElementById('scenarioDesc').value = s.description || '';
-                document.getElementById('scenarioType').value = s.type;
-                document.getElementById('stepsEditor').value = s.natural_steps || '';
+                const data = await API.get(`/workspaces/${workspaceId}/files`);
+                renderFileTree(data.tree || []);
+            } catch (err) {
+                document.getElementById('fileTree').innerHTML = `
+                    <p style="color:var(--text-danger); text-align:center;">
+                        Dosyalar yüklenemedi<br>
+                        <small>${err.message}</small>
+                    </p>
+                `;
+            }
+        }
+        
+        function renderFileTree(items, parentElement = null, level = 0) {
+            const container = parentElement || document.getElementById('fileTree');
+            
+            if (!parentElement) {
+                container.innerHTML = ''; // Clear
+            }
+            
+            if (items.length === 0 && level === 0) {
+                container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px; font-size:0.9rem;">Henüz dosya yok</p>';
+                return;
+            }
+            
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.style.marginLeft = `${level * 12}px`;
                 
-                if (s.config_json) {
-                    const config = JSON.parse(s.config_json);
-                    if (s.type === 'web') {
-                        document.getElementById('webUrl').value = config.url || '';
-                        document.getElementById('webHeadless').checked = config.headless || false;
-                        document.getElementById('webStopOnFail').checked = config.stop_on_fail !== false;
-                    } else {
-                        document.getElementById('appPackage').value = config.app_package || '';
-                        document.getElementById('appActivity').value = config.app_activity || '';
+                if (item.type === 'folder') {
+                    div.className = 'file-tree-folder';
+                    div.innerHTML = `📁 ${item.name}`;
+                    div.oncontextmenu = (e) => showContextMenu(e, item.path, item.name, 'folder');
+                    container.appendChild(div);
+                    
+                    // Recursive children
+                    if (item.children && item.children.length > 0) {
+                        const childContainer = document.createElement('div');
+                        childContainer.className = 'file-tree-folder-children';
+                        container.appendChild(childContainer);
+                        renderFileTree(item.children, childContainer, level + 1);
+                    }
+                } else {
+                    div.className = 'file-tree-item';
+                    if (currentFilePath === item.path) {
+                        div.classList.add('active');
+                    }
+                    div.innerHTML = `📄 ${item.name}`;
+                    div.onclick = () => selectFile(item.path, item.name);
+                    div.oncontextmenu = (e) => showContextMenu(e, item.path, item.name, 'file');
+                    container.appendChild(div);
+                }
+            });
+        }
+        
+        window.selectFile = function(path, name) {
+            currentFilePath = path;
+            
+            // Active class güncelle
+            document.querySelectorAll('.file-tree-item').forEach(el => {
+                el.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Dosyayı yükle
+            loadScenarioFile(path);
+        };
+        
+        // ============================================================
+        // FILE OPERATIONS
+        // ============================================================
+        
+        async function loadScenarioFile(filePath) {
+            if (!filePath) {
+                return;
+            }
+            
+            try {
+                const data = await API.post(`/workspaces/${workspaceId}/files/read`, {
+                    path: filePath
+                });
+                
+                scenarioData = JSON.parse(data.content);
+                
+                // Steps yoksa boş array yap
+                if (!scenarioData.steps || !Array.isArray(scenarioData.steps)) {
+                    scenarioData.steps = [];
+                }
+                
+                // Diğer alanları kontrol et
+                scenarioData.name = scenarioData.name || "Adsız Senaryo";
+                scenarioData.description = scenarioData.description || "";
+                scenarioData.type = scenarioData.type || "web";
+                
+                document.getElementById('pageTitle').textContent = `📝 ${scenarioData.name}`;
+                document.getElementById('scenarioName').textContent = scenarioData.name;
+                document.getElementById('scenarioDesc').value = scenarioData.description;
+                
+                // Config alanlarını yükle
+                if (scenarioData.config_json) {
+                    if (scenarioData.config_json.base_url) {
+                        document.getElementById('baseUrl').value = scenarioData.config_json.base_url;
+                    }
+                    if (scenarioData.config_json.package_name) {
+                        document.getElementById('packageName').value = scenarioData.config_json.package_name;
                     }
                 }
                 
-                updateSettings();
-            } catch (e) { Toast.error('Yukleme hatasi'); }
+                // Add step button'u aktif et
+                document.getElementById('addStepBtn').disabled = false;
+                
+                renderSteps();
+                updateJsonPreview();
+                markAsSaved();
+                
+            } catch (err) {
+                console.error("File load error:", err);
+                Toast.error("Dosya yüklenemedi: " + err.message);
+            }
         }
         
-        function updateSettings() {
-            const type = document.getElementById('scenarioType').value;
-            document.getElementById('webSettings').style.display = type === 'web' ? 'block' : 'none';
-            document.getElementById('mobileSettings').style.display = type === 'mobile' ? 'block' : 'none';
-        }
-        
-        async function parseSteps() {
-            const text = document.getElementById('stepsEditor').value;
-            const type = document.getElementById('scenarioType').value;
-            
-            if (!text.trim()) { Toast.error('Adim yazin'); return; }
+        async function saveScenarioFile() {
+            if (!currentFilePath) {
+                Toast.error("Dosya seçilmedi");
+                return;
+            }
             
             try {
-                const result = await TestAPI.parseNatural(text, type);
+                scenarioData.description = document.getElementById('scenarioDesc').value;
+                scenarioData.type = workspaceInfo ? workspaceInfo.repository_type : 'web';
+                scenarioData.updated_at = new Date().toISOString();
                 
-                const card = document.getElementById('parseResult');
-                const content = document.getElementById('parseContent');
-                card.style.display = 'block';
+                // Config güncelle
+                if (!scenarioData.config_json) {
+                    scenarioData.config_json = {};
+                }
                 
-                if (result.count === 0) {
-                    content.innerHTML = '<p style="color:var(--text-muted);">Adim bulunamadi</p>';
+                const baseUrl = document.getElementById('baseUrl').value;
+                const packageName = document.getElementById('packageName').value;
+                
+                if (baseUrl) {
+                    scenarioData.config_json.base_url = baseUrl;
+                }
+                if (packageName) {
+                    scenarioData.config_json.package_name = packageName;
+                }
+                
+                await API.post(`/workspaces/${workspaceId}/files/write`, {
+                    path: currentFilePath,
+                    content: JSON.stringify(scenarioData, null, 2)
+                });
+                
+                markAsSaved();
+                updateJsonPreview();
+                
+            } catch (err) {
+                Toast.error("Kaydetme hatası: " + err.message);
+            }
+        }
+        
+        window.updateConfig = function() {
+            markAsUnsaved();
+        };
+        
+        // ============================================================
+        // AUTO SAVE
+        // ============================================================
+        
+        function setupAutoSave() {
+            // Her 3 saniyede bir otomatik kaydet
+            setInterval(() => {
+                if (hasUnsavedChanges) {
+                    saveScenarioFile();
+                }
+            }, 3000);
+        }
+        
+        function markAsUnsaved() {
+            hasUnsavedChanges = true;
+            const badge = document.getElementById('saveStatus');
+            badge.textContent = "Kaydediliyor...";
+            badge.className = "status-badge status-unsaved";
+        }
+        
+        function markAsSaved() {
+            hasUnsavedChanges = false;
+            const badge = document.getElementById('saveStatus');
+            badge.textContent = "Kaydedildi";
+            badge.className = "status-badge status-saved";
+        }
+        
+        // ============================================================
+        // ACTIONS
+        // ============================================================
+        
+        async function loadAvailableActions() {
+            try {
+                const type = workspaceInfo ? workspaceInfo.repository_type : 'web';
+                const lang = currentLang;
+                
+                const data = await API.get(`/workspaces/actions?lang=${lang}&type=${type}`);
+                availableActions = data.actions || [];
+                
+                renderActionsList();
+            } catch (err) {
+                console.error("Actions yüklenemedi:", err);
+            }
+        }
+        
+        function renderActionsList() {
+            const container = document.getElementById('actionsList');
+            
+            if (availableActions.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-muted);">Action yok</p>';
+                return;
+            }
+            
+            container.innerHTML = availableActions.map(action => `
+                <button class="action-btn" onclick="addActionStep('${action.code}')">
+                    ${action.display}
+                </button>
+            `).join('');
+        }
+        
+        window.addActionStep = function(actionCode) {
+            const action = availableActions.find(a => a.code === actionCode);
+            if (!action) return;
+            
+            const step = {
+                action: actionCode
+            };
+            
+            // Default parametreler
+            if (action.params.includes('url')) step.url = "";
+            if (action.params.includes('value')) step.value = "";
+            if (action.params.includes('locator')) {
+                step.locator = {type: "id", value: ""};
+            }
+            if (action.params.includes('seconds')) step.seconds = 2;
+            
+            scenarioData.steps.push(step);
+            renderSteps();
+            markAsUnsaved();
+        };
+        
+        // ============================================================
+        // STEPS RENDERING
+        // ============================================================
+        
+        function renderSteps() {
+            const container = document.getElementById('stepsContainer');
+            
+            if (scenarioData.steps.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:40px;">Henüz adım yok. "+ Yeni Adım Ekle" butonuna tıklayın.</p>';
+                return;
+            }
+            
+            container.innerHTML = scenarioData.steps.map((step, index) => {
+                const action = availableActions.find(a => a.code === step.action);
+                const displayName = action ? action.display : step.action;
+                
+                return `
+                    <div class="step-item">
+                        <div class="step-number">${index + 1}</div>
+                        <div class="step-content">
+                            <div style="font-weight:600; margin-bottom:8px;">${displayName}</div>
+                            ${renderStepParams(step, index)}
+                        </div>
+                        <div class="step-actions">
+                            <button class="btn btn-ghost btn-sm" onclick="deleteStep(${index})">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            updateJsonPreview();
+        }
+        
+        function renderStepParams(step, index) {
+            let html = '';
+            
+            if ('url' in step) {
+                html += `<input type="text" class="form-control" style="margin-bottom:8px;" placeholder="URL" value="${step.url}" onchange="updateStepParam(${index}, 'url', this.value)">`;
+            }
+            
+            if ('value' in step) {
+                html += `<input type="text" class="form-control" style="margin-bottom:8px;" placeholder="Değer" value="${step.value}" onchange="updateStepParam(${index}, 'value', this.value)">`;
+            }
+            
+            if ('locator' in step) {
+                html += `
+                    <div style="display:grid; grid-template-columns:120px 1fr; gap:8px; margin-bottom:8px;">
+                        <select class="form-control" onchange="updateLocator(${index}, 'type', this.value)">
+                            <option value="id" ${step.locator.type === 'id' ? 'selected' : ''}>ID</option>
+                            <option value="xpath" ${step.locator.type === 'xpath' ? 'selected' : ''}>XPath</option>
+                            <option value="css" ${step.locator.type === 'css' ? 'selected' : ''}>CSS</option>
+                            <option value="name" ${step.locator.type === 'name' ? 'selected' : ''}>Name</option>
+                        </select>
+                        <input type="text" class="form-control" placeholder="Locator değeri" value="${step.locator.value}" onchange="updateLocator(${index}, 'value', this.value)">
+                    </div>
+                `;
+            }
+            
+            if ('seconds' in step) {
+                html += `<input type="number" class="form-control" style="width:100px;" placeholder="Saniye" value="${step.seconds}" onchange="updateStepParam(${index}, 'seconds', this.value)">`;
+            }
+            
+            return html || '<em style="color:var(--text-muted);">Parametre yok</em>';
+        }
+        
+        window.updateStepParam = function(index, param, value) {
+            scenarioData.steps[index][param] = value;
+            markAsUnsaved();
+            updateJsonPreview();
+        };
+        
+        window.updateLocator = function(index, field, value) {
+            scenarioData.steps[index].locator[field] = value;
+            markAsUnsaved();
+            updateJsonPreview();
+        };
+        
+        window.deleteStep = function(index) {
+            if (confirm('Bu adımı silmek istediğinize emin misiniz?')) {
+                scenarioData.steps.splice(index, 1);
+                renderSteps();
+                markAsUnsaved();
+            }
+        };
+        
+        window.addStep = function() {
+            Toast.info("Sol taraftaki action listesinden bir action seçin");
+        };
+        
+        function updateJsonPreview() {
+            document.getElementById('jsonPreview').textContent = JSON.stringify(scenarioData, null, 2);
+        }
+        
+        // ============================================================
+        // LANGUAGE SWITCH
+        // ============================================================
+        
+        window.switchLanguage = async function() {
+            currentLang = document.getElementById('langSelect').value;
+            await loadAvailableActions();
+            renderSteps();
+        };
+        
+        // ============================================================
+        // GIT OPERATIONS
+        // ============================================================
+        
+        window.pullChanges = async function() {
+            try {
+                Toast.info("Pull ediliyor...");
+                await API.post(`/workspaces/${workspaceId}/pull`);
+                Toast.success("✓ Pull başarılı! Sayfa yenileniyor...");
+                setTimeout(() => location.reload(), 1500);
+            } catch (err) {
+                Toast.error("Pull hatası: " + err.message);
+            }
+        };
+        
+        window.openCommitModal = function() {
+            document.getElementById('commitModal').style.display = 'flex';
+            document.getElementById('commitMessage').value = `Update ${scenarioData.name}`;
+        };
+        
+        window.closeCommitModal = function() {
+            document.getElementById('commitModal').style.display = 'none';
+        };
+        
+        window.commitAndPush = async function() {
+            const message = document.getElementById('commitMessage').value.trim();
+            
+            if (!message) {
+                Toast.error("Commit mesajı gerekli");
+                return;
+            }
+            
+            try {
+                // Önce kaydet
+                await saveScenarioFile();
+                
+                // Commit
+                Toast.info("Commit ediliyor...");
+                await API.post(`/workspaces/${workspaceId}/commit`, {message});
+                
+                // Push
+                Toast.info("Push ediliyor...");
+                await API.post(`/workspaces/${workspaceId}/push`);
+                
+                Toast.success("✓ Değişiklikler push edildi!");
+                closeCommitModal();
+                
+            } catch (err) {
+                Toast.error("Push hatası: " + err.message);
+            }
+        };
+        
+        window.showStatus = async function() {
+            const modal = document.getElementById('statusModal');
+            const content = document.getElementById('statusContent');
+            
+            modal.style.display = 'flex';
+            content.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Yükleniyor...</p>';
+            
+            try {
+                const data = await API.get(`/workspaces/${workspaceId}/status`);
+                
+                let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
+                
+                // Branch info
+                html += `
+                    <div style="background:var(--hover-bg); padding:16px; border-radius:8px;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                            <span style="font-size:1.5rem;">🌿</span>
+                            <strong>Branch:</strong>
+                        </div>
+                        <code style="background:var(--bg-color); padding:8px 12px; border-radius:6px; display:inline-block;">${data.branch}</code>
+                    </div>
+                `;
+                
+                // Status badge
+                if (data.has_changes) {
+                    html += `
+                        <div style="background:#fef3c7; color:#92400e; padding:16px; border-radius:8px; border-left:4px solid #f59e0b;">
+                            <strong>⚠️ Uncommitted Changes</strong>
+                            <p style="margin:8px 0 0;">Değişiklikler commit edilmedi</p>
+                        </div>
+                    `;
                 } else {
-                    content.innerHTML = `
-                        <p style="margin-bottom:12px;"><strong>${result.count}</strong> adim bulundu:</p>
-                        ${result.steps.map((s, i) => `
-                            <div style="padding:8px; background:var(--bg-tertiary); border-radius:6px; margin-bottom:6px; font-size:0.85rem;">
-                                <span style="color:var(--text-muted);">${i+1}.</span>
-                                <strong style="color:var(--accent-primary);">${s.action}</strong>
-                                ${s.target ? `: "${s.target}"` : ''}
-                                ${s.value ? ` → "${s.value}"` : ''}
-                            </div>
-                        `).join('')}
+                    html += `
+                        <div style="background:#d1fae5; color:#065f46; padding:16px; border-radius:8px; border-left:4px solid #10b981;">
+                            <strong>✓ Clean Working Directory</strong>
+                            <p style="margin:8px 0 0;">Tüm değişiklikler commit edildi</p>
+                        </div>
                     `;
                 }
                 
-                Toast.success(result.count + ' adim bulundu');
-            } catch (e) { Toast.error(e.message); }
-        }
-        
-        async function saveScenario() {
-            const name = document.getElementById('scenarioName').value.trim();
-            const type = document.getElementById('scenarioType').value;
-            
-            if (!name) { Toast.error('Senaryo adi gerekli'); return; }
-            
-            let config = {};
-            if (type === 'web') {
-                config = {
-                    url: document.getElementById('webUrl').value,
-                    headless: document.getElementById('webHeadless').checked,
-                    stop_on_fail: document.getElementById('webStopOnFail').checked
-                };
-            } else {
-                config = {
-                    app_package: document.getElementById('appPackage').value,
-                    app_activity: document.getElementById('appActivity').value
-                };
+                // Changed files
+                if (data.changed_files && data.changed_files.length > 0) {
+                    html += '<div style="background:var(--hover-bg); padding:16px; border-radius:8px;">';
+                    html += '<strong style="display:block; margin-bottom:12px;">📝 Değişen Dosyalar:</strong>';
+                    html += '<ul style="margin:0; padding-left:20px;">';
+                    data.changed_files.forEach(file => {
+                        html += `<li style="margin:4px 0; font-family:monospace; font-size:0.9rem;">${file}</li>`;
+                    });
+                    html += '</ul></div>';
+                }
+                
+                // Untracked files
+                if (data.untracked_files && data.untracked_files.length > 0) {
+                    html += '<div style="background:var(--hover-bg); padding:16px; border-radius:8px;">';
+                    html += '<strong style="display:block; margin-bottom:12px;">📄 Yeni Dosyalar:</strong>';
+                    html += '<ul style="margin:0; padding-left:20px;">';
+                    data.untracked_files.forEach(file => {
+                        html += `<li style="margin:4px 0; font-family:monospace; font-size:0.9rem;">${file}</li>`;
+                    });
+                    html += '</ul></div>';
+                }
+                
+                html += '</div>';
+                content.innerHTML = html;
+                
+            } catch (err) {
+                content.innerHTML = `<p style="text-align:center; color:var(--text-danger);">Status alınamadı: ${err.message}</p>`;
             }
+        };
+        
+        window.closeStatusModal = function() {
+            document.getElementById('statusModal').style.display = 'none';
+        };
+        
+        window.showHistory = async function() {
+            const modal = document.getElementById('historyModal');
+            const content = document.getElementById('historyContent');
             
-            const data = {
-                name,
-                description: document.getElementById('scenarioDesc').value,
-                type,
-                natural_steps: document.getElementById('stepsEditor').value,
-                config_json: JSON.stringify(config)
-            };
+            modal.style.display = 'flex';
+            content.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Yükleniyor...</p>';
             
             try {
-                if (currentId) {
-                    await ScenariosAPI.update(currentId, data);
-                    Toast.success('Guncellendi');
-                } else {
-                    const result = await ScenariosAPI.create(data);
-                    currentId = result.id;
-                    document.getElementById('pageTitle').textContent = 'Senaryo Duzenle';
-                    history.replaceState({}, '', 'editor.html?id=' + result.id);
-                    Toast.success('Kaydedildi');
+                const data = await API.get(`/workspaces/${workspaceId}/history?limit=10`);
+                
+                if (!data.commits || data.commits.length === 0) {
+                    content.innerHTML = '<p style="text-align:center; color:var(--text-muted);">Henüz commit yok</p>';
+                    return;
                 }
-            } catch (e) { Toast.error(e.message); }
+                
+                let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
+                
+                data.commits.forEach(commit => {
+                    html += `
+                        <div style="background:var(--hover-bg); padding:16px; border-radius:8px; border-left:4px solid var(--primary-color);">
+                            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
+                                <code style="background:var(--bg-color); padding:4px 8px; border-radius:4px; font-size:0.85rem;">${commit.hash}</code>
+                                <span style="color:var(--text-muted); font-size:0.85rem;">${new Date(commit.date).toLocaleString('tr-TR')}</span>
+                            </div>
+                            <div style="margin-bottom:8px;">
+                                <strong style="font-size:1rem;">${commit.message}</strong>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px; color:var(--text-muted); font-size:0.9rem;">
+                                <span>👤</span>
+                                <span>${commit.author}</span>
+                                ${commit.email ? `<span style="opacity:0.7;">&lt;${commit.email}&gt;</span>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                content.innerHTML = html;
+                
+            } catch (err) {
+                content.innerHTML = `<p style="text-align:center; color:var(--text-danger);">History alınamadı: ${err.message}</p>`;
+            }
+        };
+        
+        window.closeHistoryModal = function() {
+            document.getElementById('historyModal').style.display = 'none';
+        };
+        
+        window.exportCode = async function() {
+            try {
+                const data = await API.post('/workspaces/actions/generate-code', {
+                    steps: scenarioData.steps,
+                    lang: 'python',
+                    type: 'selenium'
+                });
+                
+                // Yeni pencerede göster
+                const win = window.open('', '_blank');
+                win.document.write(`<pre style="font-family:monospace; padding:20px;">${data.code}</pre>`);
+                
+            } catch (err) {
+                Toast.error("Code generation hatası: " + err.message);
+            }
+        };
+        
+        // ============================================================
+        // FILE MANAGEMENT
+        // ============================================================
+        
+        let contextMenuTarget = null;
+        
+        window.openNewFileModal = function() {
+            document.getElementById('newFileModal').style.display = 'flex';
+            document.getElementById('newFileName').value = '';
+            document.getElementById('newFilePath').value = 'scenarios/';
+            document.getElementById('newFileName').focus();
+        };
+        
+        window.closeNewFileModal = function() {
+            document.getElementById('newFileModal').style.display = 'none';
+        };
+        
+        window.createNewFile = async function() {
+            const name = document.getElementById('newFileName').value.trim();
+            const path = document.getElementById('newFilePath').value.trim();
+            
+            if (!name) {
+                Toast.error("Dosya adı gerekli");
+                return;
+            }
+            
+            // .json uzantısı ekle
+            const fileName = name.endsWith('.json') ? name : name + '.json';
+            const fullPath = path ? `${path}${fileName}` : fileName;
+            
+            try {
+                // Boş senaryo şablonu
+                const emptyScenario = {
+                    id: Date.now(),
+                    name: name,
+                    description: "",
+                    type: workspaceInfo ? workspaceInfo.repository_type : "web",
+                    steps: [],
+                    config_json: {},
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                
+                await API.post(`/workspaces/${workspaceId}/files/write`, {
+                    path: fullPath,
+                    content: JSON.stringify(emptyScenario, null, 2)
+                });
+                
+                Toast.success("✓ Senaryo oluşturuldu!");
+                closeNewFileModal();
+                await loadFileTree();
+                
+                // Yeni dosyayı aç
+                selectFile(fullPath, fileName);
+                
+            } catch (err) {
+                Toast.error("Oluşturulamadı: " + err.message);
+            }
+        };
+        
+        window.openNewFolderModal = function() {
+            document.getElementById('newFolderModal').style.display = 'flex';
+            document.getElementById('newFolderName').value = '';
+            document.getElementById('newFolderParent').value = 'scenarios/';
+            document.getElementById('newFolderName').focus();
+        };
+        
+        window.closeNewFolderModal = function() {
+            document.getElementById('newFolderModal').style.display = 'none';
+        };
+        
+        window.createNewFolder = async function() {
+            const name = document.getElementById('newFolderName').value.trim();
+            const parent = document.getElementById('newFolderParent').value.trim();
+            
+            if (!name) {
+                Toast.error("Klasör adı gerekli");
+                return;
+            }
+            
+            const fullPath = parent ? `${parent}${name}` : name;
+            
+            try {
+                await API.post(`/workspaces/${workspaceId}/folders/create`, {
+                    path: fullPath
+                });
+                
+                Toast.success("✓ Klasör oluşturuldu!");
+                closeNewFolderModal();
+                await loadFileTree();
+                
+            } catch (err) {
+                Toast.error("Oluşturulamadı: " + err.message);
+            }
+        };
+        
+        // Context Menu
+        function showContextMenu(event, itemPath, itemName, itemType) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            contextMenuTarget = { path: itemPath, name: itemName, type: itemType };
+            
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            menu.style.left = event.pageX + 'px';
+            menu.style.top = event.pageY + 'px';
         }
         
+        function hideContextMenu() {
+            document.getElementById('contextMenu').style.display = 'none';
+            contextMenuTarget = null;
+        }
+        
+        // Click anywhere to close context menu
+        document.addEventListener('click', hideContextMenu);
+        
+        window.contextMenuAction = async function(action) {
+            hideContextMenu();
+            
+            if (!contextMenuTarget) return;
+            
+            if (action === 'open') {
+                if (contextMenuTarget.type === 'file') {
+                    selectFile(contextMenuTarget.path, contextMenuTarget.name);
+                }
+            } else if (action === 'rename') {
+                openRenameModal(contextMenuTarget.path, contextMenuTarget.name);
+            } else if (action === 'delete') {
+                openDeleteModal(contextMenuTarget.path, contextMenuTarget.name, contextMenuTarget.type);
+            }
+        };
+        
+        // Delete
+        function openDeleteModal(path, name, type) {
+            const modal = document.getElementById('deleteModal');
+            const message = document.getElementById('deleteMessage');
+            
+            const typeText = type === 'folder' ? 'klasörü' : 'dosyayı';
+            message.textContent = `"${name}" ${typeText} silmek istediğinize emin misiniz?`;
+            
+            modal.style.display = 'flex';
+            modal.dataset.deletePath = path;
+        }
+        
+        window.closeDeleteModal = function() {
+            document.getElementById('deleteModal').style.display = 'none';
+        };
+        
+        window.confirmDelete = async function() {
+            const modal = document.getElementById('deleteModal');
+            const path = modal.dataset.deletePath;
+            
+            if (!path) return;
+            
+            try {
+                await API.post(`/workspaces/${workspaceId}/files/delete`, { path });
+                Toast.success("✓ Silindi!");
+                closeDeleteModal();
+                await loadFileTree();
+                
+                // Eğer açık dosyayı sildiyse editörü temizle
+                if (currentFilePath === path) {
+                    currentFilePath = null;
+                    document.getElementById('scenarioName').textContent = "Dosya seçin";
+                    document.getElementById('stepsContainer').innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:40px;">Sol taraftan bir dosya seçin</p>';
+                    document.getElementById('addStepBtn').disabled = true;
+                }
+                
+            } catch (err) {
+                Toast.error("Silinemedi: " + err.message);
+            }
+        };
+        
+        // Rename
+        function openRenameModal(path, currentName) {
+            const modal = document.getElementById('renameModal');
+            const input = document.getElementById('renameInput');
+            
+            input.value = currentName;
+            modal.style.display = 'flex';
+            modal.dataset.renamePath = path;
+            
+            setTimeout(() => input.select(), 100);
+        }
+        
+        window.closeRenameModal = function() {
+            document.getElementById('renameModal').style.display = 'none';
+        };
+        
+        window.confirmRename = async function() {
+            const modal = document.getElementById('renameModal');
+            const oldPath = modal.dataset.renamePath;
+            const newName = document.getElementById('renameInput').value.trim();
+            
+            if (!newName) {
+                Toast.error("İsim boş olamaz");
+                return;
+            }
+            
+            try {
+                const result = await API.post(`/workspaces/${workspaceId}/files/rename`, {
+                    old_path: oldPath,
+                    new_name: newName
+                });
+                
+                Toast.success("✓ Yeniden adlandırıldı!");
+                closeRenameModal();
+                await loadFileTree();
+                
+                // Eğer açık dosyayı rename ettiyse path'i güncelle
+                if (currentFilePath === oldPath) {
+                    currentFilePath = result.new_path;
+                    const nameWithoutExt = newName.replace('.json', '');
+                    scenarioData.name = nameWithoutExt;
+                    document.getElementById('scenarioName').textContent = nameWithoutExt;
+                }
+                
+            } catch (err) {
+                Toast.error("Yeniden adlandırılamadı: " + err.message);
+            }
+        };
+        
+        // Init
         init();
+        
+    })();
     </script>
 </body>
 </html>

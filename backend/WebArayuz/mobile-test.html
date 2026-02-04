@@ -19,7 +19,7 @@
         .device-panel, .right-panel { 
             display: flex; 
             flex-direction: column; 
-            gap: 12px; 
+            gap: 12px;
             overflow: hidden; 
             height: 100%;
         }
@@ -158,20 +158,28 @@
     <div class="app-container">
         <aside class="sidebar">
             <div class="sidebar-header"><div class="logo"><div class="logo-icon">🧪</div><span>Test Platform</span></div></div>
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Ana Menü</div>
-                    <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
-                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
-                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Test Türleri</div>
-                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
-                    <a href="mobile-test.html" class="nav-item active"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
-                    <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
-                </div>
-            </nav>
+<nav class="sidebar-nav">
+    <div class="nav-section">
+        <div class="nav-section-title">Ana Menu</div>
+        <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
+        <a href="workspace.html" class="nav-item"><span class="nav-item-icon">💼</span><span>Workspace</span></a>
+        <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+        <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri (Jobs)</span></a>
+    </div>
+    
+    <!-- Admin Section - Sadece adminler görebilir -->
+    <div class="nav-section" id="adminSection" style="display:none;">
+        <div class="nav-section-title">Admin</div>
+        <a href="admin-repos.html" class="nav-item"><span class="nav-item-icon">🔧</span><span>Repository Yönetimi</span></a>
+    </div>
+    
+    <div class="nav-section">
+        <div class="nav-section-title">Test Turleri</div>
+        <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
+        <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
+        <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
+    </div>
+</nav>
             <div class="sidebar-footer">
                 <div class="user-info" onclick="if(confirm('Çıkış?')) Auth.logout();">
                     <div class="user-avatar">?</div>
@@ -200,9 +208,20 @@
                             </div>
                             <div class="card-body" style="padding:12px; display:flex; flex-direction:column; flex:1; overflow:hidden;">
                                 <div class="device-filter">
-                                    <div class="tab active" onclick="filterDevices('all')">Tümü</div>
-                                    <div class="tab" onclick="filterDevices('physical')">Fiziksel</div>
-                                    <div class="tab" onclick="filterDevices('emulator')">Emülatör</div>
+                                    <div class="tab active" data-filter="all" onclick="filterDevices('all')">Tümü</div>
+                                    <div class="tab" data-filter="physical" onclick="filterDevices('physical')">Android</div>
+                                    <div class="tab" data-filter="ios" onclick="filterDevices('ios')" style="color:var(--info);">
+                                        🍎 iOS
+                                        <span id="iosBadge" style="display:none; background:var(--info); color:white; font-size:0.6rem; padding:1px 4px; border-radius:3px; margin-left:4px;">●</span>
+                                    </div>
+                                    <div class="tab" data-filter="emulator" onclick="filterDevices('emulator')">Emülatör</div>
+                                    <div class="tab" data-filter="farm" onclick="filterDevices('farm')" style="color:var(--accent-primary);">
+                                        🌐 Farm
+                                        <span id="farmBadge" style="display:none; background:var(--success); color:white; font-size:0.6rem; padding:1px 4px; border-radius:3px; margin-left:4px;">●</span>
+                                    </div>
+                                    <button class="btn-icon" onclick="showFarmSettings()" title="Sunucu Ayarları" style="margin-left:auto;">
+                                        <span class="material-icons-round" style="font-size:1rem;">settings</span>
+                                    </button>
                                 </div>
                                 <div class="device-list" id="deviceList">
                                     <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
@@ -311,33 +330,38 @@
                             <div class="panel-content" id="panelEditor">
                                 <div class="editor-header" style="padding:10px 12px; border-bottom:1px solid var(--border-color); display:flex; gap:8px; align-items:center;">
                                     <input type="text" id="scenarioName" placeholder="Senaryo Adı..." class="form-input" style="flex:1;">
+                                    <button class="btn-secondary" onclick="showGuideModal()" title="Yazım Rehberi" style="padding:8px 12px;">📖</button>
                                     <button class="btn-secondary" onclick="saveScenario()" title="Kaydet" style="padding:8px 16px;">💾 Kaydet</button>
                                 </div>
                                 <div class="editor-box">
                                     <textarea id="stepsEditor" placeholder="Test adımlarını buraya yazın...
 
-Örnek Komutlar:
-━━━━━━━━━━━━━━
+📋 TEMEL KOMUTLAR
+━━━━━━━━━━━━━━━━━
 • 2 saniye bekle
 • &quot;Giriş&quot; butonuna tıkla
 • &quot;Email&quot; alanına &quot;test@test.com&quot; yaz
 • &quot;Hoş Geldiniz&quot; yazısını gör
-• Ekranı aşağı kaydır
-• Geri git
+• Geri git / Ekranı aşağı kaydır
 
-Gelişmiş Komutlar:
-━━━━━━━━━━━━━━━━
-• 2. &quot;Ürün&quot; elementine tıkla (ikinci element)
-• Eğer &quot;Popup&quot; varsa tıkla
-• [opsiyonel] &quot;Reklam&quot; varsa kapat
+🎯 GELİŞMİŞ KOMUTLAR
+━━━━━━━━━━━━━━━━━━━
+• &quot;Şifre&quot; alanına tıkla  (önce tıkla)
+  &quot;123456&quot; yaz            (sonra yaz)
+• 2. &quot;Ürün&quot; elementine tıkla
+• son &quot;Sil&quot; butonuna bas
+• Eğer &quot;Popup&quot; varsa kapat
+• [opsiyonel] &quot;Reklam&quot; kapat
+
+📖 Detaylı rehber için sağ üstteki 📖 butonuna tıklayın
 "></textarea>
                                 </div>
                                 
-                                <div class="help-box">
-                                    <h4>💡 İpuçları</h4>
+                                <div class="help-box" onclick="showGuideModal()" style="cursor:pointer;" title="Detaylı rehber için tıklayın">
+                                    <h4>💡 Hızlı İpuçları <span style="font-size:0.7rem; opacity:0.6;">(detay için tıkla)</span></h4>
+                                    <code>"Alan" alanına tıkla + "değer" yaz → 2 satır = 1 adım</code>
                                     <code>Eğer "X" varsa tıkla yoksa "Y" tıkla</code>
-                                    <code>2. "Ürün" elementine tıkla (index)</code>
-                                    <code>[opsiyonel] "Reklam" varsa kapat</code>
+                                    <code>2. / son / ilk "Element" tıkla (index)</code>
                                 </div>
                             </div>
 
@@ -381,6 +405,8 @@ Gelişmiş Komutlar:
         let allDevices = [];
         let allFolders = [];
         let allScenarios = [];
+        let farmDevices = [];
+        let iosDevices = [];
         let currentFilter = 'all';
         let selectedDevice = null;
         let selectedScenarioId = null;
@@ -389,6 +415,21 @@ Gelişmiş Komutlar:
         let screenWidth = 1080;
         let screenHeight = 1920;
         let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+        
+        // Farm ayarları (localStorage'dan yükle)
+        let farmConfig = JSON.parse(localStorage.getItem('farmConfig') || JSON.stringify({
+            url: 'https://10.40.11.19',
+            username: 'Demo',
+            password: 'Admin123*',
+            appiumUrl: 'https://10.40.11.19:443/wd/hub'
+        }));
+        
+        // iOS/Mac sunucu ayarları
+        let iosConfig = JSON.parse(localStorage.getItem('iosConfig') || JSON.stringify({
+            host: '',
+            port: 4723,
+            username: ''
+        }));
 
         // ========== INIT ==========
         document.addEventListener('DOMContentLoaded', async () => {
@@ -402,6 +443,259 @@ Gelişmiş Komutlar:
             await loadScenarioTree();
             await loadFolderSelect();
             setupTouchHandlers();
+            
+            // Farm bağlantısını kontrol et
+            checkFarmConnection();
+        }
+
+        // ========== iOS FUNCTIONS ==========
+        async function loadiOSDevices() {
+            const list = document.getElementById('deviceList');
+            list.innerHTML = `
+                <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
+                    <div class="spinner" style="margin:0 auto 12px;"></div>
+                    <div style="font-size:0.85rem;">iOS cihazları yükleniyor...</div>
+                </div>`;
+            
+            try {
+                let res;
+                
+                if (iosConfig.host) {
+                    // Uzak Mac sunucudan
+                    res = await fetch('/api/farm/ios/devices/remote', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(iosConfig)
+                    });
+                } else {
+                    // Yerel (bu bilgisayar Mac ise)
+                    res = await fetch('/api/farm/ios/devices');
+                }
+                
+                const data = await res.json();
+                iosDevices = data.devices || [];
+                
+                document.getElementById('deviceCount').textContent = iosDevices.length;
+                if (iosDevices.length > 0) {
+                    document.getElementById('iosBadge').style.display = 'inline';
+                }
+                
+                renderDevices();
+                
+                if (iosDevices.length > 0) {
+                    Toast.success(`${iosDevices.length} iOS cihazı bulundu`);
+                } else {
+                    Toast.info('iOS cihazı bulunamadı. Mac sunucu ayarlarını kontrol edin.');
+                }
+                
+            } catch (e) {
+                console.error('iOS error:', e);
+                iosDevices = [];
+                renderDevices();
+            }
+        }
+        
+        async function selectiOSDevice(deviceId) {
+            const d = iosDevices.find(x => x.device_id === deviceId);
+            if (!d) return;
+            
+            selectedDevice = d;
+            renderDevices();
+            
+            document.getElementById('currentDeviceName').textContent = d.name;
+            document.getElementById('deviceInfo').textContent = `iOS ${d.platform_version || ''}`;
+            document.getElementById('connectionBadge').textContent = 'iOS Cihaz';
+            document.getElementById('connectionBadge').style.background = 'var(--info)';
+            document.getElementById('connectionBadge').style.color = 'white';
+            document.getElementById('connectionBox').classList.add('connected');
+            
+            // iOS cihazına bağlan
+            try {
+                Toast.info('iOS cihazına bağlanılıyor...');
+                
+                const host = d.remote_host || iosConfig.host;
+                const port = iosConfig.port || 4723;
+                
+                const res = await fetch(`/api/farm/ios/connect?device_id=${deviceId}&host=${host}&port=${port}`, {
+                    method: 'POST'
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    Toast.success('iOS cihazına bağlandı');
+                    // WebSocket stream başlat
+                    connectFarmWebSocket(deviceId);
+                } else {
+                    Toast.error('Bağlantı hatası: ' + data.error);
+                }
+            } catch (e) {
+                Toast.error('iOS bağlantısı başarısız: ' + e.message);
+            }
+        }
+
+        // ========== FARM FUNCTIONS ==========
+        async function checkFarmConnection() {
+            try {
+                const res = await fetch('/api/farm/status');
+                const data = await res.json();
+                if (data.connected) {
+                    document.getElementById('farmBadge').style.display = 'inline';
+                }
+            } catch (e) {
+                console.log('Farm bağlantısı yok');
+            }
+        }
+        
+        async function loadFarmDevices() {
+            const list = document.getElementById('deviceList');
+            list.innerHTML = `
+                <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
+                    <div class="spinner" style="margin:0 auto 12px;"></div>
+                    <div style="font-size:0.85rem;">Farm cihazları yükleniyor...</div>
+                </div>`;
+            
+            try {
+                const res = await fetch('/api/farm/devices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(farmConfig)
+                });
+                
+                if (!res.ok) throw new Error('Farm bağlantı hatası');
+                
+                const data = await res.json();
+                farmDevices = data.devices || [];
+                
+                document.getElementById('deviceCount').textContent = farmDevices.length;
+                document.getElementById('farmBadge').style.display = 'inline';
+                
+                renderDevices();
+                Toast.success(`${farmDevices.length} farm cihazı yüklendi`);
+                
+            } catch (e) {
+                console.error('Farm error:', e);
+                farmDevices = [];
+                renderDevices();
+                Toast.error('Farm bağlantısı başarısız: ' + e.message);
+            }
+        }
+        
+        async function selectFarmDevice(deviceId) {
+            const d = farmDevices.find(x => x.deviceId === deviceId);
+            if (!d) return;
+            
+            selectedDevice = d;
+            renderDevices();
+            
+            document.getElementById('currentDeviceName').textContent = d.deviceModel;
+            document.getElementById('deviceInfo').textContent = `${d.brand} • ${d.os} ${d.oSVersion}`;
+            document.getElementById('connectionBadge').textContent = 'Farm Cihazı';
+            document.getElementById('connectionBadge').style.background = 'var(--accent-primary)';
+            document.getElementById('connectionBadge').style.color = 'white';
+            document.getElementById('connectionBox').classList.add('connected');
+            
+            // Farm cihazına bağlan (Appium üzerinden)
+            try {
+                Toast.info('Farm cihazına bağlanılıyor...');
+                const res = await fetch('/api/farm/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...farmConfig,
+                        deviceId: deviceId,
+                        device: d
+                    })
+                });
+                
+                if (res.ok) {
+                    Toast.success('Farm cihazına bağlandı');
+                    // WebSocket stream başlat (farm için)
+                    connectFarmWebSocket(deviceId);
+                } else {
+                    throw new Error('Bağlantı hatası');
+                }
+            } catch (e) {
+                Toast.error('Farm bağlantısı başarısız: ' + e.message);
+            }
+        }
+        
+        function connectFarmWebSocket(deviceId) {
+            if (ws) ws.close();
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//localhost:8000/api/farm/stream/${deviceId}`);
+            
+            ws.onopen = () => {
+                isConnected = true;
+                document.getElementById('noDeviceMsg').style.display = 'none';
+                document.getElementById('screenImage').style.display = 'block';
+            };
+            
+            ws.onmessage = (e) => {
+                const d = JSON.parse(e.data);
+                if (d.type === 'frame' && d.image) {
+                    document.getElementById('screenImage').src = 'data:image/jpeg;base64,' + d.image;
+                } else if (d.type === 'state') {
+                    updateTestState(d.test_state);
+                }
+            };
+            
+            ws.onclose = () => {
+                isConnected = false;
+            };
+        }
+        
+        function showFarmSettings() {
+            document.getElementById('farmSettingsModal').classList.add('active');
+            document.getElementById('farmUrl').value = farmConfig.url;
+            document.getElementById('farmUsername').value = farmConfig.username;
+            document.getElementById('farmPassword').value = farmConfig.password;
+            document.getElementById('farmAppiumUrl').value = farmConfig.appiumUrl;
+        }
+        
+        function closeFarmSettings() {
+            document.getElementById('farmSettingsModal').classList.remove('active');
+        }
+        
+        function saveFarmSettings() {
+            farmConfig = {
+                url: document.getElementById('farmUrl').value.trim(),
+                username: document.getElementById('farmUsername').value.trim(),
+                password: document.getElementById('farmPassword').value,
+                appiumUrl: document.getElementById('farmAppiumUrl').value.trim()
+            };
+            
+            localStorage.setItem('farmConfig', JSON.stringify(farmConfig));
+            Toast.success('Farm ayarları kaydedildi');
+            closeFarmSettings();
+            
+            // Farm tab'ı seçiliyse yeniden yükle
+            if (currentFilter === 'farm') {
+                loadFarmDevices();
+            }
+        }
+        
+        async function testFarmConnection() {
+            const url = document.getElementById('farmUrl').value.trim();
+            const username = document.getElementById('farmUsername').value.trim();
+            const password = document.getElementById('farmPassword').value;
+            
+            try {
+                const res = await fetch('/api/farm/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, username, password })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    Toast.success(`Bağlantı başarılı! ${data.device_count} cihaz bulundu`);
+                } else {
+                    Toast.error('Bağlantı başarısız: ' + data.error);
+                }
+            } catch (e) {
+                Toast.error('Bağlantı hatası: ' + e.message);
+            }
         }
 
         // ========== DEVICE FUNCTIONS ==========
@@ -419,40 +713,105 @@ Gelişmiş Komutlar:
         function filterDevices(type) {
             currentFilter = type;
             document.querySelectorAll('.device-filter .tab').forEach(t => {
-                t.classList.toggle('active', 
-                    (type === 'all' && t.textContent.includes('Tümü')) ||
-                    (type === 'physical' && t.textContent.includes('Fiziksel')) ||
-                    (type === 'emulator' && t.textContent.includes('Emülatör'))
-                );
+                t.classList.toggle('active', t.dataset.filter === type);
             });
-            renderDevices();
+            
+            if (type === 'farm') {
+                loadFarmDevices();
+            } else if (type === 'ios') {
+                loadiOSDevices();
+            } else {
+                renderDevices();
+            }
         }
 
         function renderDevices() {
             const list = document.getElementById('deviceList');
-            const filtered = currentFilter === 'all' ? allDevices : allDevices.filter(d => d.type === currentFilter);
+            let filtered;
+            
+            if (currentFilter === 'farm') {
+                filtered = farmDevices;
+            } else if (currentFilter === 'ios') {
+                filtered = iosDevices;
+            } else if (currentFilter === 'physical') {
+                // Sadece Android fiziksel cihazlar
+                filtered = allDevices.filter(d => d.type === 'physical');
+            } else {
+                filtered = currentFilter === 'all' ? allDevices : allDevices.filter(d => d.type === currentFilter);
+            }
             
             if (filtered.length === 0) {
+                const icons = { farm: '🌐', ios: '🍎', emulator: '📱', physical: '📱', all: '📱' };
+                const messages = { 
+                    farm: 'Farm bağlantısını kontrol edin', 
+                    ios: 'Mac sunucu ayarlarını yapılandırın',
+                    emulator: 'Emülatör bulunamadı',
+                    physical: 'Android cihaz bulunamadı',
+                    all: 'Cihaz bulunamadı'
+                };
+                
                 list.innerHTML = `
                     <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
-                        <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">📱</div>
-                        <div style="font-size:0.85rem;">Cihaz bulunamadı</div>
+                        <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">${icons[currentFilter]}</div>
+                        <div style="font-size:0.85rem;">${messages[currentFilter]}</div>
+                        ${(currentFilter === 'farm' || currentFilter === 'ios') ? '<button class="btn-secondary" style="margin-top:12px; padding:6px 12px; font-size:0.8rem;" onclick="showFarmSettings()">⚙️ Ayarlar</button>' : ''}
                     </div>`;
                 return;
             }
             
-            list.innerHTML = filtered.map(d => `
-                <div class="device-item ${selectedDevice?.id === d.id ? 'selected' : ''}" onclick="selectDevice(${d.id})">
-                    <div class="device-item-header">
-                        <span class="device-name">${d.name}</span>
-                        <span class="status-dot ${d.status === 'available' ? 'online' : 'busy'}"></span>
+            if (currentFilter === 'ios') {
+                // iOS cihazları
+                list.innerHTML = filtered.map(d => `
+                    <div class="device-item ${selectedDevice?.device_id === d.device_id ? 'selected' : ''}" onclick="selectiOSDevice('${d.device_id}')">
+                        <div class="device-item-header">
+                            <span class="device-name">${d.name}</span>
+                            <span class="status-dot ${d.status === 'available' ? 'online' : 'busy'}"></span>
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+                            <span>iOS ${d.platform_version || ''}</span>
+                            <span style="font-size:0.65rem; padding:2px 6px; border-radius:3px; background:rgba(59,130,246,0.2); color:var(--info);">
+                                🍎 iOS
+                            </span>
+                        </div>
+                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+                            ${d.device_id.substring(0, 16)}...
+                        </div>
                     </div>
-                    <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between;">
-                        <span>${d.device_id}</span>
-                        <span style="text-transform:uppercase; font-size:0.7rem;">${d.type}</span>
+                `).join('');
+            } else if (currentFilter === 'farm') {
+                // Farm cihazları
+                list.innerHTML = filtered.map(d => `
+                    <div class="device-item ${selectedDevice?.deviceId === d.deviceId ? 'selected' : ''}" onclick="selectFarmDevice('${d.deviceId}')">
+                        <div class="device-item-header">
+                            <span class="device-name">${d.deviceModel}</span>
+                            <span class="status-dot ${d.deviceStatus === 1 ? 'online' : 'busy'}"></span>
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+                            <span>${d.brand} • ${d.os} ${d.oSVersion}</span>
+                            <span style="font-size:0.65rem; padding:2px 6px; border-radius:3px; background:${d.os === 'ANDROID' ? 'rgba(61,220,132,0.2)' : 'rgba(59,130,246,0.2)'}; color:${d.os === 'ANDROID' ? 'var(--success)' : 'var(--info)'};">
+                                ${d.os}
+                            </span>
+                        </div>
+                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+                            ${d.screenResolution} • ${d.deviceId.substring(0, 12)}...
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `).join('');
+            } else {
+                // Normal cihazlar
+                list.innerHTML = filtered.map(d => `
+                    <div class="device-item ${selectedDevice?.id === d.id ? 'selected' : ''}" onclick="selectDevice(${d.id})">
+                        <div class="device-item-header">
+                            <span class="device-name">${d.name}</span>
+                            <span class="status-dot ${d.status === 'available' ? 'online' : 'busy'}"></span>
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between;">
+                            <span>${d.device_id}</span>
+                            <span style="text-transform:uppercase; font-size:0.7rem;">${d.type}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
         }
 
         async function selectDevice(id) {
@@ -527,49 +886,145 @@ Gelişmiş Komutlar:
                 const foldersRes = await API.get('/scenarios/folders');
                 const scenariosRes = await API.get('/scenarios?type=mobile');
                 
-                allFolders = foldersRes || [];
-                allScenarios = scenariosRes.scenarios || [];
+                console.log('[TREE] Raw foldersRes:', JSON.stringify(foldersRes, null, 2));
+                console.log('[TREE] Raw scenariosRes:', JSON.stringify(scenariosRes, null, 2));
+                
+                // Klasörler düz liste veya nested gelebilir
+                allFolders = Array.isArray(foldersRes) ? foldersRes : (foldersRes.folders || []);
+                allScenarios = scenariosRes.scenarios || scenariosRes || [];
+                
+                // Eğer scenarios array değilse, array'e çevir
+                if (!Array.isArray(allScenarios)) {
+                    allScenarios = [];
+                }
+                
+                console.log('[TREE] Klasörler:', allFolders.length, 'adet');
+                console.log('[TREE] Senaryolar:', allScenarios.length, 'adet');
+                
+                // Her senaryonun folder_id'sini logla
+                allScenarios.forEach(s => {
+                    console.log(`[TREE] Senaryo: "${s.name}" -> folder_id: ${s.folder_id} (type: ${typeof s.folder_id})`);
+                });
+                
+                // Nested yapıyı düz listeye çevir (eğer children varsa)
+                const flatFolders = flattenFoldersToList(allFolders);
+                console.log('[TREE] Düzleştirilmiş klasörler:', flatFolders.length, 'adet');
+                flatFolders.forEach(f => {
+                    console.log(`[TREE] Klasör: "${f.name}" id=${f.id} parent_id=${f.parent_id}`);
+                });
                 
                 const treeContainer = document.getElementById('scenarioTree');
-                const html = buildTreeHTML(allFolders, allScenarios, null);
+                
+                // Eğer klasör yoksa veya sadece senaryolar varsa
+                if (flatFolders.length === 0) {
+                    console.log('[TREE] Klasör yok, senaryoları direkt listele');
+                    if (allScenarios.length > 0) {
+                        treeContainer.innerHTML = allScenarios.map(s => `
+                            <div class="tree-item ${selectedScenarioId === s.id ? 'active' : ''}" onclick="selectScenario(${s.id})">
+                                <span class="material-icons-round item-icon" style="color:#8B5CF6;">smartphone</span>
+                                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.name}</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        treeContainer.innerHTML = `
+                            <div style="text-align:center; padding:30px; color:var(--text-muted);">
+                                <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">📲</div>
+                                <div style="font-size:0.85rem;">Mobil senaryo yok</div>
+                                <a href="scenarios.html" style="color:var(--accent-primary); font-size:0.8rem;">+ Yeni Oluştur</a>
+                            </div>`;
+                    }
+                    return;
+                }
+                
+                const html = buildTreeHTML(flatFolders, allScenarios, null);
+                
+                console.log('[TREE] Oluşturulan HTML uzunluğu:', html.length);
                 
                 if (html) {
                     treeContainer.innerHTML = html;
                 } else {
-                    treeContainer.innerHTML = `
-                        <div style="text-align:center; padding:30px; color:var(--text-muted);">
-                            <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">📲</div>
-                            <div style="font-size:0.85rem;">Mobil senaryo yok</div>
-                            <a href="scenarios.html" style="color:var(--accent-primary); font-size:0.8rem;">+ Yeni Oluştur</a>
-                        </div>`;
+                    // buildTreeHTML boş döndü - senaryoları direkt listele
+                    console.log('[TREE] buildTreeHTML boş döndü, fallback');
+                    if (allScenarios.length > 0) {
+                        treeContainer.innerHTML = allScenarios.map(s => `
+                            <div class="tree-item ${selectedScenarioId === s.id ? 'active' : ''}" onclick="selectScenario(${s.id})">
+                                <span class="material-icons-round item-icon" style="color:#8B5CF6;">smartphone</span>
+                                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.name}</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        treeContainer.innerHTML = `
+                            <div style="text-align:center; padding:30px; color:var(--text-muted);">
+                                <div style="font-size:2rem; margin-bottom:8px; opacity:0.3;">📲</div>
+                                <div style="font-size:0.85rem;">Mobil senaryo yok</div>
+                                <a href="scenarios.html" style="color:var(--accent-primary); font-size:0.8rem;">+ Yeni Oluştur</a>
+                            </div>`;
+                    }
                 }
             } catch (e) {
-                console.error('Scenario load error:', e);
+                console.error('[TREE] Scenario load error:', e);
             }
+        }
+        
+        // Nested klasör yapısını düz listeye çevir
+        function flattenFoldersToList(folders, parentId = null) {
+            let result = [];
+            folders.forEach(f => {
+                // Klasörü ekle
+                result.push({
+                    id: f.id,
+                    name: f.name,
+                    parent_id: parentId
+                });
+                // Alt klasörleri ekle
+                if (f.children && f.children.length > 0) {
+                    result = result.concat(flattenFoldersToList(f.children, f.id));
+                }
+            });
+            return result;
         }
 
         function buildTreeHTML(folders, scenarios, parentId) {
             let html = '';
             
-            const currentFolders = folders.filter(f => f.parent_id === parentId);
-            const currentScenarios = scenarios.filter(s => s.folder_id === parentId);
-            
-            currentFolders.forEach(folder => {
-                const childrenHtml = buildTreeHTML(folders, scenarios, folder.id);
-                
-                if (childrenHtml) {
-                    html += `
-                        <div class="tree-folder">
-                            <div class="tree-folder-header" onclick="toggleFolder(this)">
-                                <span class="folder-icon material-icons-round" style="font-size:1rem;">chevron_right</span>
-                                <span class="material-icons-round" style="font-size:1rem; color:#F59E0B;">folder</span>
-                                <span style="flex:1;">${folder.name}</span>
-                            </div>
-                            <div class="tree-folder-content">${childrenHtml}</div>
-                        </div>`;
+            // Bu seviyedeki klasörler (parent_id eşleşmesi - null için özel kontrol)
+            const currentFolders = folders.filter(f => {
+                if (parentId === null) {
+                    return f.parent_id === null || f.parent_id === undefined || f.parent_id === 0;
                 }
+                return f.parent_id === parentId;
             });
             
+            // Bu seviyedeki senaryolar (folder_id eşleşmesi - null için özel kontrol)
+            const currentScenarios = scenarios.filter(s => {
+                if (parentId === null) {
+                    return s.folder_id === null || s.folder_id === undefined || s.folder_id === 0;
+                }
+                return s.folder_id === parentId;
+            });
+            
+            // Önce klasörleri ekle
+            currentFolders.forEach(folder => {
+                // Bu klasörün altındaki içerik
+                const childrenHtml = buildTreeHTML(folders, scenarios, folder.id);
+                
+                // Klasör içinde senaryo var mı kontrol et (recursive)
+                const scenarioCount = countScenariosInFolder(folders, scenarios, folder.id);
+                
+                // Klasörü her zaman göster
+                html += `
+                    <div class="tree-folder open">
+                        <div class="tree-folder-header" onclick="toggleFolder(this)">
+                            <span class="folder-icon material-icons-round" style="font-size:1rem;">chevron_right</span>
+                            <span class="material-icons-round" style="font-size:1rem; color:#F59E0B;">folder</span>
+                            <span style="flex:1;">${folder.name}</span>
+                            <span style="font-size:0.7rem; color:var(--text-muted); margin-right:5px;">${scenarioCount > 0 ? scenarioCount : ''}</span>
+                        </div>
+                        <div class="tree-folder-content">${childrenHtml}</div>
+                    </div>`;
+            });
+            
+            // Sonra senaryoları ekle
             currentScenarios.forEach(s => {
                 const isActive = selectedScenarioId === s.id ? 'active' : '';
                 html += `
@@ -580,6 +1035,17 @@ Gelişmiş Komutlar:
             });
             
             return html;
+        }
+        
+        function countScenariosInFolder(folders, scenarios, folderId) {
+            // Bu klasördeki senaryolar
+            let count = scenarios.filter(s => s.folder_id === folderId).length;
+            // Alt klasörlerdeki senaryolar
+            const childFolders = folders.filter(f => f.parent_id === folderId);
+            for (const child of childFolders) {
+                count += countScenariosInFolder(folders, scenarios, child.id);
+            }
+            return count;
         }
 
         function toggleFolder(el) {
@@ -705,23 +1171,75 @@ Gelişmiş Komutlar:
         }
 
         // ========== LOGS ==========
+        // Backend parse_natural_language ile AYNI mantık
+        function parseStepsForLog(text) {
+            const lines = text.split('\n');
+            const steps = [];
+            let i = 0;
+            
+            while (i < lines.length) {
+                const line = lines[i].trim();
+                i++;
+                
+                // Boş satır veya yorum satırını atla
+                if (!line || line.startsWith('#') || line.startsWith('//')) {
+                    continue;
+                }
+                
+                let cleanLine = line.replace(/^\d+[\.\)\-\:]\s*/, '').trim();
+                
+                // [opsiyonel] prefix'ini temizle
+                cleanLine = cleanLine.replace(/^\[(?:opsiyonel|optional)\]\s*/i, '');
+                
+                // "önce tıkla sonra yaz" kontrolü - 2 satır 1 adım
+                // Pattern: "Alan" alanına tıkla + "değer" yaz
+                const clickMatch = cleanLine.match(/["']([^"']+)["']\s*(?:alanına|alanina|kutusuna|yerine|inputuna|kısmına)?\s*(?:tıkla|tikla|bas|gir)/i);
+                if (clickMatch && i < lines.length) {
+                    const nextLine = lines[i].trim();
+                    if (nextLine && !nextLine.startsWith('#') && !nextLine.startsWith('//')) {
+                        const nextClean = nextLine.replace(/^\d+[\.\)\-\:]\s*/, '').trim();
+                        // Sonraki satır sadece yazma mı?
+                        const writeMatch = nextClean.match(/^["']([^"']+)["']\s*(?:yaz|yazılır|gir|girilir)$/i);
+                        if (writeMatch) {
+                            // 2 satırı tek adım olarak ekle
+                            steps.push({
+                                index: steps.length + 1,
+                                text: `"${clickMatch[1]}" alanına "${writeMatch[1]}" yaz`
+                            });
+                            i++; // Sonraki satırı atla
+                            continue;
+                        }
+                    }
+                }
+                
+                steps.push({
+                    index: steps.length + 1,
+                    text: cleanLine
+                });
+            }
+            
+            console.log('[LOG] Senaryo satır sayısı:', lines.length);
+            console.log('[LOG] Parse edilen adım sayısı:', steps.length);
+            
+            return steps;
+        }
+        
         function renderInitialLogs(text) {
-            const lines = text.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+            const steps = parseStepsForLog(text);
             const body = document.getElementById('logBody');
             
-            if (lines.length === 0) {
+            if (steps.length === 0) {
                 body.innerHTML = '<div style="padding:30px; text-align:center; color:var(--text-muted);">Adım yok</div>';
                 return;
             }
             
-            body.innerHTML = lines.map((line, i) => {
-                const cleanLine = line.replace(/^\d+[\.\)\-]\s*/, '').trim();
+            body.innerHTML = steps.map((step, i) => {
                 return `
-                    <div class="log-item" id="step-${i+1}">
-                        <div class="log-step">${i+1}</div>
+                    <div class="log-item" id="step-${step.index}">
+                        <div class="log-step">${step.index}</div>
                         <div style="flex:1;">
-                            <div style="font-size:0.85rem;">${cleanLine}</div>
-                            <div class="log-msg" id="msg-${i+1}" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Bekliyor...</div>
+                            <div style="font-size:0.85rem;">${step.text}</div>
+                            <div class="log-msg" id="msg-${step.index}" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Bekliyor...</div>
                         </div>
                     </div>`;
             }).join('');
@@ -860,6 +1378,364 @@ Gelişmiş Komutlar:
             const input = document.getElementById('keyboardInput');
             input.style.display = input.style.display === 'none' ? 'block' : 'none';
             if (input.style.display === 'block') input.focus();
+        }
+        
+        function showGuideModal() {
+            document.getElementById('guideModal').classList.add('active');
+        }
+        
+        function closeGuideModal() {
+            document.getElementById('guideModal').classList.remove('active');
+        }
+    </script>
+    
+    <!-- SENARYO YAZIM REHBERİ MODAL -->
+    <div class="modal-overlay" id="guideModal" onclick="if(event.target===this)closeGuideModal()">
+        <div class="modal" style="max-width:800px; max-height:90vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0;">📜 Mobil Test Senaryo Yazım Rehberi</h3>
+                <button onclick="closeGuideModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
+            </div>
+            <p style="color:var(--text-muted); margin-bottom:20px;">Test adımlarını aşağıdaki kalıplara göre yazın. Büyük/küçük harf fark etmez.</p>
+            
+            <!-- TEMEL KOMUTLAR -->
+            <h4 style="color:var(--accent-primary); margin:20px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">📋 Temel Komutlar</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:120px;">İşlem</th><th>Örnek Komut</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><b>⏱️ Bekleme</b></td><td><code>5 saniye bekle</code></td><td>Belirtilen süre bekler</td></tr>
+                    <tr><td><b>👆 Tıklama</b></td><td><code>"Giriş" butonuna tıkla</code></td><td>Ekranda metni bulup tıklar</td></tr>
+                    <tr><td><b>⌨️ Yazma</b></td><td><code>"Email" alanına "<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="0f7b6a7c7b4f7b6a7c7b216c6062">[email&#160;protected]</a>" yaz</code></td><td>Input alanına metin yazar</td></tr>
+                    <tr><td><b>✅ Doğrulama</b></td><td><code>"Başarılı" yazısını gör</code></td><td>Ekranda metnin varlığını kontrol eder</td></tr>
+                    <tr><td><b>🔙 Geri</b></td><td><code>Geri git</code></td><td>Önceki sayfaya döner</td></tr>
+                    <tr><td><b>📜 Kaydırma</b></td><td><code>Aşağı kaydır</code> / <code>Yukarı kaydır</code></td><td>Ekranı kaydırır</td></tr>
+                    <tr><td><b>🏠 Ana Ekran</b></td><td><code>Ana ekran</code></td><td>Ana ekrana döner</td></tr>
+                </tbody>
+            </table>
+            
+            <!-- YAZMA KOMUTLARI -->
+            <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">⌨️ Yazma Komutları (Detaylı)</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:180px;">Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr>
+                        <td><b>Tek Satır Yazma</b></td>
+                        <td><code>"Email" alanına "<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="f185948285b185948285df929e9c">[email&#160;protected]</a>" yaz</code></td>
+                        <td>Alanı bulur, tıklar ve yazar</td>
+                    </tr>
+                    <tr>
+                        <td><b>İki Satır Yazma</b><br><small>(Önce tıkla, sonra yaz)</small></td>
+                        <td><code>"Şifre" alanına tıkla</code><br><code>"123456" yaz</code></td>
+                        <td>2 satır tek adım olarak çalışır. Metin olmayan input'lar için ideal.</td>
+                    </tr>
+                    <tr>
+                        <td><b>Sadece Yaz</b></td>
+                        <td><code>"test123" yaz</code></td>
+                        <td>Aktif (fokuslu) alana direkt yazar</td>
+                    </tr>
+                    <tr>
+                        <td><b>Label Yanı Input</b></td>
+                        <td><code>"TL" alanına "1000" yaz</code></td>
+                        <td>"TL" label'ının yanındaki input'u bulur</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- INDEX VE SIRA -->
+            <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">🔢 Index ile Seçim</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:180px;">Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><b>Numara ile</b></td><td><code>2. "Ürün" elementine tıkla</code></td><td>İkinci "Ürün" elementine tıklar</td></tr>
+                    <tr><td><b>İlk element</b></td><td><code>ilk "Sepet" butonuna tıkla</code></td><td>İlk bulunan elemente tıklar</td></tr>
+                    <tr><td><b>Son element</b></td><td><code>son "Sil" butonuna bas</code></td><td>Son bulunan elemente tıklar</td></tr>
+                    <tr><td><b>Türkçe sıra</b></td><td><code>ikinci "Ürün" tıkla</code> / <code>üçüncü "Sepet" bas</code></td><td>Türkçe sıra sayıları desteklenir</td></tr>
+                </tbody>
+            </table>
+            
+            <!-- KOŞULLU KOMUTLAR -->
+            <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">🔀 Koşullu Komutlar (IF/ELSE)</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:180px;">Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><b>Varsa Tıkla</b></td><td><code>Eğer "Popup" varsa tıkla</code></td><td>Popup varsa tıklar, yoksa atlar</td></tr>
+                    <tr><td><b>Varsa Kapat</b></td><td><code>Eğer "Reklam" varsa kapat</code></td><td>Reklam varsa kapatır</td></tr>
+                    <tr><td><b>Varsa/Yoksa</b></td><td><code>Eğer "A" varsa tıkla yoksa "B" tıkla</code></td><td>A varsa A'ya, yoksa B'ye tıklar</td></tr>
+                    <tr><td><b>Kısa Format</b></td><td><code>"Banner" varsa tıkla</code></td><td>"Eğer" olmadan da çalışır</td></tr>
+                </tbody>
+            </table>
+            
+            <!-- OPSİYONEL ADIMLAR -->
+            <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">⚡ Opsiyonel Adımlar</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:180px;">Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><b>[opsiyonel]</b></td><td><code>[opsiyonel] "Reklam" varsa kapat</code></td><td>Hata alırsa testi durdurmaz, devam eder</td></tr>
+                    <tr><td><b>[optional]</b></td><td><code>[optional] "Skip" butonuna tıkla</code></td><td>İngilizce format da desteklenir</td></tr>
+                </tbody>
+            </table>
+            
+            <!-- TIKLAMA VARYASYONLARI -->
+            <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">👆 Tıklama Varyasyonları</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:200px;">Komut</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><code>"X" butonuna tıkla</code></td><td>Standart tıklama</td></tr>
+                    <tr><td><code>"X" elementine bas</code></td><td>Alternatif: bas</td></tr>
+                    <tr><td><code>tıkla "X"</code></td><td>Ters format da çalışır</td></tr>
+                    <tr><td><code>"X" seç</code></td><td>Seçme işlemi için</td></tr>
+                    <tr><td><code>"X" linkine tıkla</code></td><td>Link için</td></tr>
+                    <tr><td><code>"X" ikonuna bas</code></td><td>İkon için</td></tr>
+                </tbody>
+            </table>
+            
+            <!-- DOĞRULAMA VARYASYONLARI -->
+            <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">✅ Doğrulama Varyasyonları</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:250px;">Komut</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><code>"Başarılı" yazısını gör</code></td><td>Metnin görünürlüğünü kontrol eder</td></tr>
+                    <tr><td><code>"Hoş Geldiniz" metnini kontrol et</code></td><td>Alternatif format</td></tr>
+                    <tr><td><code>"Login" görünür</code></td><td>Kısa format</td></tr>
+                    <tr><td><code>"Error" bulunur</code></td><td>Varlık kontrolü</td></tr>
+                </tbody>
+            </table>
+            
+            <!-- DİĞER KOMUTLAR -->
+            <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">🔧 Diğer Komutlar</h4>
+            <table class="guide-table">
+                <thead><tr><th style="width:200px;">Komut</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    <tr><td><code>Enter bas</code> / <code>Tab bas</code></td><td>Klavye tuşları</td></tr>
+                    <tr><td><code>Scroll ile "X" bul tıkla</code></td><td>Kaydırarak element arar ve tıklar</td></tr>
+                    <tr><td><code>@degisken = "değer"</code></td><td>Değişken tanımla</td></tr>
+                    <tr><td><code># Bu bir yorumdur</code></td><td>Yorum satırı (çalıştırılmaz)</td></tr>
+                </tbody>
+            </table>
+            
+            <!-- İPUÇLARI -->
+            <div style="background:var(--bg-tertiary); border-radius:8px; padding:15px; margin-top:20px;">
+                <h4 style="margin:0 0 10px; color:var(--accent-warning);">💡 İpuçları</h4>
+                <ul style="margin:0; padding-left:20px; color:var(--text-secondary); font-size:0.9rem;">
+                    <li><b>Boşluk farkı:</b> "Amerikan Doları(USD)" yerine "Amerikan Doları (USD)" yazın (ekrandaki gibi)</li>
+                    <li><b>Metin olmayan butonlar:</b> Görsel butonlar için koordinat veya content-desc kullanın</li>
+                    <li><b>Yavaş sayfalar:</b> Yükleme sonrası "X saniye bekle" ekleyin</li>
+                    <li><b>Hata ayıklama:</b> [opsiyonel] ile belirsiz adımları atlayabilirsiniz</li>
+                </ul>
+            </div>
+            
+            <div style="margin-top:20px; text-align:right;">
+                <button class="btn btn-primary" onclick="closeGuideModal()" style="padding:10px 30px;">Tamam</button>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        /* Guide Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        }
+        .guide-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+        .guide-table th {
+            background: var(--bg-tertiary);
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 2px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        .guide-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+        .guide-table tr:hover td {
+            background: var(--bg-tertiary);
+        }
+        .guide-table code {
+            background: var(--bg-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-primary);
+        }
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+    
+    <!-- FARM AYARLARI MODAL -->
+    <div class="modal-overlay" id="farmSettingsModal" onclick="if(event.target===this)closeFarmSettings()">
+        <div class="modal" style="max-width:550px; max-height:90vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0;">⚙️ Sunucu Ayarları</h3>
+                <button onclick="closeFarmSettings()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
+            </div>
+            
+            <!-- FARM AYARLARI -->
+            <div style="background:var(--bg-tertiary); border-radius:8px; padding:16px; margin-bottom:20px;">
+                <h4 style="margin:0 0 12px; color:var(--accent-primary); font-size:0.9rem;">🌐 Farm (VFarm)</h4>
+                
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:0.8rem;">Farm URL</label>
+                    <input type="text" id="farmUrl" class="form-input" placeholder="https://10.40.11.19">
+                </div>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size:0.8rem;">Kullanıcı Adı</label>
+                        <input type="text" id="farmUsername" class="form-input" placeholder="Demo">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size:0.8rem;">Şifre</label>
+                        <input type="password" id="farmPassword" class="form-input" placeholder="********">
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:0.8rem;">Appium URL</label>
+                    <input type="text" id="farmAppiumUrl" class="form-input" placeholder="https://10.40.11.19:443/wd/hub">
+                </div>
+                
+                <button class="btn-secondary" onclick="testFarmConnection()" style="padding:8px 16px; font-size:0.8rem; width:100%;">
+                    🔍 Farm Bağlantısını Test Et
+                </button>
+            </div>
+            
+            <!-- iOS/MAC SUNUCU AYARLARI -->
+            <div style="background:var(--bg-tertiary); border-radius:8px; padding:16px; margin-bottom:20px;">
+                <h4 style="margin:0 0 12px; color:var(--info); font-size:0.9rem;">🍎 iOS / Mac Sunucu</h4>
+                <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px;">
+                    iOS cihazları için Mac sunucu gereklidir. Mac'te Appium + XCUITest çalışıyor olmalı.
+                </p>
+                
+                <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size:0.8rem;">Mac IP Adresi</label>
+                        <input type="text" id="iosHost" class="form-input" placeholder="192.168.1.100">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size:0.8rem;">Appium Port</label>
+                        <input type="number" id="iosPort" class="form-input" placeholder="4723" value="4723">
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:0.8rem;">SSH Kullanıcı (opsiyonel)</label>
+                    <input type="text" id="iosUsername" class="form-input" placeholder="admin">
+                </div>
+                
+                <button class="btn-secondary" onclick="testiOSConnection()" style="padding:8px 16px; font-size:0.8rem; width:100%;">
+                    🔍 iOS Sunucu Bağlantısını Test Et
+                </button>
+            </div>
+            
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button class="btn-secondary" onclick="closeFarmSettings()" style="padding:10px 20px;">
+                    İptal
+                </button>
+                <button class="btn-primary" onclick="saveAllSettings()" style="padding:10px 20px;">
+                    💾 Tümünü Kaydet
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Ayarlar modalı için ek fonksiyonlar
+        function showFarmSettings() {
+            document.getElementById('farmSettingsModal').classList.add('active');
+            // Farm ayarları
+            document.getElementById('farmUrl').value = farmConfig.url || '';
+            document.getElementById('farmUsername').value = farmConfig.username || '';
+            document.getElementById('farmPassword').value = farmConfig.password || '';
+            document.getElementById('farmAppiumUrl').value = farmConfig.appiumUrl || '';
+            // iOS ayarları
+            document.getElementById('iosHost').value = iosConfig.host || '';
+            document.getElementById('iosPort').value = iosConfig.port || 4723;
+            document.getElementById('iosUsername').value = iosConfig.username || '';
+        }
+        
+        function saveAllSettings() {
+            // Farm ayarları
+            farmConfig = {
+                url: document.getElementById('farmUrl').value.trim(),
+                username: document.getElementById('farmUsername').value.trim(),
+                password: document.getElementById('farmPassword').value,
+                appiumUrl: document.getElementById('farmAppiumUrl').value.trim()
+            };
+            localStorage.setItem('farmConfig', JSON.stringify(farmConfig));
+            
+            // iOS ayarları
+            iosConfig = {
+                host: document.getElementById('iosHost').value.trim(),
+                port: parseInt(document.getElementById('iosPort').value) || 4723,
+                username: document.getElementById('iosUsername').value.trim()
+            };
+            localStorage.setItem('iosConfig', JSON.stringify(iosConfig));
+            
+            Toast.success('Tüm ayarlar kaydedildi');
+            closeFarmSettings();
+        }
+        
+        async function testiOSConnection() {
+            const host = document.getElementById('iosHost').value.trim();
+            const port = document.getElementById('iosPort').value || 4723;
+            
+            if (!host) {
+                Toast.error('Mac IP adresi gerekli');
+                return;
+            }
+            
+            try {
+                Toast.info('iOS sunucuya bağlanılıyor...');
+                const res = await fetch('/api/farm/ios/devices/remote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ host, port, username: document.getElementById('iosUsername').value.trim() })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    Toast.success(`Bağlantı başarılı! ${data.count} iOS cihaz bulundu`);
+                } else {
+                    Toast.error('Bağlantı başarısız: ' + data.error);
+                }
+            } catch (e) {
+                Toast.error('Bağlantı hatası: ' + e.message);
+            }
         }
     </script>
 </body>

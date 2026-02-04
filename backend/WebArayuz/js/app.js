@@ -23,6 +23,11 @@ const Auth = {
     setToken(token) { Storage.set('token', token); },
     getUser() { return Storage.get('user'); },
     setUser(user) { Storage.set('user', user); },
+    getCurrentUser() { return this.getUser(); }, // Alias for getUser
+    isAdmin() { 
+        const user = this.getUser();
+        return user && user.role === 'admin';
+    },
     isLoggedIn() { return !!this.getToken(); },
     logout() {
         Storage.remove('token');
@@ -235,7 +240,34 @@ const UI = {
         document.querySelectorAll('.user-name').forEach(el => el.textContent = user.full_name || user.username);
         document.querySelectorAll('.user-avatar').forEach(el => el.textContent = Utils.getInitials(user.full_name || user.username));
         document.querySelectorAll('.user-role').forEach(el => el.textContent = user.role === 'admin' ? 'Yönetici' : 'Kullanıcı');
+    },
+    
+    // Admin section kontrolü
+    showAdminSection() {
+        const adminSection = document.getElementById('adminSection');
+        if (adminSection && Auth.isAdmin()) {
+            adminSection.style.display = 'block';
+        }
+    },
+    
+    hideAdminSection() {
+        const adminSection = document.getElementById('adminSection');
+        if (adminSection) {
+            adminSection.style.display = 'none';
+        }
+    },
+    
+    // Sayfa yüklendiğinde admin kontrolü yap
+    initAdminControls() {
+        if (Auth.isAdmin()) {
+            this.showAdminSection();
+        } else {
+            this.hideAdminSection();
+        }
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => { Theme.init(); });
+document.addEventListener('DOMContentLoaded', () => { 
+    Theme.init(); 
+    UI.initAdminControls(); // Admin kontrolü
+});

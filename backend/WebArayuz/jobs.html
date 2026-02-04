@@ -203,20 +203,28 @@
                     <span>Test Platform</span>
                 </div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Ana Menü</div>
-                    <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
-                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
-                    <a href="jobs.html" class="nav-item active"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Test Türleri</div>
-                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
-                    <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📱</span><span>Mobil Test</span></a>
-                    <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
-                </div>
-            </nav>
+<nav class="sidebar-nav">
+    <div class="nav-section">
+        <div class="nav-section-title">Ana Menu</div>
+        <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
+        <a href="workspace.html" class="nav-item"><span class="nav-item-icon">💼</span><span>Workspace</span></a>
+        <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+        <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri (Jobs)</span></a>
+    </div>
+    
+    <!-- Admin Section - Sadece adminler görebilir -->
+    <div class="nav-section" id="adminSection" style="display:none;">
+        <div class="nav-section-title">Admin</div>
+        <a href="admin-repos.html" class="nav-item"><span class="nav-item-icon">🔧</span><span>Repository Yönetimi</span></a>
+    </div>
+    
+    <div class="nav-section">
+        <div class="nav-section-title">Test Turleri</div>
+        <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
+        <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
+        <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
+    </div>
+</nav>
             <div class="sidebar-footer">
                 <div class="user-info" onclick="if(confirm('Çıkış yapmak istiyor musunuz?')) Auth.logout();">
                     <div class="user-avatar" id="userAvatar">?</div>

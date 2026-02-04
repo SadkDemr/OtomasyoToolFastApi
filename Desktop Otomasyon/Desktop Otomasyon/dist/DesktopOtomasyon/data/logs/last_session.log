@@ -1,0 +1,46 @@
+2026-02-04 13:56:18,797 - INFO - Kalıcı Veri Dizini Hazır: C:\Users\emire\OneDrive\Masaüstü\Desktop Otomasyon\dist\DesktopOtomasyon\data (DPI Skaler: 1.00)
+2026-02-04 13:56:19,113 - INFO - OpenCV (cv2) Aktif. Super-Vision motoru hazır.
+2026-02-04 13:56:23,997 - INFO - Kalıcı Veri Dizini Hazır: C:\Users\emire\OneDrive\Masaüstü\Desktop Otomasyon\dist\DesktopOtomasyon\data (DPI Skaler: 1.00)
+2026-02-04 13:56:24,290 - INFO - OpenCV (cv2) Aktif. Super-Vision motoru hazır.
+2026-02-04 13:56:46,725 - INFO - Senaryo başlatıldı: Yeni Senaryo
+2026-02-04 13:56:46,725 - INFO - Adım 1/1: LAUNCH_APP - Open chrome.exe
+2026-02-04 13:56:46,725 - INFO - Uygulama başlatılıyor: C:/Users/emire/AppData/Local/Google/Chrome/Application/chrome.exe
+2026-02-04 13:56:46,750 - INFO - Pencerenin açılması bekleniyor (Max 15s)...
+2026-02-04 13:56:49,215 - INFO - Pencere yakalandı ve tam ekran yapıldı: Yeni Sekme - Google Chrome
+2026-02-04 13:56:49,215 - INFO - Senaryo tamamlandı. Başarılı: True
+2026-02-04 13:57:20,492 - INFO - Senaryo başlatıldı: Yeni Senaryo
+2026-02-04 13:57:20,492 - INFO - Adım 1/4: LAUNCH_APP - Open chrome.exe
+2026-02-04 13:57:20,492 - INFO - Uygulama başlatılıyor: C:/Users/emire/AppData/Local/Google/Chrome/Application/chrome.exe
+2026-02-04 13:57:20,505 - INFO - Pencerenin açılması bekleniyor (Max 15s)...
+2026-02-04 13:57:22,755 - INFO - Pencere yakalandı ve tam ekran yapıldı: Yeni Sekme - Google Chrome
+2026-02-04 13:57:22,758 - INFO - Adım 2/4: CLICK - Click: Google Input
+2026-02-04 13:57:23,259 - INFO - Absolute Vision Arama: snip_20260204_135702.png
+2026-02-04 13:57:23,634 - INFO - Görsel bulundu (Standard Fallback): C:\Users\emire\OneDrive\Masaüstü\Desktop Otomasyon\dist\DesktopOtomasyon\data\assets\snip_20260204_135702.png
+2026-02-04 13:57:23,634 - INFO - Adım 3/4: TYPE - Type 'Vakif Katilim'
+2026-02-04 13:57:24,138 - INFO - Metin yazılıyor: [GİZLİ METİN - 13 karakter]
+2026-02-04 13:57:27,034 - INFO - Adım 4/4: PRESS_KEY - Press Key: enter
+2026-02-04 13:57:27,635 - INFO - Senaryo tamamlandı. Başarılı: True
+2026-02-04 13:57:57,139 - INFO - Senaryo başlatıldı: Yeni Senaryo
+2026-02-04 13:57:57,147 - INFO - Adım 1/6: LAUNCH_APP - Open chrome.exe
+2026-02-04 13:57:57,147 - INFO - Uygulama başlatılıyor: C:/Users/emire/AppData/Local/Google/Chrome/Application/chrome.exe
+2026-02-04 13:57:57,165 - INFO - Pencerenin açılması bekleniyor (Max 15s)...
+2026-02-04 13:57:59,413 - INFO - Pencere yakalandı ve tam ekran yapıldı: Yeni Sekme - Google Chrome
+2026-02-04 13:57:59,415 - INFO - Adım 2/6: CLICK - Click: Google Input
+2026-02-04 13:57:59,917 - INFO - Absolute Vision Arama: snip_20260204_135702.png
+2026-02-04 13:58:00,284 - INFO - Görsel bulundu (Standard Fallback): C:\Users\emire\OneDrive\Masaüstü\Desktop Otomasyon\dist\DesktopOtomasyon\data\assets\snip_20260204_135702.png
+2026-02-04 13:58:00,284 - INFO - Adım 3/6: TYPE - Type 'Vakif Katilim'
+2026-02-04 13:58:00,786 - INFO - Metin yazılıyor: [GİZLİ METİN - 13 karakter]
+2026-02-04 13:58:03,763 - INFO - Adım 4/6: PRESS_KEY - Press Key: enter
+2026-02-04 13:58:04,365 - INFO - Adım 5/6: CLICK - Click: Vakif Katilim Site
+2026-02-04 13:58:04,866 - INFO - Absolute Vision Arama: snip_20260204_135734.png
+2026-02-04 13:58:05,196 - INFO - Görsel bulundu (Standard Fallback): C:\Users\emire\OneDrive\Masaüstü\Desktop Otomasyon\dist\DesktopOtomasyon\data\assets\snip_20260204_135734.png
+2026-02-04 13:58:05,196 - INFO - Adım 6/6: CLICK - Click: Hakkımızda
+2026-02-04 13:58:05,699 - INFO - Absolute Vision Arama: snip_20260204_135748.png
+2026-02-04 13:58:08,098 - INFO - Görsel bulundu (Standard Fallback): C:\Users\emire\OneDrive\Masaüstü\Desktop Otomasyon\dist\DesktopOtomasyon\data\assets\snip_20260204_135748.png
+2026-02-04 13:58:08,098 - INFO - Senaryo tamamlandı. Başarılı: True
+2026-02-04 15:45:22,634 - INFO - Kalıcı Veri Dizini Hazır: C:\Users\Sadik Demir\Desktop\Desktop Otomasyon\Desktop Otomasyon\dist\DesktopOtomasyon\data (DPI Skaler: 1.00)
+2026-02-04 15:45:23,599 - INFO - OpenCV (cv2) Aktif. Super-Vision motoru hazır.
+2026-02-04 15:45:46,052 - INFO - Senaryo başlatıldı: Yeni Senaryo
+2026-02-04 15:45:46,053 - INFO - Adım 1/1: LAUNCH_APP - Open brave.exe
+2026-02-04 15:45:46,055 - INFO - Uygulama başlatılıyor: C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe
+2026-02-04 15:45:46,086 - INFO - Pencerenin açılması bekleniyor (Max 15s)...

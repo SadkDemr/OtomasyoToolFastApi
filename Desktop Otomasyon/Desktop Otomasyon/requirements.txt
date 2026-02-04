@@ -1,0 +1,9 @@
+customtkinter
+pyautogui
+opencv-python
+pillow
+packaging
+mouseinfo
+pyinstaller
+pywinauto
+pynput

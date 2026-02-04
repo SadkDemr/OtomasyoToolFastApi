@@ -1,12 +1,12 @@
 """
-Selenium Service - Web Test v3
+Selenium Service - Web Test v4
 ==============================
-DÜZELTMELER:
-1. ChromeDriver otomatik indirilmesi
-2. Windows uyumluluğu
-3. Gelişmiş element bulma
-4. Türkçe parse genişletildi
-5. Canlı log callback desteği
+YENİ ÖZELLİKLER:
+1. Varsayılan Headless mode (Chrome açılmaz)
+2. Her adımda otomatik screenshot
+3. PDF rapor oluşturma
+4. WebSocket ile canlı log
+5. Screenshot'lı log yapısı
 """
 import sys
 import os
@@ -15,7 +15,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import re
 import uuid
+import base64
+import json
+from datetime import datetime
 from typing import List, Dict, Any, Callable, Optional
+from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -26,7 +30,22 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import *
 
-from models.schemas import TestStep, StepResult
+try:
+    from models.schemas import TestStep, StepResult
+except:
+    class TestStep:
+        def __init__(self):
+            self.action = ""
+            self.target = ""
+            self.value = ""
+            self.locator_type = "auto"
+    
+    class StepResult:
+        def __init__(self, step_number=0, action="", success=True, message=""):
+            self.step_number = step_number
+            self.action = action
+            self.success = success
+            self.message = message
 
 try:
     from webdriver_manager.chrome import ChromeDriverManager
@@ -35,19 +54,48 @@ except ImportError:
     WEBDRIVER_MANAGER = False
     print("[SELENIUM] webdriver-manager yüklü değil. pip install webdriver-manager")
 
+# PDF oluşturma için (opsiyonel)
+PDF_AVAILABLE = False
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+    PDF_AVAILABLE = True
+except ImportError:
+    pass  # PDF desteği yok, sessizce devam et
+
+
+class WebTestResult:
+    """Test sonucu - screenshot dahil"""
+    def __init__(self):
+        self.step_number: int = 0
+        self.action: str = ""
+        self.target: str = ""
+        self.success: bool = True
+        self.message: str = ""
+        self.screenshot: str = ""
+        self.timestamp: str = ""
+        self.duration: float = 0
+
 
 class SeleniumService:
     def __init__(self):
         self.driver = None
         self.log_callback: Optional[Callable] = None
         self.current_test_id: str = ""
+        self.screenshots_dir = Path("screenshots")
+        self.reports_dir = Path("reports")
+        self.test_results: List[WebTestResult] = []
+        
+        self.screenshots_dir.mkdir(exist_ok=True)
+        self.reports_dir.mkdir(exist_ok=True)
     
     def set_log_callback(self, callback: Callable):
-        """Canlı log için callback ayarla"""
         self.log_callback = callback
     
-    def _send_log(self, step_num: int, action: str, status: str, message: str = ""):
-        """Log gönder (callback varsa)"""
+    def _send_log(self, step_num: int, action: str, status: str, message: str = "", screenshot: str = ""):
         print(f"[WEB] Adım {step_num}: {action} -> {status}")
         if self.log_callback:
             try:
@@ -56,13 +104,36 @@ class SeleniumService:
                     "step": step_num,
                     "action": action,
                     "status": status,
-                    "message": message
+                    "message": message,
+                    "screenshot": screenshot,
+                    "timestamp": datetime.now().isoformat()
                 })
             except Exception as e:
                 print(f"[WEB] Log callback error: {e}")
     
-    def create_driver(self, headless: bool = False):
-        """Chrome driver oluştur"""
+    def _take_screenshot(self) -> str:
+        try:
+            if self.driver:
+                return self.driver.get_screenshot_as_base64()
+        except Exception as e:
+            print(f"[WEB] Screenshot hatası: {e}")
+        return ""
+    
+    def _save_screenshot(self, step_num: int, screenshot_base64: str) -> str:
+        if not screenshot_base64:
+            return ""
+        try:
+            filename = f"{self.current_test_id}_step_{step_num}.png"
+            filepath = self.screenshots_dir / filename
+            with open(filepath, "wb") as f:
+                f.write(base64.b64decode(screenshot_base64))
+            return str(filepath)
+        except Exception as e:
+            print(f"[WEB] Screenshot kayıt hatası: {e}")
+            return ""
+    
+    def create_driver(self, headless: bool = True):
+        """Chrome driver - VARSAYILAN HEADLESS"""
         options = Options()
         
         if headless:
@@ -78,6 +149,7 @@ class SeleniumService:
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_experimental_option('excludeSwitches', ['enable-automation'])
         options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument('--force-device-scale-factor=1')
         
         if os.name == 'nt':
             options.add_argument('--disable-features=VizDisplayCompositor')
@@ -85,15 +157,12 @@ class SeleniumService:
         try:
             if WEBDRIVER_MANAGER:
                 driver_path = ChromeDriverManager().install()
-                
-                # Windows'ta .exe dosyasını bul
                 if os.name == 'nt' and not driver_path.endswith('.exe'):
                     driver_dir = os.path.dirname(driver_path)
                     for f in os.listdir(driver_dir):
                         if f == 'chromedriver.exe':
                             driver_path = os.path.join(driver_dir, f)
                             break
-                    
                     if not driver_path.endswith('.exe'):
                         parent_dir = os.path.dirname(driver_dir)
                         for root, dirs, files in os.walk(parent_dir):
@@ -101,7 +170,6 @@ class SeleniumService:
                                 if f == 'chromedriver.exe':
                                     driver_path = os.path.join(root, f)
                                     break
-                
                 print(f"[SELENIUM] ChromeDriver: {driver_path}")
                 service = Service(executable_path=driver_path)
             else:
@@ -109,16 +177,13 @@ class SeleniumService:
             
             self.driver = webdriver.Chrome(service=service, options=options)
             self.driver.implicitly_wait(5)
-            print("[SELENIUM] Driver oluşturuldu")
-            
+            print(f"[SELENIUM] Driver oluşturuldu (headless={headless})")
         except Exception as e:
             print(f"[SELENIUM] Driver hatası: {e}")
             raise Exception(f"Chrome driver oluşturulamadı: {str(e)}")
-        
         return self.driver
     
     def close_driver(self):
-        """Driver'ı kapat"""
         if self.driver:
             try:
                 self.driver.quit()
@@ -127,7 +192,6 @@ class SeleniumService:
             self.driver = None
     
     def find_element_smart(self, locator_type: str, value: str, timeout: int = 10):
-        """Akıllı element bulma - birden fazla strateji dener"""
         strategies = []
         locator_type = locator_type.lower()
         
@@ -140,7 +204,6 @@ class SeleniumService:
         elif locator_type == 'name':
             strategies.append((By.NAME, value))
         else:
-            # Auto mod - tüm stratejileri dene
             strategies = [
                 (By.XPATH, f"//*[text()='{value}']"),
                 (By.XPATH, f"//button[text()='{value}']"),
@@ -151,37 +214,31 @@ class SeleniumService:
                 (By.XPATH, f"//*[@placeholder='{value}']"),
                 (By.XPATH, f"//*[contains(@placeholder,'{value}')]"),
                 (By.XPATH, f"//*[@aria-label='{value}']"),
-                (By.XPATH, f"//*[contains(@aria-label,'{value}')]"),
                 (By.XPATH, f"//label[contains(.,'{value}')]/following::input[1]"),
                 (By.XPATH, f"//input[@name='{value}']"),
                 (By.XPATH, f"//input[@id='{value}']"),
                 (By.XPATH, f"//textarea[@name='{value}']"),
-                (By.XPATH, f"//select[@name='{value}']"),
                 (By.ID, value),
                 (By.NAME, value),
                 (By.CLASS_NAME, value),
             ]
         
-        per_strategy_timeout = min(1.5, timeout / len(strategies))
-        
+        per_timeout = min(1.5, timeout / len(strategies))
         for by_type, by_value in strategies:
             try:
-                wait = WebDriverWait(self.driver, per_strategy_timeout)
+                wait = WebDriverWait(self.driver, per_timeout)
                 element = wait.until(EC.presence_of_element_located((by_type, by_value)))
                 if element.is_displayed():
                     return element
             except:
                 continue
-        
         raise NoSuchElementException(f"Element bulunamadı: {value}")
     
     def execute_action(self, action: str, target: str, value: str, locator_type: str = "auto") -> Dict[str, Any]:
-        """Aksiyon çalıştır"""
         result = {"success": True, "message": ""}
         action = action.lower().strip()
         
         try:
-            # URL GİT
             if action in ['open', 'navigate', 'goto', 'git', 'ac', 'aç', 'url']:
                 url = target or value
                 if not url.startswith('http'):
@@ -190,164 +247,78 @@ class SeleniumService:
                 time.sleep(1)
                 result["message"] = f"Sayfa açıldı: {url}"
             
-            # TIKLA
             elif action in ['click', 'tikla', 'tıkla', 'bas']:
                 element = self.find_element_smart(locator_type, target)
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
                 time.sleep(0.3)
-                
                 try:
                     element.click()
                 except:
                     self.driver.execute_script("arguments[0].click();", element)
-                
-                time.sleep(0.5)
-                result["message"] = f"Tıklandı: {target}"
+                result["message"] = f"'{target}' tıklandı"
             
-            # YAZ
-            elif action in ['type', 'write', 'yaz', 'gir', 'doldur']:
+            elif action in ['type', 'yaz', 'gir', 'doldur', 'write']:
                 element = self.find_element_smart(locator_type, target)
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
                 time.sleep(0.2)
-                
-                try:
-                    element.clear()
-                except:
-                    element.send_keys(Keys.CONTROL + "a")
-                    element.send_keys(Keys.DELETE)
-                
+                element.clear()
                 element.send_keys(value)
-                result["message"] = f"Yazıldı: {value}"
+                result["message"] = f"'{target}' alanına '{value}' yazıldı"
             
-            # BEKLE
+            elif action in ['verify', 'dogrula', 'doğrula', 'kontrol', 'assert']:
+                try:
+                    element = self.find_element_smart('auto', target, timeout=5)
+                    result["message"] = f"'{target}' doğrulandı"
+                except:
+                    result["success"] = False
+                    result["message"] = f"'{target}' bulunamadı"
+            
             elif action in ['wait', 'bekle', 'dur']:
                 seconds = float(target or value or 1)
                 time.sleep(seconds)
-                result["message"] = f"Beklendi: {seconds}s"
+                result["message"] = f"{seconds}s beklendi"
             
-            # DOĞRULA
-            elif action in ['verify', 'dogrula', 'doğrula', 'kontrol', 'gor', 'gör', 'assert']:
-                text_to_find = target or value
-                
-                try:
-                    self.find_element_smart("auto", text_to_find, timeout=3)
-                    result["success"] = True
-                    result["message"] = f"Doğrulandı: '{text_to_find}'"
-                except:
-                    # Sayfa kaynağında ara
-                    if text_to_find.lower() in self.driver.page_source.lower():
-                        result["success"] = True
-                        result["message"] = f"Sayfada bulundu: '{text_to_find}'"
-                    else:
-                        result["success"] = False
-                        result["message"] = f"Bulunamadı: '{text_to_find}'"
-            
-            # SCROLL AŞAĞI
             elif action in ['scroll', 'kaydir', 'kaydır']:
                 direction = (target or value or 'down').lower()
-                if direction in ['down', 'asagi', 'aşağı']:
+                if direction in ['down', 'aşağı', 'asagi']:
                     self.driver.execute_script("window.scrollBy(0, 500);")
-                elif direction in ['up', 'yukari', 'yukarı']:
+                else:
                     self.driver.execute_script("window.scrollBy(0, -500);")
-                elif direction in ['top', 'en_ust', 'en_üst']:
-                    self.driver.execute_script("window.scrollTo(0, 0);")
-                elif direction in ['bottom', 'en_alt']:
-                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                result["message"] = f"Kaydırıldı: {direction}"
+                result["message"] = f"Sayfa {direction} kaydırıldı"
             
-            # GERİ
             elif action in ['back', 'geri']:
                 self.driver.back()
-                time.sleep(0.5)
                 result["message"] = "Geri gidildi"
             
-            # İLERİ
-            elif action in ['forward', 'ileri']:
-                self.driver.forward()
-                time.sleep(0.5)
-                result["message"] = "İleri gidildi"
-            
-            # YENİLE
             elif action in ['refresh', 'yenile']:
                 self.driver.refresh()
                 time.sleep(1)
                 result["message"] = "Sayfa yenilendi"
             
-            # TEMİZLE
-            elif action in ['clear', 'temizle', 'sil']:
-                element = self.find_element_smart(locator_type, target)
-                element.clear()
-                result["message"] = f"Temizlendi: {target}"
+            elif action in ['press', 'key', 'tus', 'tuş']:
+                key = (target or value).lower()
+                if key == 'enter':
+                    self.driver.switch_to.active_element.send_keys(Keys.ENTER)
+                elif key == 'tab':
+                    self.driver.switch_to.active_element.send_keys(Keys.TAB)
+                elif key in ['escape', 'esc']:
+                    self.driver.switch_to.active_element.send_keys(Keys.ESCAPE)
+                result["message"] = f"{key.upper()} tuşuna basıldı"
             
-            # FORM GÖNDER
-            elif action in ['submit', 'gonder', 'gönder']:
-                element = self.find_element_smart(locator_type, target)
-                element.submit()
-                result["message"] = "Form gönderildi"
-            
-            # TUŞ BAS
-            elif action in ['press', 'key', 'tus', 'tuş', 'enter']:
-                key_map = {
-                    'enter': Keys.ENTER,
-                    'tab': Keys.TAB,
-                    'escape': Keys.ESCAPE,
-                    'esc': Keys.ESCAPE,
-                    'space': Keys.SPACE,
-                    'backspace': Keys.BACKSPACE,
-                    'delete': Keys.DELETE,
-                    'up': Keys.UP,
-                    'down': Keys.DOWN,
-                    'left': Keys.LEFT,
-                    'right': Keys.RIGHT,
-                }
-                key = key_map.get((target or 'enter').lower(), Keys.ENTER)
-                webdriver.ActionChains(self.driver).send_keys(key).perform()
-                result["message"] = f"Tuş basıldı: {target or 'enter'}"
-            
-            # EKRAN GÖRÜNTÜSÜ
-            elif action in ['screenshot', 'ss', 'ekran', 'goruntu', 'görüntü']:
-                filename = target or f"screenshot_{int(time.time())}.png"
-                if not filename.endswith('.png'):
-                    filename += '.png'
-                self.driver.save_screenshot(filename)
-                result["message"] = f"Ekran görüntüsü: {filename}"
-            
-            # BEKLE ELEMENT
-            elif action in ['wait_element', 'element_bekle']:
-                wait = WebDriverWait(self.driver, int(value or 10))
-                wait.until(EC.presence_of_element_located((By.XPATH, f"//*[contains(text(),'{target}')]")))
-                result["message"] = f"Element beklendi: {target}"
-            
-            # HOVER
-            elif action in ['hover', 'uzerine_git', 'üzerine_git']:
-                element = self.find_element_smart(locator_type, target)
-                webdriver.ActionChains(self.driver).move_to_element(element).perform()
-                result["message"] = f"Hover: {target}"
-            
-            # ÇİFT TIKLA
-            elif action in ['double_click', 'cift_tikla', 'çift_tıkla']:
-                element = self.find_element_smart(locator_type, target)
-                webdriver.ActionChains(self.driver).double_click(element).perform()
-                result["message"] = f"Çift tıklandı: {target}"
-            
-            # SAĞ TIKLA
-            elif action in ['right_click', 'sag_tikla', 'sağ_tıkla']:
-                element = self.find_element_smart(locator_type, target)
-                webdriver.ActionChains(self.driver).context_click(element).perform()
-                result["message"] = f"Sağ tıklandı: {target}"
+            elif action in ['screenshot', 'ss', 'ekran']:
+                result["message"] = "Ekran görüntüsü alındı"
             
             else:
+                result["success"] = False
                 result["message"] = f"Bilinmeyen aksiyon: {action}"
         
         except Exception as e:
             result["success"] = False
-            result["error"] = str(e)
-            result["message"] = f"Hata: {str(e)}"
+            result["message"] = str(e)
         
         return result
     
     def parse_natural_language(self, text: str) -> List[TestStep]:
-        """Türkçe doğal dili test adımlarına çevir"""
         commands = []
         lines = text.strip().split('\n')
         
@@ -356,11 +327,9 @@ class SeleniumService:
             if not line or line.startswith('#') or line.startswith('//'):
                 continue
             
-            # Satır numarasını temizle
             line = re.sub(r'^\d+[\.\)\-]\s*', '', line)
             step = TestStep()
             
-            # URL GİT
             match = re.search(r'(?:git|aç|ac|open|navigate)\s*["\']?([^"\']+)["\']?', line, re.IGNORECASE)
             if match and ('http' in match.group(1) or '.' in match.group(1)):
                 step.action = 'navigate'
@@ -368,33 +337,25 @@ class SeleniumService:
                 commands.append(step)
                 continue
             
-            # TIKLA
             match = re.search(
-                r'["\']([^"\']+)["\']\s*(?:butonuna|düğmesine|dugmesine|linkine|elementine|yazısına|yazisina|sekmesine|menüsüne|menusune|üzerine|uzerine|alanına|alanina)?\s*(?:tıkla|tikla|tıklanır|tiklanir|bas|basılır|basilir|click|seç|sec)',
+                r'["\']([^"\']+)["\']\s*(?:butonuna|düğmesine|linkine|elementine|yazısına|sekmesine|menüsüne|üzerine|alanına)?\s*(?:tıkla|tikla|bas|click|seç|sec)',
                 line, re.IGNORECASE
             )
             if match:
                 step.action = 'click'
                 step.target = match.group(1)
-                step.locator_type = 'auto'
                 commands.append(step)
                 continue
             
-            # Alternatif TIKLA
-            match = re.search(
-                r'(?:tıkla|tikla|bas|click)\s*["\']([^"\']+)["\']',
-                line, re.IGNORECASE
-            )
+            match = re.search(r'(?:tıkla|tikla|bas|click)\s*["\']([^"\']+)["\']', line, re.IGNORECASE)
             if match:
                 step.action = 'click'
                 step.target = match.group(1)
-                step.locator_type = 'auto'
                 commands.append(step)
                 continue
             
-            # YAZ
             match = re.search(
-                r'["\']([^"\']+)["\']\s*(?:alanına|alanina|kutusuna|inputuna|yerine|kısmına|kismina|bölümüne|bolumune)?\s*["\']?([^"\']+)["\']?\s*(?:yazılır|yazilir|yaz|girilir|gir|doldur|doldurulur|yazar)',
+                r'["\']([^"\']+)["\']\s*(?:alanına|kutusuna|inputuna|yerine)?\s*["\']?([^"\']+)["\']?\s*(?:yaz|gir|doldur)',
                 line, re.IGNORECASE
             )
             if match:
@@ -404,9 +365,8 @@ class SeleniumService:
                 commands.append(step)
                 continue
             
-            # DOĞRULA
             match = re.search(
-                r'["\']([^"\']+)["\']\s*(?:yazısı|yazisi|yazısını|yazisini|metni|metnini|elementi|mesajı|mesaji)?\s*(?:görülür|gorulur|görüntülenir|goruntulenir|görünür|gorunur|gör|gor|kontrol|doğrulanır|dogrulanir|var|bulunur|mevcut|görünmeli|gorunmeli|olmalı|olmali)',
+                r'["\']([^"\']+)["\']\s*(?:yazısı|metni)?\s*(?:görülür|görünür|gör|kontrol|doğrulanır|var|bulunur)',
                 line, re.IGNORECASE
             )
             if match:
@@ -415,60 +375,49 @@ class SeleniumService:
                 commands.append(step)
                 continue
             
-            # BEKLE
-            match = re.search(r'(\d+(?:\.\d+)?)\s*(?:saniye|sn|s)\s*(?:beklenir|bekle|bekler|dur)?', line, re.IGNORECASE)
+            match = re.search(r'(\d+(?:\.\d+)?)\s*(?:saniye|sn|s)\s*(?:bekle|dur)?', line, re.IGNORECASE)
             if match:
                 step.action = 'wait'
                 step.target = match.group(1)
                 commands.append(step)
                 continue
             
-            # SCROLL AŞAĞI
-            if re.search(r'(?:sayfa|ekran)?\s*(?:aşağı|asagi)\s*(?:kaydırılır|kaydirilir|kaydır|kaydir|scroll)', line, re.IGNORECASE):
+            if re.search(r'(?:aşağı|asagi)\s*(?:kaydır|kaydir|scroll)', line, re.IGNORECASE):
                 step.action = 'scroll'
                 step.target = 'down'
                 commands.append(step)
                 continue
             
-            # SCROLL YUKARI
-            if re.search(r'(?:sayfa|ekran)?\s*(?:yukarı|yukari)\s*(?:kaydırılır|kaydirilir|kaydır|kaydir|scroll)', line, re.IGNORECASE):
+            if re.search(r'(?:yukarı|yukari)\s*(?:kaydır|kaydir|scroll)', line, re.IGNORECASE):
                 step.action = 'scroll'
                 step.target = 'up'
                 commands.append(step)
                 continue
             
-            # GERİ
-            if re.search(r'geri\s*(?:git|gidilir|tuşuna|tusuna|bas|dön|don)?', line, re.IGNORECASE):
+            if re.search(r'geri\s*(?:git|dön)?', line, re.IGNORECASE):
                 step.action = 'back'
                 commands.append(step)
                 continue
             
-            # YENİLE
-            if re.search(r'(?:sayfa)?\s*(?:yenilenir|yenile|refresh)', line, re.IGNORECASE):
+            if re.search(r'(?:yenile|refresh)', line, re.IGNORECASE):
                 step.action = 'refresh'
                 commands.append(step)
                 continue
             
-            # ENTER BAS
-            if re.search(r'enter\s*(?:bas|tuşuna|tusuna)?', line, re.IGNORECASE):
+            if re.search(r'enter\s*(?:bas)?', line, re.IGNORECASE):
                 step.action = 'press'
                 step.target = 'enter'
-                commands.append(step)
-                continue
-            
-            # EKRAN GÖRÜNTÜSÜ
-            if re.search(r'(?:ekran\s*)?(?:görüntüsü|goruntusü|screenshot|ss)', line, re.IGNORECASE):
-                step.action = 'screenshot'
-                step.target = f"screenshot_{int(time.time())}.png"
                 commands.append(step)
                 continue
         
         return commands
     
-    def run_test(self, url: str, steps: List[TestStep], headless: bool = False, 
-                 stop_on_fail: bool = True, log_callback: Callable = None) -> Dict[str, Any]:
-        """Test çalıştır"""
+    def run_test(self, url: str, steps: List[TestStep], headless: bool = True, 
+                 stop_on_fail: bool = True, log_callback: Callable = None,
+                 scenario_name: str = "Test") -> Dict[str, Any]:
+        """Test çalıştır - VARSAYILAN HEADLESS"""
         self.current_test_id = str(uuid.uuid4())[:8]
+        self.test_results = []
         
         if log_callback:
             self.log_callback = log_callback
@@ -479,45 +428,58 @@ class SeleniumService:
         try:
             self.create_driver(headless)
             
-            # İlk URL'ye git
             if url:
                 if not url.startswith('http'):
                     url = 'https://' + url
                 self.driver.get(url)
                 time.sleep(2)
+                initial_ss = self._take_screenshot()
+                self._send_log(0, "navigate", "success", f"Başlangıç: {url}", initial_ss)
             
-            # Adımları çalıştır
             for i, step in enumerate(steps):
                 step_num = i + 1
+                step_start = time.time()
                 
-                # Log gönder - başlıyor
-                self._send_log(step_num, step.action, "running")
+                self._send_log(step_num, step.action, "running", step.target)
+                
+                test_result = WebTestResult()
+                test_result.step_number = step_num
+                test_result.action = step.action
+                test_result.target = step.target
+                test_result.timestamp = datetime.now().isoformat()
+                
+                try:
+                    action_result = self.execute_action(step.action, step.target, step.value, step.locator_type)
+                    test_result.success = action_result.get("success", True)
+                    test_result.message = action_result.get("message", "")
+                except Exception as e:
+                    test_result.success = False
+                    test_result.message = str(e)
+                
+                time.sleep(0.3)
+                screenshot = self._take_screenshot()
+                test_result.screenshot = screenshot
+                test_result.duration = round(time.time() - step_start, 2)
+                
+                if screenshot:
+                    self._save_screenshot(step_num, screenshot)
+                
+                self.test_results.append(test_result)
                 
                 step_result = StepResult(
                     step_number=step_num,
                     action=step.action,
-                    success=True,
-                    message=""
+                    success=test_result.success,
+                    message=test_result.message
                 )
-                
-                try:
-                    action_result = self.execute_action(step.action, step.target, step.value, step.locator_type)
-                    step_result.success = action_result.get("success", True)
-                    step_result.message = action_result.get("message", "")
-                    
-                except Exception as e:
-                    step_result.success = False
-                    step_result.message = str(e)
-                
                 results.append(step_result)
                 
-                # Log gönder - sonuç
-                status = "success" if step_result.success else "failed"
-                self._send_log(step_num, step.action, status, step_result.message)
+                status = "success" if test_result.success else "failed"
+                self._send_log(step_num, step.action, status, test_result.message, screenshot)
                 
-                print(f"[WEB] Adım {step_num}/{len(steps)}: {step.action} -> {'✓' if step_result.success else '✗'}")
+                print(f"[WEB] Adım {step_num}/{len(steps)}: {step.action} -> {'✓' if test_result.success else '✗'}")
                 
-                if not step_result.success and stop_on_fail:
+                if not test_result.success and stop_on_fail:
                     break
             
             passed = sum(1 for r in results if r.success)
@@ -527,27 +489,98 @@ class SeleniumService:
                 "test_id": self.current_test_id,
                 "success": failed == 0,
                 "message": "Test tamamlandı" if failed == 0 else "Test başarısız",
-                "summary": {
-                    "total": len(steps),
-                    "executed": len(results),
-                    "passed": passed,
-                    "failed": failed
-                },
+                "summary": {"total": len(steps), "executed": len(results), "passed": passed, "failed": failed},
                 "results": results,
-                "duration": round(time.time() - start_time, 2)
+                "detailed_results": [
+                    {"step_number": r.step_number, "action": r.action, "target": r.target,
+                     "success": r.success, "message": r.message, "screenshot": r.screenshot, "duration": r.duration}
+                    for r in self.test_results
+                ],
+                "duration": round(time.time() - start_time, 2),
+                "scenario_name": scenario_name
             }
-        
         except Exception as e:
-            return {
-                "test_id": self.current_test_id,
-                "success": False,
-                "message": str(e),
-                "results": results,
-                "duration": round(time.time() - start_time, 2)
-            }
-        
+            return {"test_id": self.current_test_id, "success": False, "message": str(e), 
+                    "results": results, "duration": round(time.time() - start_time, 2)}
         finally:
             self.close_driver()
+    
+    def generate_pdf_report(self, scenario_name: str = "Test Raporu") -> Optional[str]:
+        """PDF rapor oluştur"""
+        if not PDF_AVAILABLE:
+            print("[SELENIUM] reportlab yüklü değil")
+            return None
+        if not self.test_results:
+            return None
+        
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_name = re.sub(r'[^\w\s-]', '', scenario_name).strip().replace(' ', '_')
+            filename = f"{safe_name}_{timestamp}.pdf"
+            filepath = self.reports_dir / filename
+            
+            doc = SimpleDocTemplate(str(filepath), pagesize=A4,
+                rightMargin=20*mm, leftMargin=20*mm, topMargin=20*mm, bottomMargin=20*mm)
+            
+            styles = getSampleStyleSheet()
+            story = []
+            
+            title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, spaceAfter=30)
+            story.append(Paragraph(f"{scenario_name}", title_style))
+            story.append(Paragraph(f"Tarih: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+            story.append(Paragraph(f"Test ID: {self.current_test_id}", styles['Normal']))
+            story.append(Spacer(1, 20))
+            
+            passed = sum(1 for r in self.test_results if r.success)
+            failed = sum(1 for r in self.test_results if not r.success)
+            
+            summary_data = [
+                ['Toplam', 'Basarili', 'Basarisiz', 'Durum'],
+                [str(len(self.test_results)), str(passed), str(failed), 
+                 'BASARILI' if failed == 0 else 'BASARISIZ']
+            ]
+            summary_table = Table(summary_data, colWidths=[35*mm, 35*mm, 35*mm, 45*mm])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(summary_table)
+            story.append(Spacer(1, 30))
+            
+            story.append(Paragraph("Test Adimlari", styles['Heading2']))
+            story.append(Spacer(1, 10))
+            
+            for result in self.test_results:
+                status_text = "[OK]" if result.success else "[FAIL]"
+                step_title = f"{status_text} Adim {result.step_number}: {result.action}"
+                if result.target:
+                    step_title += f" - '{result.target}'"
+                
+                story.append(Paragraph(step_title, styles['Heading3']))
+                if result.message:
+                    story.append(Paragraph(f"Sonuc: {result.message}", styles['Normal']))
+                
+                if result.screenshot:
+                    try:
+                        temp_path = self.screenshots_dir / f"temp_{result.step_number}.png"
+                        with open(temp_path, "wb") as f:
+                            f.write(base64.b64decode(result.screenshot))
+                        img = Image(str(temp_path), width=160*mm, height=90*mm)
+                        story.append(img)
+                        temp_path.unlink()
+                    except:
+                        pass
+                
+                story.append(Spacer(1, 15))
+            
+            doc.build(story)
+            print(f"[SELENIUM] PDF: {filepath}")
+            return str(filepath)
+        except Exception as e:
+            print(f"[SELENIUM] PDF hatası: {e}")
+            return None
 
 
 selenium_service = SeleniumService()

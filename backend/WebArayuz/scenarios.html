@@ -116,20 +116,28 @@
     <div class="app-container">
         <aside class="sidebar">
             <div class="sidebar-header"><div class="logo"><div class="logo-icon">🧪</div><span>Test Platform</span></div></div>
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Ana Menu</div>
-                    <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
-                    <a href="scenarios.html" class="nav-item active"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
-                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Test Turleri</div>
-                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
-                    <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
-                    <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
-                </div>
-            </nav>
+<nav class="sidebar-nav">
+    <div class="nav-section">
+        <div class="nav-section-title">Ana Menu</div>
+        <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
+        <a href="workspace.html" class="nav-item"><span class="nav-item-icon">💼</span><span>Workspace</span></a>
+        <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
+        <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri (Jobs)</span></a>
+    </div>
+    
+    <!-- Admin Section - Sadece adminler görebilir -->
+    <div class="nav-section" id="adminSection" style="display:none;">
+        <div class="nav-section-title">Admin</div>
+        <a href="admin-repos.html" class="nav-item"><span class="nav-item-icon">🔧</span><span>Repository Yönetimi</span></a>
+    </div>
+    
+    <div class="nav-section">
+        <div class="nav-section-title">Test Turleri</div>
+        <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
+        <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
+        <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
+    </div>
+</nav>
             <div class="sidebar-footer"><div class="user-info" onclick="if(confirm('Cikis?')) Auth.logout();"><div class="user-avatar">?</div><div class="user-details"><div class="user-name">...</div><div class="user-role">...</div></div></div></div>
         </aside>
         
@@ -255,23 +263,118 @@
         </div>
     </div>
 
-    <div class="modal-overlay" id="guideModal">
-        <div class="modal large">
-            <h3>📜 Senaryo Yazım Rehberi</h3>
-            <p style="color:var(--text-muted); margin-bottom:15px;">Test adımlarını aşağıdaki kalıplara göre yazmalısınız. Büyük/küçük harf fark etmez.</p>
-            <table class="guide-table">
-                <thead><tr><th>İşlem</th><th>Örnek Komut</th><th>Açıklama</th></tr></thead>
-                <tbody>
-                    <tr><td><b>Bekleme</b></td><td><span class="code">5 saniye bekle</span></td><td>Sistemi bekletir.</td></tr>
-                    <tr><td><b>Tıklama</b></td><td><span class="code">"Giriş" butonuna tıkla</span></td><td>Ekranda 'Giriş' yazan yere tıklar.</td></tr>
-                    <tr><td><b>Yazma</b></td><td><span class="code">"Kullanıcı" alanına "engin" yaz</span></td><td>Input alanına metin yazar.</td></tr>
-                    <tr><td><b>Doğrulama</b></td><td><span class="code">"Başarılı" yazısını gör</span></td><td>Ekranda metni arar (Assert).</td></tr>
-                    <tr><td><b>Sistem</b></td><td><span class="code">Geri git</span> / <span class="code">Ekranı kaydır</span></td><td>Navigasyon işlemleri.</td></tr>
-                </tbody>
-            </table>
-            <div class="modal-actions"><button class="btn btn-primary" style="width:auto;" onclick="Actions.closeModal('guideModal')">Tamam</button></div>
+<div class="modal-overlay" id="guideModal">
+    <div class="modal large" style="max-width:850px; max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="margin:0;">📜 Mobil Test Senaryo Yazım Rehberi</h3>
+            <button onclick="Actions.closeModal('guideModal')" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
+        </div>
+        <p style="color:var(--text-muted); margin-bottom:20px;">Test adımlarını aşağıdaki kalıplara göre yazın. Büyük/küçük harf fark etmez.</p>
+        
+        <!-- TEMEL KOMUTLAR -->
+        <h4 style="color:var(--accent-primary); margin:20px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">📋 Temel Komutlar</h4>
+        <table class="guide-table">
+            <thead><tr><th>İşlem</th><th>Örnek Komut</th><th>Açıklama</th></tr></thead>
+            <tbody>
+                <tr><td><b>⏱️ Bekleme</b></td><td><span class="code">5 saniye bekle</span></td><td>Belirtilen süre bekler</td></tr>
+                <tr><td><b>👆 Tıklama</b></td><td><span class="code">"Giriş" butonuna tıkla</span></td><td>Ekranda metni bulup tıklar</td></tr>
+                <tr><td><b>⌨️ Yazma</b></td><td><span class="code">"Email" alanına "test@test.com" yaz</span></td><td>Input alanına metin yazar</td></tr>
+                <tr><td><b>✅ Doğrulama</b></td><td><span class="code">"Başarılı" yazısını gör</span></td><td>Ekranda metnin varlığını kontrol eder</td></tr>
+                <tr><td><b>🔙 Geri</b></td><td><span class="code">Geri git</span></td><td>Önceki sayfaya döner</td></tr>
+                <tr><td><b>📜 Kaydırma</b></td><td><span class="code">Aşağı kaydır</span> / <span class="code">Yukarı kaydır</span></td><td>Ekranı kaydırır</td></tr>
+            </tbody>
+        </table>
+        
+        <!-- YAZMA KOMUTLARI -->
+        <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">⌨️ Yazma Komutları (Detaylı)</h4>
+        <table class="guide-table">
+            <thead><tr><th>Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><b>Tek Satır</b></td>
+                    <td><span class="code">"Email" alanına "test@test.com" yaz</span></td>
+                    <td>Alanı bulur, tıklar ve yazar</td>
+                </tr>
+                <tr>
+                    <td><b>İki Satır</b><br><small>(Önce tıkla, sonra yaz)</small></td>
+                    <td><span class="code">"Şifre" alanına tıkla</span><br><span class="code">"123456" yaz</span></td>
+                    <td>2 satır tek adım olarak çalışır</td>
+                </tr>
+                <tr>
+                    <td><b>Label Yanı</b></td>
+                    <td><span class="code">"TL" alanına "1000" yaz</span></td>
+                    <td>Label yanındaki input'u bulur</td>
+                </tr>
+                <tr>
+                    <td><b>Aktif Alana</b></td>
+                    <td><span class="code">"test123" yaz</span></td>
+                    <td>Fokuslu alana direkt yazar</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <!-- INDEX İLE SEÇİM -->
+        <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">🔢 Index ile Seçim</h4>
+        <table class="guide-table">
+            <thead><tr><th>Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+            <tbody>
+                <tr><td><b>Numara</b></td><td><span class="code">2. "Ürün" elementine tıkla</span></td><td>İkinci elementi seçer</td></tr>
+                <tr><td><b>İlk</b></td><td><span class="code">ilk "Sepet" butonuna tıkla</span></td><td>İlk bulunan element</td></tr>
+                <tr><td><b>Son</b></td><td><span class="code">son "Sil" butonuna bas</span></td><td>Son bulunan element</td></tr>
+                <tr><td><b>Türkçe</b></td><td><span class="code">ikinci "Ürün" tıkla</span></td><td>birinci, ikinci, üçüncü...</td></tr>
+            </tbody>
+        </table>
+        
+        <!-- KOŞULLU KOMUTLAR -->
+        <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">🔀 Koşullu Komutlar (IF/ELSE)</h4>
+        <table class="guide-table">
+            <thead><tr><th>Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+            <tbody>
+                <tr><td><b>Varsa Tıkla</b></td><td><span class="code">Eğer "Popup" varsa tıkla</span></td><td>Varsa tıklar, yoksa atlar</td></tr>
+                <tr><td><b>Varsa Kapat</b></td><td><span class="code">Eğer "Reklam" varsa kapat</span></td><td>Varsa kapatır</td></tr>
+                <tr><td><b>Varsa/Yoksa</b></td><td><span class="code">Eğer "A" varsa tıkla yoksa "B" tıkla</span></td><td>A varsa A, yoksa B</td></tr>
+                <tr><td><b>Kısa Format</b></td><td><span class="code">"Banner" varsa tıkla</span></td><td>"Eğer" olmadan da çalışır</td></tr>
+            </tbody>
+        </table>
+        
+        <!-- OPSİYONEL -->
+        <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">⚡ Opsiyonel Adımlar</h4>
+        <table class="guide-table">
+            <thead><tr><th>Format</th><th>Örnek</th><th>Açıklama</th></tr></thead>
+            <tbody>
+                <tr><td><b>[opsiyonel]</b></td><td><span class="code">[opsiyonel] "Reklam" varsa kapat</span></td><td>Hata alırsa testi durdurmaz</td></tr>
+                <tr><td><b>[optional]</b></td><td><span class="code">[optional] "Skip" butonuna tıkla</span></td><td>İngilizce format</td></tr>
+            </tbody>
+        </table>
+        
+        <!-- DİĞER KOMUTLAR -->
+        <h4 style="color:var(--accent-primary); margin:25px 0 10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">🔧 Diğer Komutlar</h4>
+        <table class="guide-table">
+            <thead><tr><th>Komut</th><th>Açıklama</th></tr></thead>
+            <tbody>
+                <tr><td><span class="code">Enter bas</span> / <span class="code">Tab bas</span></td><td>Klavye tuşları</td></tr>
+                <tr><td><span class="code">Scroll ile "X" bul tıkla</span></td><td>Kaydırarak arar ve tıklar</td></tr>
+                <tr><td><span class="code">Ana ekran</span></td><td>Home tuşu</td></tr>
+                <tr><td><span class="code"># Bu bir yorumdur</span></td><td>Yorum satırı (çalıştırılmaz)</td></tr>
+            </tbody>
+        </table>
+        
+        <!-- İPUÇLARI -->
+        <div style="background:var(--bg-tertiary); border-radius:8px; padding:15px; margin-top:20px;">
+            <h4 style="margin:0 0 10px; color:var(--accent-warning);">💡 İpuçları</h4>
+            <ul style="margin:0; padding-left:20px; color:var(--text-secondary); font-size:0.9rem;">
+                <li><b>Boşluk farkı:</b> Ekrandaki metni aynen yazın → "Amerikan Doları (USD)"</li>
+                <li><b>Input bulunamıyor:</b> İki satır formatını deneyin (önce tıkla, sonra yaz)</li>
+                <li><b>Yavaş sayfalar:</b> Kritik adımlardan önce "2 saniye bekle" ekleyin</li>
+                <li><b>Belirsiz adımlar:</b> [opsiyonel] ile hata durumunda devam edin</li>
+            </ul>
+        </div>
+        
+        <div class="modal-actions" style="margin-top:20px;">
+            <button class="btn btn-primary" style="width:auto; padding:10px 30px;" onclick="Actions.closeModal('guideModal')">Tamam</button>
         </div>
     </div>
+</div>
 
 <script src="js/app.js"></script>
     <script>
