@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koşum Logları - Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .admin-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+        .admin-header h2 { font-size:1.3rem; display:flex; align-items:center; gap:10px; }
+
+        .filter-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; padding:16px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; align-items:center; }
+        .filter-bar label { font-size:0.8rem; font-weight:600; color:var(--text-secondary); }
+        .filter-bar select, .filter-bar input { padding:8px 12px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-primary); color:var(--text-primary); font-size:0.85rem; }
+
+        .stats-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+        .stat-card { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:14px 18px; }
+        .stat-card .stat-value { font-size:1.6rem; font-weight:700; }
+        .stat-card .stat-label { font-size:0.75rem; color:var(--text-muted); margin-top:4px; }
+
+        /* Log entries */
+        .log-list { display:flex; flex-direction:column; gap:10px; }
+        .log-entry { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; overflow:hidden; transition:all 0.15s; }
+        .log-entry:hover { border-color:var(--accent-primary); }
+        .log-entry-header { padding:14px 18px; display:flex; align-items:center; gap:14px; cursor:pointer; }
+        .log-entry-header:hover { background:var(--bg-tertiary); }
+        .log-entry-body { display:none; padding:16px 18px; border-top:1px solid var(--border-color); background:var(--bg-primary); }
+        .log-entry.open .log-entry-body { display:block; }
+
+        .log-status { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+        .log-status.success { background:var(--success); }
+        .log-status.failed { background:var(--danger); }
+        .log-status.running { background:var(--warning); animation:pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+        .log-meta { display:flex; gap:16px; font-size:0.78rem; color:var(--text-muted); flex-wrap:wrap; }
+        .log-meta span { display:flex; align-items:center; gap:4px; }
+
+        /* Detail steps */
+        .detail-step { padding:8px 12px; border-left:3px solid var(--border-color); margin-bottom:6px; border-radius:0 6px 6px 0; background:var(--bg-secondary); font-size:0.83rem; }
+        .detail-step.success { border-left-color:var(--success); }
+        .detail-step.failed { border-left-color:var(--danger); }
+
+        .badge { padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:600; }
+        .badge-success { background:rgba(16,185,129,0.15); color:var(--success); }
+        .badge-danger { background:rgba(239,68,68,0.15); color:var(--danger); }
+        .badge-warning { background:rgba(245,158,11,0.15); color:var(--warning); }
+        .badge-info { background:rgba(59,130,246,0.15); color:var(--info); }
+
+        .btn { padding:8px 16px; border-radius:8px; border:none; cursor:pointer; font-size:0.85rem; font-weight:500; display:inline-flex; align-items:center; gap:6px; }
+        .btn-sm { padding:5px 12px; font-size:0.78rem; }
+        .btn-primary { background:var(--accent-primary); color:white; }
+        .btn-secondary { background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color); }
+        .btn-ghost { background:transparent; color:var(--text-secondary); }
+
+        .empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); }
+        .empty-state .icon { font-size:3rem; opacity:0.3; margin-bottom:12px; }
+
+        .pagination { display:flex; justify-content:center; gap:8px; margin-top:20px; }
+        .page-btn { padding:6px 12px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); cursor:pointer; font-size:0.85rem; }
+        .page-btn.active { background:var(--accent-primary); color:white; border-color:var(--accent-primary); }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div id="sidebar-container"></div>
+
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left"><h1 class="page-title">📋 Koşum Logları</h1></div>
+                <div class="header-right">
+                    <button class="btn btn-secondary btn-sm" onclick="loadLogs()">
+                        <span class="material-icons-round" style="font-size:1rem;">refresh</span> Yenile
+                    </button>
+                    <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+                </div>
+            </header>
+
+            <div class="page-content">
+                <!-- Stats -->
+                <div class="stats-row">
+                    <div class="stat-card"><div class="stat-value" id="totalRuns" style="color:var(--text-primary);">-</div><div class="stat-label">Toplam Koşum</div></div>
+                    <div class="stat-card"><div class="stat-value" id="successCount" style="color:var(--success);">-</div><div class="stat-label">Başarılı</div></div>
+                    <div class="stat-card"><div class="stat-value" id="failedCount" style="color:var(--danger);">-</div><div class="stat-label">Başarısız</div></div>
+                    <div class="stat-card"><div class="stat-value" id="runningCount" style="color:var(--warning);">-</div><div class="stat-label">Çalışıyor</div></div>
+                    <div class="stat-card"><div class="stat-value" id="successRate" style="color:var(--info);">-</div><div class="stat-label">Başarı Oranı</div></div>
+                </div>
+
+                <!-- Filters -->
+                <div class="filter-bar">
+                    <label>Filtrele:</label>
+                    <select id="filterStatus" onchange="loadLogs()">
+                        <option value="">Tüm Durumlar</option>
+                        <option value="success">✓ Başarılı</option>
+                        <option value="failed">✗ Başarısız</option>
+                        <option value="running">▶ Çalışıyor</option>
+                    </select>
+                    <select id="filterType" onchange="loadLogs()">
+                        <option value="">Tüm Tipler</option>
+                        <option value="web">🌐 Web</option>
+                        <option value="mobile">📲 Mobil</option>
+                        <option value="desktop">🖥️ Desktop</option>
+                    </select>
+                    <select id="filterUser" onchange="loadLogs()">
+                        <option value="">Tüm Kullanıcılar</option>
+                    </select>
+                    <input type="date" id="filterDate" onchange="loadLogs()">
+                </div>
+
+                <!-- Log List -->
+                <div class="log-list" id="logList">
+                    <div class="empty-state">
+                        <div class="icon">📋</div>
+                        <p>Yükleniyor...</p>
+                    </div>
+                </div>
+
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="js/sidebar.js"></script>
+    <script>
+    (function() {
+        "use strict";
+
+        let allLogs = [];
+        let currentPage = 1;
+        const PAGE_SIZE = 20;
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            if (!Auth.checkAuth()) return;
+
+            // Admin kontrolü
+            if (!Auth.isAdmin()) {
+                Toast.error("Erişim yetkiniz yok");
+                location.href = "index.html";
+                return;
+            }
+
+            await loadUsers();
+            await loadLogs();
+
+            // Otomatik yenileme (30sn)
+            setInterval(loadLogs, 30000);
+        });
+
+        async function loadUsers() {
+            try {
+                const data = await API.get("/admin/users");
+                const users = data.users || data || [];
+                const select = document.getElementById("filterUser");
+                select.innerHTML = '<option value="">Tüm Kullanıcılar</option>' +
+                    users.map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.username)}</option>`).join("");
+            } catch (e) {}
+        }
+
+        window.loadLogs = async function() {
+            const list = document.getElementById("logList");
+
+            try {
+                const params = new URLSearchParams();
+                const status = document.getElementById("filterStatus").value;
+                const type = document.getElementById("filterType").value;
+                const userId = document.getElementById("filterUser").value;
+                const date = document.getElementById("filterDate").value;
+
+                if (status) params.append("status", status);
+                if (type) params.append("type", type);
+                if (userId) params.append("user_id", userId);
+                if (date) params.append("date", date);
+                params.append("page", currentPage);
+                params.append("limit", PAGE_SIZE);
+
+                const data = await API.get(`/admin/logs?${params.toString()}`);
+                allLogs = data.logs || data.executions || data || [];
+                const total = data.total || allLogs.length;
+
+                updateStats(data.stats || null);
+                renderLogs();
+                renderPagination(total);
+
+            } catch (e) {
+                list.innerHTML = `<div class="empty-state"><p>Yükleme hatası: ${e.message}</p></div>`;
+            }
+        };
+
+        function updateStats(stats) {
+            if (stats) {
+                document.getElementById("totalRuns").textContent = stats.total || 0;
+                document.getElementById("successCount").textContent = stats.success || 0;
+                document.getElementById("failedCount").textContent = stats.failed || 0;
+                document.getElementById("runningCount").textContent = stats.running || 0;
+                const rate = stats.total > 0 ? Math.round((stats.success / stats.total) * 100) : 0;
+                document.getElementById("successRate").textContent = rate + "%";
+            } else {
+                const total = allLogs.length;
+                const success = allLogs.filter(l => l.status === "success" || l.success).length;
+                const failed = allLogs.filter(l => l.status === "failed" || l.success === false).length;
+                const running = allLogs.filter(l => l.status === "running").length;
+                document.getElementById("totalRuns").textContent = total;
+                document.getElementById("successCount").textContent = success;
+                document.getElementById("failedCount").textContent = failed;
+                document.getElementById("runningCount").textContent = running;
+                document.getElementById("successRate").textContent = total > 0 ? Math.round((success / total) * 100) + "%" : "-";
+            }
+        }
+
+        function renderLogs() {
+            const list = document.getElementById("logList");
+
+            if (!allLogs.length) {
+                list.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>Log kaydı yok</p></div>';
+                return;
+            }
+
+            list.innerHTML = allLogs.map(log => {
+                const isSuccess = log.status === "success" || log.success === true;
+                const isFailed = log.status === "failed" || log.success === false;
+                const isRunning = log.status === "running";
+                const statusClass = isSuccess ? "success" : isFailed ? "failed" : isRunning ? "running" : "";
+                const statusText = isSuccess ? "Başarılı" : isFailed ? "Başarısız" : isRunning ? "Çalışıyor" : log.status;
+                const badgeClass = isSuccess ? "badge-success" : isFailed ? "badge-danger" : "badge-warning";
+
+                const typeIcons = { web: "🌐", mobile: "📲", desktop: "🖥️" };
+                const typeIcon = typeIcons[log.test_type || log.type] || "📋";
+
+                return `
+                <div class="log-entry" id="log-${log.id}">
+                    <div class="log-entry-header" onclick="toggleLog(${log.id})">
+                        <div class="log-status ${statusClass}"></div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-weight:600; font-size:0.92rem; margin-bottom:4px;">
+                                ${typeIcon} ${escapeHtml(log.scenario_name || log.name || 'Test Koşumu')}
+                            </div>
+                            <div class="log-meta">
+                                <span>👤 ${escapeHtml(log.username || log.user || '-')}</span>
+                                <span>📅 ${formatDate(log.created_at || log.start_time)}</span>
+                                ${log.duration ? `<span>⏱ ${log.duration}s</span>` : ''}
+                                ${log.total_steps ? `<span>📊 ${log.passed_steps || 0}/${log.total_steps}</span>` : ''}
+                            </div>
+                        </div>
+                        <span class="badge ${badgeClass}">${statusText}</span>
+                    </div>
+                    <div class="log-entry-body">
+                        ${renderLogDetail(log)}
+                    </div>
+                </div>`;
+            }).join("");
+        }
+
+        function renderLogDetail(log) {
+            let html = "";
+
+            // Temel bilgiler
+            html += `<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:10px; margin-bottom:14px; font-size:0.83rem;">`;
+            if (log.test_type) html += `<div><strong>Tip:</strong> ${log.test_type}</div>`;
+            if (log.device_name) html += `<div><strong>Cihaz:</strong> ${escapeHtml(log.device_name)}</div>`;
+            if (log.workspace_name) html += `<div><strong>Workspace:</strong> ${escapeHtml(log.workspace_name)}</div>`;
+            if (log.error_message) html += `<div style="color:var(--danger);"><strong>Hata:</strong> ${escapeHtml(log.error_message)}</div>`;
+            html += `</div>`;
+
+            // Adım detayları
+            const results = log.results || log.detailed_results || log.steps || [];
+            if (results.length > 0) {
+                html += `<div style="font-size:0.8rem; font-weight:600; margin-bottom:8px; color:var(--text-secondary);">Adım Detayları:</div>`;
+                results.forEach((r, i) => {
+                    const stepSuccess = r.success || r.status === "success";
+                    html += `
+                        <div class="detail-step ${stepSuccess ? 'success' : 'failed'}">
+                            <strong>${i + 1}.</strong> ${escapeHtml(r.action || r.step_text || r.description || '')}
+                            <span style="float:right; font-size:0.75rem; color:var(--text-muted);">${escapeHtml(r.message || r.status || '')}</span>
+                        </div>`;
+                });
+            }
+
+            // PDF link
+            if (log.pdf_url) {
+                html += `<div style="margin-top:12px;"><a href="${log.pdf_url}" target="_blank" class="btn btn-secondary btn-sm">📄 PDF Raporu İndir</a></div>`;
+            }
+
+            return html || '<div style="color:var(--text-muted); font-size:0.85rem;">Detay bilgisi yok</div>';
+        }
+
+        window.toggleLog = function(logId) {
+            const entry = document.getElementById(`log-${logId}`);
+            if (entry) entry.classList.toggle("open");
+        };
+
+        function renderPagination(total) {
+            const pages = Math.ceil(total / PAGE_SIZE);
+            if (pages <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
+
+            let html = "";
+            for (let i = 1; i <= Math.min(pages, 10); i++) {
+                html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+            document.getElementById("pagination").innerHTML = html;
+        }
+
+        window.goToPage = function(page) {
+            currentPage = page;
+            loadLogs();
+        };
+
+        function formatDate(d) { return d ? new Date(d).toLocaleString("tr-TR") : "-"; }
+        function escapeHtml(t) { if (!t) return ""; const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+    })();
+    </script>
+</body>
+</html>

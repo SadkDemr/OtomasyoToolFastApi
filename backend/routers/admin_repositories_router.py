@@ -2,6 +2,7 @@
 Admin Router - Repository Management
 -------------------------------------
 Admin kullanıcılar için repository CRUD işlemleri.
+✅ UPDATED: editor_type otomatik belirleme (desktop/web-desktop → advanced)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/admin/repositories", tags=["admin-repositories"])
 class RepositoryCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Mobil iOS, Web, etc.")
     repo_url: str = Field(..., description="Azure Repos / GitHub URL")
-    repo_type: str = Field(..., description="mobile-ios | mobile-android | web | desktop | api")
+    repo_type: str = Field(..., description="mobile-ios | mobile-android | web | desktop | web-desktop | api")
     description: Optional[str] = Field(default="", max_length=500)
     git_username: Optional[str] = None
     git_token: Optional[str] = None
@@ -33,6 +34,7 @@ class RepositoryCreate(BaseModel):
 class RepositoryUpdate(BaseModel):
     name: Optional[str] = None
     repo_url: Optional[str] = None
+    repo_type: Optional[str] = None  # ✅ YENİ: repo_type güncellenebilir
     description: Optional[str] = None
     git_username: Optional[str] = None
     git_token: Optional[str] = None
@@ -43,6 +45,7 @@ class RepositoryResponse(BaseModel):
     name: str
     repo_url: str
     repo_type: str
+    editor_type: str  # ✅ YENİ: response'a eklendi
     description: str
     created_by: int
     created_at: str
@@ -64,16 +67,21 @@ async def create_repository(
 ):
     """
     Yeni repository ekle (sadece admin).
+    ✅ UPDATED: editor_type otomatik belirlenir
     
     Örnek:
     {
-        "name": "Mobil iOS Testleri",
-        "repo_url": "https://dev.azure.com/company/project/_git/ios-tests",
-        "repo_type": "mobile-ios",
-        "description": "iOS uygulaması senaryoları",
+        "name": "Desktop Automation",
+        "repo_url": "https://dev.azure.com/company/project/_git/desktop-tests",
+        "repo_type": "desktop",
+        "description": "Desktop uygulaması senaryoları",
         "git_username": "service-account",
         "git_token": "pat_token_here"
     }
+    
+    editor_type belirleme:
+    - desktop, web-desktop → "advanced" (image-based editor)
+    - mobile-ios, mobile-android, web, api → "normal" (text-based editor)
     """
     # Duplicate kontrolü
     existing = db.query(Repository).filter_by(name=body.name).first()
@@ -85,15 +93,21 @@ async def create_repository(
         raise HTTPException(400, detail="Bu URL zaten kayıtlı")
     
     # Tip kontrolü
-    valid_types = ["mobile-ios", "mobile-android", "web", "desktop", "api"]
+    valid_types = ["mobile-ios", "mobile-android", "web", "desktop", "web-desktop", "api"]
     if body.repo_type not in valid_types:
         raise HTTPException(400, detail=f"Geçersiz tip. Seçenekler: {valid_types}")
+    
+    # ✅ YENİ: editor_type otomatik belirleme
+    # desktop ve web-desktop → advanced (image-based automation)
+    # Diğerleri → normal (text-based automation)
+    editor_type = "advanced" if body.repo_type in ["desktop", "web-desktop"] else "normal"
     
     repo = Repository(
         name=body.name,
         repo_url=body.repo_url,
         repo_type=body.repo_type,
         description=body.description,
+        editor_type=editor_type,  # ✅ YENİ SATIR
         git_username=body.git_username,
         git_token=body.git_token,  # ⚠️ Production'da encrypt et!
         created_by=current_user.id
@@ -108,6 +122,7 @@ async def create_repository(
         "name": repo.name,
         "repo_url": repo.repo_url,
         "repo_type": repo.repo_type,
+        "editor_type": repo.editor_type,  # ✅ YENİ: response'a eklendi
         "created_at": repo.created_at.isoformat()
     }
 
@@ -119,6 +134,7 @@ async def list_repositories(
 ):
     """
     Tüm repository'leri listele (sadece admin).
+    ✅ UPDATED: editor_type response'a eklendi
     """
     repos = db.query(Repository).all()
     
@@ -129,6 +145,7 @@ async def list_repositories(
             "name": repo.name,
             "repo_url": repo.repo_url,
             "repo_type": repo.repo_type,
+            "editor_type": repo.editor_type,  # ✅ YENİ SATIR
             "description": repo.description,
             "created_by": repo.created_by,
             "created_at": repo.created_at.isoformat(),
@@ -144,7 +161,10 @@ async def get_repository(
     db: Session = Depends(get_db),
     current_user = Depends(require_admin)
 ):
-    """Tek repository detay."""
+    """
+    Tek repository detay.
+    ✅ UPDATED: editor_type response'a eklendi
+    """
     repo = db.query(Repository).filter_by(id=repo_id).first()
     if not repo:
         raise HTTPException(404, detail="Repository bulunamadı")
@@ -154,6 +174,7 @@ async def get_repository(
         "name": repo.name,
         "repo_url": repo.repo_url,
         "repo_type": repo.repo_type,
+        "editor_type": repo.editor_type,  # ✅ YENİ SATIR
         "description": repo.description,
         "git_username": repo.git_username,
         "created_by": repo.created_by,
@@ -169,7 +190,10 @@ async def update_repository(
     db: Session = Depends(get_db),
     current_user = Depends(require_admin)
 ):
-    """Repository bilgilerini güncelle."""
+    """
+    Repository bilgilerini güncelle.
+    ✅ UPDATED: repo_type güncellenirse editor_type de otomatik güncellenir
+    """
     repo = db.query(Repository).filter_by(id=repo_id).first()
     if not repo:
         raise HTTPException(404, detail="Repository bulunamadı")
@@ -186,6 +210,17 @@ async def update_repository(
     
     if body.repo_url is not None:
         repo.repo_url = body.repo_url
+    
+    # ✅ YENİ: repo_type güncellenirse editor_type de güncellenir
+    if body.repo_type is not None:
+        valid_types = ["mobile-ios", "mobile-android", "web", "desktop", "web-desktop", "api"]
+        if body.repo_type not in valid_types:
+            raise HTTPException(400, detail=f"Geçersiz tip. Seçenekler: {valid_types}")
+        
+        repo.repo_type = body.repo_type
+        # editor_type'ı da güncelle
+        repo.editor_type = "advanced" if body.repo_type in ["desktop", "web-desktop"] else "normal"
+    
     if body.description is not None:
         repo.description = body.description
     if body.git_username is not None:
@@ -199,7 +234,11 @@ async def update_repository(
     db.commit()
     db.refresh(repo)
     
-    return {"message": "Repository güncellendi", "id": repo.id}
+    return {
+        "message": "Repository güncellendi",
+        "id": repo.id,
+        "editor_type": repo.editor_type  # ✅ YENİ: güncel editor_type döndür
+    }
 
 
 @router.delete("/{repo_id}")

@@ -5,177 +5,186 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Test Otomasyon Platformu</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .dashboard-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:30px; }
+        .stat-card { padding:20px 24px; }
+        .stat-card .stat-icon { font-size:2.2rem; margin-bottom:10px; }
+        .stat-card .stat-value { font-size:2rem; font-weight:700; line-height:1; }
+        .stat-card .stat-label { font-size:0.82rem; color:var(--text-muted); margin-top:6px; }
+
+        .section-title { font-size:1.1rem; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:10px; }
+
+        .quick-actions { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; margin-bottom:30px; }
+        .quick-action { padding:20px; text-align:center; cursor:pointer; text-decoration:none; color:var(--text-primary); }
+        .quick-action:hover { transform:translateY(-3px); box-shadow:var(--shadow-md); border-color:var(--accent-primary); text-decoration:none; }
+        .quick-action .qa-icon { font-size:2.5rem; margin-bottom:10px; }
+        .quick-action .qa-title { font-weight:600; font-size:0.92rem; }
+        .quick-action .qa-desc { font-size:0.78rem; color:var(--text-muted); margin-top:4px; }
+
+        .recent-list { display:flex; flex-direction:column; gap:10px; }
+        .recent-item { padding:14px 18px; display:flex; align-items:center; gap:14px; cursor:pointer; }
+        .recent-item:hover { background:var(--bg-tertiary); }
+        .recent-item .ri-icon { font-size:1.5rem; }
+        .recent-item .ri-info { flex:1; }
+        .recent-item .ri-name { font-weight:600; font-size:0.9rem; }
+        .recent-item .ri-meta { font-size:0.78rem; color:var(--text-muted); }
+    </style>
 </head>
 <body>
     <div class="app-container">
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <div class="logo-icon">🧪</div>
-                    <span>Test Platform</span>
-                </div>
-            </div>
-<nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Ana Menu</div>
-                    <a href="index.html" class="nav-item active"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
-                    <a href="workspace.html" class="nav-item"><span class="nav-item-icon">💼</span><span>Projeler</span></a>
-                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri</span></a>
-                </div>
-                
-                <div class="nav-section" id="adminSection" style="display:none;">
-                    <div class="nav-section-title">Admin</div>
-                    <a href="admin-repos.html" class="nav-item"><span class="nav-item-icon">🔧</span><span>Repository Yönetimi</span></a>
-                </div>
-                
-                <div class="nav-section">
-                    <div class="nav-section-title">Test Turleri</div>
-                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
-                    <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
-                    <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
-                </div>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info" onclick="if(confirm('Cikis yapmak istiyor musunuz?')) Auth.logout();">
-                    <div class="user-avatar">?</div>
-                    <div class="user-details">
-                        <div class="user-name">Yukleniyor...</div>
-                        <div class="user-role">-</div>
-                    </div>
-                </div>
-            </div>
-        </aside>
-        
+        <div id="sidebar-container"></div>
+
         <main class="main-content">
             <header class="header">
-                <div class="header-left"><h1 class="page-title">Dashboard</h1></div>
+                <div class="header-left">
+                    <h1 class="page-title">📊 Dashboard</h1>
+                </div>
                 <div class="header-right">
+                    <span style="font-size:0.85rem; color:var(--text-muted);" id="welcomeMsg"></span>
                     <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
-                    <a href="editor.html" class="btn btn-primary">+ Yeni Senaryo</a>
                 </div>
             </header>
-            
+
             <div class="page-content">
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-card-header">
-                            <span class="stat-card-title">Toplam Senaryo</span>
-                            <div class="stat-card-icon" style="background: rgba(79,70,229,0.1); color: var(--accent-primary);">📝</div>
-                        </div>
-                        <div class="stat-card-value" id="statTotal">0</div>
+                <!-- Stats -->
+                <div class="dashboard-grid" id="statsGrid">
+                    <div class="card stat-card">
+                        <div class="stat-icon">🌐</div>
+                        <div class="stat-value" id="webCount">-</div>
+                        <div class="stat-label">Web Proje</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-card-header">
-                            <span class="stat-card-title">Web Test</span>
-                            <div class="stat-card-icon" style="background: rgba(59,130,246,0.1); color: var(--info);">🌐</div>
-                        </div>
-                        <div class="stat-card-value" id="statWeb">0</div>
+                    <div class="card stat-card">
+                        <div class="stat-icon">📲</div>
+                        <div class="stat-value" id="mobileCount">-</div>
+                        <div class="stat-label">Mobil Proje</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-card-header">
-                            <span class="stat-card-title">Mobil Test</span>
-                            <div class="stat-card-icon" style="background: rgba(16,185,129,0.1); color: var(--success);">📲</div>
-                        </div>
-                        <div class="stat-card-value" id="statMobile">0</div>
+                    <div class="card stat-card">
+                        <div class="stat-icon">🖥️</div>
+                        <div class="stat-value" id="desktopCount">-</div>
+                        <div class="stat-label">Desktop Proje</div>
                     </div>
-                </div>
-                
-                <div class="card mb-4">
-                    <div class="card-header"><h2 class="card-title">Hizli Erisim</h2></div>
-                    <div class="card-body">
-                        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-                            <a href="web-test.html" class="btn btn-primary btn-lg" style="flex:1; min-width:200px; justify-content:center;">🌐 Web Test</a>
-                            <a href="mobile-test.html" class="btn btn-success btn-lg" style="flex:1; min-width:200px; justify-content:center;">📲 Mobil Test</a>
-                            <a href="editor.html" class="btn btn-secondary btn-lg" style="flex:1; min-width:200px; justify-content:center;">✏️ Yeni Senaryo</a>
-                        </div>
+                    <div class="card stat-card">
+                        <div class="stat-icon">📱</div>
+                        <div class="stat-value" id="deviceCount">-</div>
+                        <div class="stat-label">Bağlı Cihaz</div>
                     </div>
                 </div>
-                
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="card-title">Son Senaryolar</h2>
-                        <a href="scenarios.html" class="btn btn-ghost btn-sm">Tumunu Gor</a>
-                    </div>
-                    <div class="card-body">
-                        <div class="scenario-grid" id="scenarioGrid"></div>
-                        <div class="empty-state" id="emptyState" style="display:none;">
-                            <div class="empty-state-icon">📝</div>
-                            <h3 class="empty-state-title">Henuz senaryo yok</h3>
-                            <p class="empty-state-description">Ilk test senaryonuzu olusturun</p>
-                            <a href="editor.html" class="btn btn-primary">+ Yeni Senaryo</a>
-                        </div>
-                    </div>
+
+                <!-- Quick Actions -->
+                <div class="section-title">⚡ Hızlı Erişim</div>
+                <div class="quick-actions">
+                    <a href="web-test.html" class="card quick-action">
+                        <div class="qa-icon">🌐</div>
+                        <div class="qa-title">Web Test</div>
+                        <div class="qa-desc">Web projelerini aç</div>
+                    </a>
+                    <a href="mobile-test.html" class="card quick-action">
+                        <div class="qa-icon">📲</div>
+                        <div class="qa-title">Mobil Test</div>
+                        <div class="qa-desc">Mobil projelerini aç</div>
+                    </a>
+                    <a href="desktop-test.html" class="card quick-action">
+                        <div class="qa-icon">🖥️</div>
+                        <div class="qa-title">Desktop Test</div>
+                        <div class="qa-desc">Desktop otomasyonları</div>
+                    </a>
+                    <a href="workspace.html" class="card quick-action">
+                        <div class="qa-icon">💼</div>
+                        <div class="qa-title">Workspace</div>
+                        <div class="qa-desc">Git projelerini yönet</div>
+                    </a>
+                </div>
+
+                <!-- Recent Workspaces -->
+                <div class="section-title">📂 Son Çalışmalar</div>
+                <div class="recent-list" id="recentList">
+                    <div class="card recent-item" style="justify-content:center; color:var(--text-muted);">Yükleniyor...</div>
                 </div>
             </div>
         </main>
     </div>
-    
+
     <script src="js/app.js"></script>
+    <script src="js/sidebar.js"></script>
     <script>
-        if (!Auth.checkAuth()) {}
-        
-        // Admin kontrolü - Admin section'ı göster/gizle
-        (function() {
-            const user = Auth.getCurrentUser();
-            if (user && user.role === 'admin') {
-                const adminSection = document.getElementById('adminSection');
-                if (adminSection) adminSection.style.display = 'block';
-            }
-        })();
-        
-        async function load() {
-            UI.renderUserInfo();
+    (function() {
+        "use strict";
+
+        const TYPE_PAGES = {
+            "web": "web-test.html", "web-selenium": "web-test.html",
+            "mobile": "mobile-test.html", "mobile-android": "mobile-test.html", "mobile-ios": "mobile-test.html",
+            "desktop": "desktop-test.html", "web-desktop": "desktop-test.html"
+        };
+        const TYPE_ICONS = {
+            "web": "🌐", "web-selenium": "🌐", "mobile": "📲", "mobile-android": "📲",
+            "mobile-ios": "📱", "desktop": "🖥️", "web-desktop": "🌐🖥️"
+        };
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            if (!Auth.checkAuth()) return;
+
+            const user = Auth.getUser();
+            document.getElementById("welcomeMsg").textContent = `Hoş geldin, ${user?.full_name || user?.username || 'Kullanıcı'}`;
+
+            await loadStats();
+        });
+
+        async function loadStats() {
             try {
-                const stats = await ScenariosAPI.getStats();
-                document.getElementById('statTotal').textContent = stats.total;
-                document.getElementById('statWeb').textContent = stats.web;
-                document.getElementById('statMobile').textContent = stats.mobile;
-                
-                const data = await ScenariosAPI.list();
-                renderScenarios(data.scenarios.slice(0, 6));
-            } catch (e) { console.error(e); }
+                const [wsData, devData] = await Promise.all([
+                    API.get("/workspaces/my"),
+                    API.get("/devices").catch(() => ({ devices: [] }))
+                ]);
+
+                const workspaces = wsData.workspaces || [];
+                const devices = devData.devices || [];
+
+                const webCount = workspaces.filter(w => ["web", "web-selenium"].includes(w.repository_type)).length;
+                const mobileCount = workspaces.filter(w => ["mobile", "mobile-android", "mobile-ios"].includes(w.repository_type)).length;
+                const desktopCount = workspaces.filter(w => ["desktop", "web-desktop"].includes(w.repository_type)).length;
+
+                document.getElementById("webCount").textContent = webCount;
+                document.getElementById("mobileCount").textContent = mobileCount;
+                document.getElementById("desktopCount").textContent = desktopCount;
+                document.getElementById("deviceCount").textContent = devices.length;
+
+                renderRecent(workspaces);
+            } catch (e) {
+                console.error("Stats:", e);
+            }
         }
-        
-        function renderScenarios(scenarios) {
-            const grid = document.getElementById('scenarioGrid');
-            const empty = document.getElementById('emptyState');
-            
-            if (scenarios.length === 0) {
-                grid.style.display = 'none';
-                empty.style.display = 'block';
+
+        function renderRecent(workspaces) {
+            const list = document.getElementById("recentList");
+
+            if (!workspaces.length) {
+                list.innerHTML = `
+                    <div class="card recent-item" style="justify-content:center; flex-direction:column; padding:30px; text-align:center;">
+                        <div style="font-size:2rem; opacity:0.3; margin-bottom:8px;">💼</div>
+                        <div style="color:var(--text-muted);">Henüz workspace yok. <a href="workspace.html">Katalogdan clone edin.</a></div>
+                    </div>`;
                 return;
             }
-            
-            grid.style.display = 'grid';
-            empty.style.display = 'none';
-            
-            grid.innerHTML = scenarios.map(s => `
-                <div class="scenario-card" onclick="location.href='editor.html?id=${s.id}'">
-                    <div class="scenario-card-header">
-                        <div class="scenario-icon ${s.type}">${s.type === 'web' ? '🌐' : '📲'}</div>
-                        <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); deleteScenario(${s.id})">🗑</button>
+
+            list.innerHTML = workspaces.slice(0, 8).map(ws => {
+                const icon = TYPE_ICONS[ws.repository_type] || "📦";
+                const page = TYPE_PAGES[ws.repository_type] || "workspace.html";
+                return `
+                <div class="card recent-item" onclick="window.location.href='${page}'">
+                    <div class="ri-icon">${icon}</div>
+                    <div class="ri-info">
+                        <div class="ri-name">${escapeHtml(ws.repository_name)}</div>
+                        <div class="ri-meta">${ws.repository_type || '-'} • ${ws.branch_name || 'main'}</div>
                     </div>
-                    <h3 class="scenario-name">${Utils.escapeHtml(s.name)}</h3>
-                    <p class="scenario-description">${Utils.escapeHtml(s.description || '')}</p>
-                    <div class="scenario-meta">
-                        <span class="badge badge-${s.type === 'web' ? 'info' : 'success'}">${s.type.toUpperCase()}</span>
-                        <span>${Utils.formatRelativeTime(s.updated_at)}</span>
-                    </div>
-                </div>
-            `).join('');
+                    <span class="badge ${ws.has_changes ? 'badge-warning' : 'badge-success'}">${ws.has_changes ? '⚠️ Değişiklik' : '✓ Sync'}</span>
+                </div>`;
+            }).join("");
         }
-        
-        async function deleteScenario(id) {
-            if (!confirm('Silmek istediginize emin misiniz?')) return;
-            try {
-                await ScenariosAPI.delete(id);
-                Toast.success('Silindi');
-                load();
-            } catch (e) { Toast.error(e.message); }
-        }
-        
-        load();
+
+        function escapeHtml(t) { if (!t) return ""; const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+    })();
     </script>
 </body>
 </html>

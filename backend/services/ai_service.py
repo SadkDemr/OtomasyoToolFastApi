@@ -1,0 +1,161 @@
+"""
+AI Service - Gemini entegrasyonu
+---------------------------------
+- Görüntü analizi (vision fallback)
+- BDD senaryo üretimi
+- API key yönetimi (ai_config.json)
+"""
+
+import json
+import base64
+import os
+from pathlib import Path
+from typing import Optional, List
+
+CONFIG_PATH = Path(__file__).parent.parent / "ai_config.json"
+
+
+def get_ai_config() -> dict:
+    """ai_config.json oku (yoksa boş dict)"""
+    try:
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def save_ai_config(data: dict) -> None:
+    """ai_config.json'a kaydet"""
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def get_gemini_key() -> Optional[str]:
+    """Aktif Gemini API key (config > env)"""
+    cfg = get_ai_config()
+    return cfg.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY") or None
+
+
+# ──────────────────────────────────────────────────────
+# Gemini yardımcıları
+# ──────────────────────────────────────────────────────
+
+def _gemini_text(prompt: str, api_key: str) -> str:
+    """Gemini flash'a metin isteği gönder, yanıt metnini döndür."""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        resp = model.generate_content(prompt)
+        return resp.text.strip()
+    except ImportError:
+        raise RuntimeError("google-generativeai kütüphanesi kurulu değil. `pip install google-generativeai` çalıştırın.")
+    except Exception as e:
+        raise RuntimeError(f"Gemini API hatası: {e}")
+
+
+def _gemini_vision(image_b64: str, prompt: str, api_key: str) -> str:
+    """Gemini flash'a görüntü + metin isteği gönder."""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        image_data = {"mime_type": "image/png", "data": image_b64}
+        resp = model.generate_content([prompt, image_data])
+        return resp.text.strip()
+    except ImportError:
+        raise RuntimeError("google-generativeai kütüphanesi kurulu değil.")
+    except Exception as e:
+        raise RuntimeError(f"Gemini Vision API hatası: {e}")
+
+
+# ──────────────────────────────────────────────────────
+# Vision Fallback
+# ──────────────────────────────────────────────────────
+
+def analyze_screenshot_for_step(image_b64: str, failed_step_text: str, api_key: str) -> dict:
+    """
+    Hatalı adım için ekran görüntüsünü analiz et.
+
+    Returns:
+        {
+            "suggestion": "UI'da ne göründüğü",
+            "action": "tap | type | scroll | skip",
+            "target": "önerilen hedef metin/xpath",
+            "confidence": "high | medium | low"
+        }
+    """
+    prompt = f"""Sen bir mobil test otomasyon asistanısın.
+Bir test adımı başarısız oldu: "{failed_step_text}"
+
+Ekran görüntüsünü analiz et ve:
+1. Ekranda ne görüyorsun? (kısa özet)
+2. Bu adımı nasıl gerçekleştirebiliriz? (action: tap/type/scroll/skip)
+3. Hedef element veya metin nedir?
+4. Güven düzeyin: high/medium/low
+
+JSON formatında yanıt ver:
+{{"suggestion": "...", "action": "tap|type|scroll|skip", "target": "...", "confidence": "high|medium|low"}}"""
+
+    try:
+        text = _gemini_vision(image_b64, prompt, api_key)
+        # JSON parse et
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(text[start:end])
+        return {"suggestion": text, "action": "skip", "target": "", "confidence": "low"}
+    except Exception as e:
+        return {"suggestion": f"Analiz hatası: {e}", "action": "skip", "target": "", "confidence": "low"}
+
+
+# ──────────────────────────────────────────────────────
+# Senaryo Üretici
+# ──────────────────────────────────────────────────────
+
+def generate_scenario_variants(bdd_text: str, api_key: str, count: int = 3) -> List[dict]:
+    """
+    Mevcut BDD senaryosundan N adet varyant üret.
+
+    Returns:
+        [{"title": "...", "bdd_text": "...", "description": "..."}, ...]
+    """
+    prompt = f"""Sen bir mobil test otomasyon uzmanısın. Aşağıdaki BDD senaryosundan {count} farklı varyant üret.
+
+Mevcut senaryo:
+```
+{bdd_text}
+```
+
+Kurallar:
+- Türkçe BDD formatı kullan: Özellik, Senaryo, Verilen, Ve, Sonra, Doğrula
+- Her varyant gerçekçi ve test edilebilir olsun
+- Varyantlar şunları kapsayabilir: hata senaryoları, sınır değerleri, alternatif akışlar, negatif testler
+- Her varyant için kısa bir açıklama ekle
+
+JSON dizisi olarak döndür:
+[
+  {{
+    "title": "Varyant başlığı",
+    "description": "Bu senaryonun amacı",
+    "bdd_text": "Özellik: ...\\n\\nSenaryo: ...\\n\\n  Verilen ...\\n  Ve ..."
+  }}
+]
+
+Sadece JSON döndür, başka metin ekleme."""
+
+    try:
+        text = _gemini_text(prompt, api_key)
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start >= 0 and end > start:
+            variants = json.loads(text[start:end])
+            return variants[:count]
+        return []
+    except json.JSONDecodeError:
+        # JSON parse hatası — ham metni döndür
+        return [{"title": "Oluşturulan Senaryo", "description": "LLM yanıtı", "bdd_text": text}]
+    except Exception as e:
+        raise RuntimeError(f"Senaryo üretme hatası: {e}")

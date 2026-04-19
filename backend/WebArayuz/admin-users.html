@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kullanıcı Yönetimi - Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .admin-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+        .admin-header h2 { font-size:1.3rem; display:flex; align-items:center; gap:10px; }
+
+        .users-table { width:100%; border-collapse:collapse; background:var(--bg-secondary); border-radius:12px; overflow:hidden; border:1px solid var(--border-color); }
+        .users-table thead { background:var(--bg-tertiary); }
+        .users-table th { padding:14px 16px; text-align:left; font-size:0.8rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; }
+        .users-table td { padding:14px 16px; border-top:1px solid var(--border-color); font-size:0.88rem; }
+        .users-table tr:hover td { background:var(--bg-tertiary); }
+
+        .user-avatar-sm { width:32px; height:32px; border-radius:50%; background:var(--accent-primary); color:white; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:0.85rem; }
+        .role-badge { padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:600; }
+        .role-admin { background:rgba(239,68,68,0.15); color:var(--danger); }
+        .role-user { background:rgba(59,130,246,0.15); color:var(--info); }
+        .status-active { color:var(--success); }
+        .status-inactive { color:var(--text-muted); }
+
+        /* Modal */
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+        .modal-overlay.active { display:flex; }
+        .modal { background:var(--bg-secondary); border-radius:12px; width:450px; max-width:90%; padding:24px; border:1px solid var(--border-color); box-shadow:0 20px 40px rgba(0,0,0,0.3); }
+        .modal h3 { margin:0 0 20px; font-size:1.15rem; }
+        .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; padding-top:15px; border-top:1px solid var(--border-color); }
+
+        .form-group { margin-bottom:14px; }
+        .form-label { display:block; margin-bottom:5px; font-size:0.8rem; font-weight:600; color:var(--text-secondary); }
+        .form-input, .form-select { width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary); color:var(--text-primary); font-size:0.88rem; box-sizing:border-box; }
+        .form-input:focus, .form-select:focus { outline:none; border-color:var(--accent-primary); }
+
+        .btn { padding:10px 20px; border-radius:8px; border:none; cursor:pointer; font-size:0.88rem; font-weight:500; display:inline-flex; align-items:center; gap:6px; transition:all 0.15s; }
+        .btn-sm { padding:6px 12px; font-size:0.8rem; }
+        .btn-primary { background:var(--accent-primary); color:white; }
+        .btn-primary:hover { background:var(--accent-hover); }
+        .btn-secondary { background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color); }
+        .btn-danger { background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); }
+        .btn-danger:hover { background:rgba(239,68,68,0.2); }
+        .icon-btn { background:none; border:none; cursor:pointer; padding:6px; border-radius:6px; color:var(--text-secondary); display:flex; align-items:center; }
+        .icon-btn:hover { background:var(--bg-tertiary); color:var(--text-primary); }
+
+        .stats-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+        .stat-card { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:16px 20px; }
+        .stat-card .stat-value { font-size:1.8rem; font-weight:700; }
+        .stat-card .stat-label { font-size:0.8rem; color:var(--text-muted); margin-top:4px; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div id="sidebar-container"></div>
+
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left"><h1 class="page-title">👥 Kullanıcı Yönetimi</h1></div>
+                <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">🌙</button></div>
+            </header>
+
+            <div class="page-content">
+                <!-- Stats -->
+                <div class="stats-row" id="statsRow">
+                    <div class="stat-card"><div class="stat-value" id="totalUsers">-</div><div class="stat-label">Toplam Kullanıcı</div></div>
+                    <div class="stat-card"><div class="stat-value" id="adminCount">-</div><div class="stat-label">Admin</div></div>
+                    <div class="stat-card"><div class="stat-value" id="activeCount">-</div><div class="stat-label">Aktif Kullanıcı</div></div>
+                </div>
+
+                <div class="admin-header">
+                    <h2>Kullanıcılar</h2>
+                    <button class="btn btn-primary" onclick="openUserModal()">
+                        <span class="material-icons-round" style="font-size:1rem;">person_add</span> Yeni Kullanıcı
+                    </button>
+                </div>
+
+                <!-- AI Yapılandırması -->
+                <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px;">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                        <span style="font-size:1.4rem;">🤖</span>
+                        <div>
+                            <div style="font-weight:700;font-size:1rem;">AI Yapılandırması</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);">Gemini API key ile görüntü analizi ve senaryo üretimi özelliklerini etkinleştirin</div>
+                        </div>
+                        <span id="aiStatusBadge" style="margin-left:auto;padding:4px 12px;border-radius:20px;font-size:0.75rem;font-weight:600;background:rgba(239,68,68,0.12);color:#ef4444;">Yapılandırılmamış</span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-end;">
+                        <div style="flex:1;">
+                            <label class="form-label">Gemini API Key</label>
+                            <input type="password" class="form-input" id="geminiKeyInput" placeholder="AIza... (Google AI Studio'dan alın)" autocomplete="off">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveAIConfig()" style="white-space:nowrap;">💾 Kaydet</button>
+                    </div>
+                    <div style="margin-top:8px;font-size:0.75rem;color:var(--text-muted);">
+                        Mevcut key: <span id="maskedKey" style="font-family:monospace;">—</span>
+                        &nbsp;·&nbsp; <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-primary);">Google AI Studio'dan al →</a>
+                    </div>
+                </div>
+
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Kullanıcı Adı</th>
+                            <th>Ad Soyad</th>
+                            <th>E-posta</th>
+                            <th>Rol</th>
+                            <th>Kayıt Tarihi</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">Yükleniyor...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- User Modal -->
+    <div class="modal-overlay" id="userModal">
+        <div class="modal">
+            <h3 id="modalTitle">Yeni Kullanıcı</h3>
+            <input type="hidden" id="editUserId">
+
+            <div class="form-group">
+                <label class="form-label">Kullanıcı Adı</label>
+                <input type="text" class="form-input" id="inputUsername" placeholder="kullaniciadi" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Ad Soyad</label>
+                <input type="text" class="form-input" id="inputFullName" placeholder="Ad Soyad">
+            </div>
+            <div class="form-group">
+                <label class="form-label">E-posta</label>
+                <input type="email" class="form-input" id="inputEmail" placeholder="ornek@email.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Şifre <span id="pwdHint" style="font-weight:400; color:var(--text-muted);">(min 6 karakter)</span></label>
+                <input type="password" class="form-input" id="inputPassword" placeholder="••••••••" minlength="6">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Rol</label>
+                <select class="form-select" id="inputRole">
+                    <option value="user">Kullanıcı</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeUserModal()">İptal</button>
+                <button class="btn btn-primary" onclick="saveUser()">Kaydet</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="js/sidebar.js"></script>
+    <script>
+    (function() {
+        "use strict";
+
+        let allUsers = [];
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            if (!Auth.checkAuth()) return;
+
+            // Admin kontrolü
+            if (!Auth.isAdmin()) {
+                Toast.error("Bu sayfaya erişim yetkiniz yok");
+                location.href = "index.html";
+                return;
+            }
+
+            await loadUsers();
+            await loadAIConfig();
+        });
+
+        async function loadUsers() {
+            try {
+                const data = await API.get("/admin/users");
+                allUsers = data.users || data || [];
+                renderUsers();
+                updateStats();
+            } catch (e) {
+                document.getElementById("usersTableBody").innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Yükleme hatası: ${e.message}</td></tr>`;
+            }
+        }
+
+        function renderUsers() {
+            const tbody = document.getElementById("usersTableBody");
+
+            if (!allUsers.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">Kullanıcı yok</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = allUsers.map(u => `
+                <tr>
+                    <td><div class="user-avatar-sm">${(u.full_name || u.username || '?').charAt(0).toUpperCase()}</div></td>
+                    <td style="font-weight:600;">${escapeHtml(u.username)}</td>
+                    <td>${escapeHtml(u.full_name || '-')}</td>
+                    <td style="color:var(--text-muted);">${escapeHtml(u.email || '-')}</td>
+                    <td><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role}</span></td>
+                    <td style="font-size:0.8rem; color:var(--text-muted);">${u.created_at ? new Date(u.created_at).toLocaleDateString('tr-TR') : '-'}</td>
+                    <td>
+                        <div style="display:flex; gap:4px;">
+                            <button class="icon-btn" onclick="openUserModal(${u.id})" title="Düzenle">
+                                <span class="material-icons-round" style="font-size:1.1rem;">edit</span>
+                            </button>
+                            <button class="icon-btn" onclick="deleteUser(${u.id})" title="Sil">
+                                <span class="material-icons-round" style="font-size:1.1rem; color:#ef4444;">delete</span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join("");
+        }
+
+        function updateStats() {
+            document.getElementById("totalUsers").textContent = allUsers.length;
+            document.getElementById("adminCount").textContent = allUsers.filter(u => u.role === "admin").length;
+            document.getElementById("activeCount").textContent = allUsers.length; // TODO: active tracking
+        }
+
+        // ========== MODAL ==========
+        window.openUserModal = function(userId = null) {
+            document.getElementById("editUserId").value = userId || "";
+            document.getElementById("modalTitle").textContent = userId ? "Kullanıcıyı Düzenle" : "Yeni Kullanıcı";
+
+            if (userId) {
+                const u = allUsers.find(x => x.id === userId);
+                if (u) {
+                    document.getElementById("inputUsername").value = u.username || "";
+                    document.getElementById("inputFullName").value = u.full_name || "";
+                    document.getElementById("inputEmail").value = u.email || "";
+                    document.getElementById("inputPassword").value = "";
+                    document.getElementById("inputRole").value = u.role || "user";
+                    document.getElementById("pwdHint").textContent = "(boş bırakılırsa değişmez)";
+                }
+            } else {
+                document.getElementById("inputUsername").value = "";
+                document.getElementById("inputFullName").value = "";
+                document.getElementById("inputEmail").value = "";
+                document.getElementById("inputPassword").value = "";
+                document.getElementById("inputRole").value = "user";
+                document.getElementById("pwdHint").textContent = "(min 6 karakter)";
+            }
+
+            document.getElementById("userModal").classList.add("active");
+        };
+
+        window.closeUserModal = function() {
+            document.getElementById("userModal").classList.remove("active");
+        };
+
+        window.saveUser = async function() {
+            const userId = document.getElementById("editUserId").value;
+            const username = document.getElementById("inputUsername").value.trim();
+            const email = document.getElementById("inputEmail").value.trim();
+            const password = document.getElementById("inputPassword").value;
+            const fullName = document.getElementById("inputFullName").value.trim();
+            const role = document.getElementById("inputRole").value;
+
+            if (!username) { Toast.error("Kullanıcı adı gerekli"); return; }
+
+            const data = { username, email, full_name: fullName, role };
+
+            if (userId) {
+                // Güncelleme
+                if (password) data.password = password;
+                try {
+                    await API.put(`/admin/users/${userId}`, data);
+                    Toast.success("Kullanıcı güncellendi");
+                    closeUserModal();
+                    loadUsers();
+                } catch (e) { Toast.error(e.message); }
+            } else {
+                // Yeni oluşturma
+                if (!password || password.length < 6) { Toast.error("Şifre en az 6 karakter olmalı"); return; }
+                data.password = password;
+                try {
+                    await API.post("/admin/users", data);
+                    Toast.success("Kullanıcı oluşturuldu");
+                    closeUserModal();
+                    loadUsers();
+                } catch (e) { Toast.error(e.message); }
+            }
+        };
+
+        window.deleteUser = async function(userId) {
+            const u = allUsers.find(x => x.id === userId);
+            if (!confirm(`"${u?.username}" kullanıcısını silmek istediğinize emin misiniz?`)) return;
+            try {
+                await API.delete(`/admin/users/${userId}`);
+                Toast.success("Kullanıcı silindi");
+                loadUsers();
+            } catch (e) { Toast.error(e.message); }
+        };
+
+        async function loadAIConfig() {
+            try {
+                const d = await API.get("/admin/ai-config");
+                const badge = document.getElementById("aiStatusBadge");
+                const masked = document.getElementById("maskedKey");
+                if (d.configured) {
+                    badge.style.background = "rgba(16,185,129,0.12)"; badge.style.color = "#10b981";
+                    badge.textContent = "Yapılandırıldı";
+                    masked.textContent = d.masked_key || "****";
+                } else {
+                    badge.textContent = "Yapılandırılmamış";
+                }
+            } catch(e) { console.error("AI config:", e); }
+        }
+
+        window.saveAIConfig = async function() {
+            const key = document.getElementById("geminiKeyInput").value.trim();
+            if (!key) { Toast.error("API key boş olamaz"); return; }
+            try {
+                await API.post("/admin/ai-config", { gemini_api_key: key });
+                Toast.success("Gemini API key kaydedildi");
+                document.getElementById("geminiKeyInput").value = "";
+                await loadAIConfig();
+            } catch(e) { Toast.error(e.message); }
+        };
+
+        function escapeHtml(t) { if (!t) return ""; const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+    })();
+    </script>
+</body>
+</html>

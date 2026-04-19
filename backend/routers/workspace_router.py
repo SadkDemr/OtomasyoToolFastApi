@@ -2,6 +2,7 @@
 User Workspace Router
 ---------------------
 Kullanıcıların repository'leri clone etmesi, commit/push yapması.
+✅ UPDATED: editor_type field eklendi (4 endpoint)
 """
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
@@ -59,6 +60,7 @@ class WorkspaceResponse(BaseModel):
     repository_id: int
     repository_name: str
     repository_type: str
+    editor_type: str  # ✅ ADVANCED EDITOR SUPPORT
     branch_name: str
     is_cloned: bool
     has_changes: bool
@@ -79,6 +81,7 @@ async def get_repository_catalog(
     """
     Repository kataloğu (herkes görebilir).
     Hangi repo'ların mevcut olduğunu ve kullanıcının clone'layıp clone'lamadığını gösterir.
+    ✅ UPDATED: editor_type field eklendi
     """
     all_repos = db.query(Repository).all()
     user_workspaces = db.query(UserWorkspace).filter_by(user_id=current_user.id).all()
@@ -95,6 +98,7 @@ async def get_repository_catalog(
             "name": repo.name,
             "repo_url": repo.repo_url,
             "repo_type": repo.repo_type,
+            "editor_type": repo.editor_type,  # ✅ ADVANCED EDITOR SUPPORT
             "description": repo.description,
             "is_cloned_by_me": ws is not None and ws.is_cloned,
             "my_workspace_id": ws.id if ws else None,
@@ -110,7 +114,10 @@ async def get_my_workspaces(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Kullanıcının clone'ladığı repository'ler."""
+    """
+    Kullanıcının clone'ladığı repository'ler.
+    ✅ UPDATED: editor_type field eklendi
+    """
     workspaces = db.query(UserWorkspace).filter_by(user_id=current_user.id).all()
     
     result = []
@@ -120,6 +127,7 @@ async def get_my_workspaces(
             "repository_id": ws.repository_id,
             "repository_name": ws.repository.name,
             "repository_type": ws.repository.repo_type,
+            "editor_type": ws.repository.editor_type,  # ✅ ADVANCED EDITOR SUPPORT
             "branch_name": ws.branch_name,
             "is_cloned": ws.is_cloned,
             "has_changes": ws.has_changes,
@@ -227,7 +235,10 @@ async def get_workspace_status(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Workspace git status."""
+    """
+    Workspace git status.
+    ✅ UPDATED: editor_type field eklendi
+    """
     ws = db.query(UserWorkspace).filter_by(
         id=workspace_id,
         user_id=current_user.id
@@ -254,6 +265,7 @@ async def get_workspace_status(
         return {
             "is_cloned": True,
             "branch": git_service.get_current_branch(local_path),
+            "editor_type": ws.repository.editor_type,  # ✅ ADVANCED EDITOR SUPPORT
             **status
         }
     except git_service.GitError as e:
@@ -435,6 +447,7 @@ async def get_workspace_info(
 ):
     """
     Workspace bilgilerini getir (repository tipi dahil).
+    ✅ UPDATED: editor_type field eklendi
     """
     ws = db.query(UserWorkspace).filter_by(
         id=workspace_id,
@@ -449,6 +462,7 @@ async def get_workspace_info(
         "repository_id": ws.repository_id,
         "repository_name": ws.repository.name,
         "repository_type": ws.repository.repo_type,
+        "editor_type": ws.repository.editor_type,  # ✅ ADVANCED EDITOR SUPPORT
         "branch_name": ws.branch_name,
         "is_cloned": ws.is_cloned,
         "has_changes": ws.has_changes
@@ -625,19 +639,24 @@ async def write_workspace_file(
     
     try:
         file_path.write_text(body.content, encoding='utf-8')
-        
-        # Git status güncelle
-        status = git_service.get_status(local_path)
-        ws.has_changes = status["has_changes"]
-        db.commit()
-        
-        return {
-            "success": True,
-            "message": "Dosya kaydedildi",
-            "has_changes": status["has_changes"]
-        }
     except Exception as e:
         raise HTTPException(500, detail=f"Dosya yazılamadı: {str(e)}")
+
+    # Git status güncelle (non-critical)
+    has_changes = True
+    try:
+        status = git_service.get_status(local_path)
+        has_changes = status["has_changes"]
+        ws.has_changes = has_changes
+        db.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "Dosya kaydedildi",
+        "has_changes": has_changes
+    }
 
 
 class FileDeleteRequest(BaseModel):
@@ -680,18 +699,21 @@ async def delete_workspace_file(
             shutil.rmtree(target_path)
         else:
             target_path.unlink()
-        
-        # Git status güncelle
+    except Exception as e:
+        raise HTTPException(500, detail=f"Silinemedi: {str(e)}")
+
+    # Git status güncelle (non-critical)
+    try:
         status = git_service.get_status(local_path)
         ws.has_changes = status["has_changes"]
         db.commit()
-        
-        return {
-            "success": True,
-            "message": "Silindi"
-        }
-    except Exception as e:
-        raise HTTPException(500, detail=f"Silinemedi: {str(e)}")
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "Silindi"
+    }
 
 
 class FileRenameRequest(BaseModel):
@@ -737,19 +759,78 @@ async def rename_workspace_file(
     
     try:
         old_path.rename(new_path)
-        
-        # Git status güncelle
+    except Exception as e:
+        raise HTTPException(500, detail=f"Yeniden adlandırılamadı: {str(e)}")
+
+    # Git status güncelle (non-critical)
+    try:
         status = git_service.get_status(local_path)
         ws.has_changes = status["has_changes"]
         db.commit()
-        
-        return {
-            "success": True,
-            "message": "Yeniden adlandırıldı",
-            "new_path": str(new_path.relative_to(local_path)).replace('\\', '/')
-        }
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "Yeniden adlandırıldı",
+        "new_path": str(new_path.relative_to(local_path)).replace('\\', '/')
+    }
+
+
+class FileMoveRequest(BaseModel):
+    old_path: str = Field(..., description="Kaynak dosya yolu")
+    new_path: str = Field(..., description="Hedef dosya yolu")
+
+
+@router.post("/{workspace_id}/files/move")
+async def move_workspace_file(
+    workspace_id: int,
+    body: FileMoveRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Workspace'deki bir dosyayı başka klasöre taşı."""
+    ws = db.query(UserWorkspace).filter_by(id=workspace_id, user_id=current_user.id).first()
+    if not ws or not ws.is_cloned:
+        raise HTTPException(404, detail="Workspace bulunamadı")
+
+    local_path = Path(ws.local_path)
+    src = local_path / body.old_path
+    dst = local_path / body.new_path
+
+    try:
+        src = src.resolve()
+        dst = dst.resolve()
+        base = local_path.resolve()
+        if not str(src).startswith(str(base)) or not str(dst).startswith(str(base)):
+            raise HTTPException(403, detail="Geçersiz dosya yolu")
+    except Exception:
+        raise HTTPException(403, detail="Geçersiz dosya yolu")
+
+    if not src.exists():
+        raise HTTPException(404, detail="Kaynak dosya bulunamadı")
+    if dst.exists():
+        raise HTTPException(400, detail="Hedef konumda bu isimde dosya zaten var")
+
+    try:
+        import shutil
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dst))  # shutil.move: dosya ve klasörleri taşır
     except Exception as e:
-        raise HTTPException(500, detail=f"Yeniden adlandırılamadı: {str(e)}")
+        raise HTTPException(500, detail=f"Taşıma hatası: {str(e)}")
+
+    # Git status güncelle (non-critical)
+    try:
+        status = git_service.get_status(local_path)
+        ws.has_changes = status["has_changes"]
+        db.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "new_path": str(dst.relative_to(base)).replace("\\", "/")  # base = resolved local_path
+    }
 
 
 class FolderCreateRequest(BaseModel):

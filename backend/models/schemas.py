@@ -237,6 +237,9 @@ class MobileTestRequest(BaseModel):
     steps: List[TestStep] = []
     stop_on_fail: bool = True
     restart_app: bool = True
+    # Görüntü işleme / AI
+    use_vision: bool = True        # Python görüntü işleme ile fallback
+    use_llm: bool = False          # LLM (Gemini) ile görüntü analizi
 
 
 class MobileTestResponse(BaseModel):

@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advanced Editor - Desktop Otomasyon</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0c0e1a;--bg2:#12152a;--bg3:#1c1f3a;--bg4:#262a4e;--bgin:#090b16;
+  --bdr:#2e325a;--txt:#e4e6f0;--dim:#7a7ea0;
+  --acc:#6366f1;--acc2:#818cf8;
+  --ok:#22c55e;--err:#ef4444;--warn:#f59e0b;--info:#3b82f6;
+  --pink:#ec4899;--cyan:#22d3ee;--r:8px;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt)}
+
+/* ===== 3-PANEL GRID ===== */
+.layout{display:grid;grid-template-columns:175px 1fr 270px;grid-template-rows:46px 1fr;height:100vh}
+
+/* ===== TOPBAR ===== */
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--bdr)}
+.topbar .logo{font-weight:700;font-size:.88rem;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.topbar .wsn{color:var(--dim);font-size:.76rem;margin-right:auto}
+.tb{padding:4px 10px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt);font-size:.76rem;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:.15s;white-space:nowrap}
+.tb:hover{border-color:var(--acc);background:var(--bg4)}
+.tb.pr{background:var(--acc);border-color:var(--acc);color:#fff}.tb.pr:hover{background:var(--acc2)}
+.tb.dn{background:var(--err);border-color:var(--err);color:#fff}
+.tb:disabled{opacity:.35;cursor:not-allowed}
+
+/* ===== LEFT (Aksiyonlar) ===== */
+.left{background:var(--bg2);border-right:1px solid var(--bdr);overflow-y:auto;padding:8px 5px;display:flex;flex-direction:column}
+.left::-webkit-scrollbar{width:3px}.left::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px}
+.sec{font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:var(--cyan);padding:8px 6px 2px;font-weight:600}
+.ab{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:6px;border:none;background:transparent;color:var(--txt);font-size:.76rem;cursor:pointer;text-align:left;width:100%;transition:.12s}
+.ab:hover{background:var(--bg4)}
+.ab .i{width:18px;text-align:center;font-size:.88rem;flex-shrink:0}
+.ab.rc{background:var(--pink);color:#fff;font-weight:600;margin-bottom:2px}
+.ab.rc:hover{background:#db2777}
+.ab.rc.on{background:var(--err);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.hr{height:1px;background:var(--bdr);margin:5px 3px}
+
+/* ===== CENTER (Adımlar) ===== */
+.center{display:flex;flex-direction:column;overflow:hidden}
+.shdr{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.shdr h3{font-size:.85rem;font-weight:600;flex:1}
+.badge{background:var(--acc);color:#fff;padding:0 6px;border-radius:8px;font-size:.68rem;font-weight:700}
+.clrbtn{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:.76rem;padding:2px 6px;border-radius:4px}
+.clrbtn:hover{color:var(--err);background:rgba(239,68,68,.1)}
+.slist{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
+.slist::-webkit-scrollbar{width:4px}.slist::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px}
+.empty{text-align:center;padding:40px 16px;color:var(--dim)}
+.empty .icon{font-size:2.5rem;opacity:.3;margin-bottom:8px}
+
+/* Step Card */
+.sc{background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r);padding:8px;display:flex;gap:8px;align-items:flex-start;transition:.15s}
+.sc:hover{border-color:var(--acc)}
+.sc.running{border-color:var(--warn);background:rgba(245,158,11,.06)}
+.sc.success{border-color:var(--ok)}.sc.failed{border-color:var(--err);background:rgba(239,68,68,.04)}
+.sn{min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:.66rem;font-weight:700;background:var(--bg4);color:var(--dim);flex-shrink:0}
+.sc.success .sn{background:var(--ok);color:#fff}.sc.failed .sn{background:var(--err);color:#fff}.sc.running .sn{background:var(--warn);color:#fff}
+.thumb{width:64px;height:48px;border-radius:4px;border:1px solid var(--bdr);overflow:hidden;flex-shrink:0;cursor:pointer;background:var(--bg);display:flex;align-items:center;justify-content:center}
+.thumb img{width:100%;height:100%;object-fit:cover}.thumb.no{font-size:1.2rem;color:var(--dim);opacity:.35}
+.sinfo{flex:1;min-width:0}
+.sinfo .lbl{font-weight:600;font-size:.78rem;display:flex;align-items:center;gap:4px}
+.sinfo .det{font-size:.7rem;color:var(--dim);word-break:break-all;margin-top:1px}
+.sinfo .errmsg{font-size:.68rem;color:var(--err);margin-top:2px}
+.sbtns{display:flex;gap:2px;flex-shrink:0}
+.sbtn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:3px;background:var(--bg);color:var(--dim);cursor:pointer;font-size:.72rem}
+.sbtn:hover{color:var(--txt);border-color:var(--acc)}.sbtn.del:hover{color:var(--err);border-color:var(--err)}
+
+/* ===== RIGHT (Kontrol + Log) ===== */
+.right{background:var(--bg2);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.rh{font-size:.78rem;font-weight:700;padding:8px 10px}
+.cbtns{padding:0 8px 6px;display:flex;flex-direction:column;gap:4px}
+.cb{width:100%;padding:8px;border-radius:6px;border:none;color:#fff;font-size:.8rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:.15s}
+.cb:disabled{opacity:.3;cursor:not-allowed}
+.cb.run{background:var(--ok)}.cb.run:hover:not(:disabled){background:#16a34a}
+.cb.stp{background:var(--err)}.cb.stp:hover:not(:disabled){background:#dc2626}
+.cb.sav{background:var(--info)}.cb.sav:hover:not(:disabled){background:#2563eb}
+.cb.scn{background:#8b5cf6}.cb.scn:hover{background:#7c3aed}
+.cb.fld{background:#f97316}.cb.fld:hover{background:#ea580c}
+.spd{padding:6px 10px}
+.spd label{font-size:.7rem;color:var(--dim);display:block;margin-bottom:2px}
+.spd input[type=range]{width:100%;accent-color:var(--acc)}
+.logsec{flex:1;display:flex;flex-direction:column;overflow:hidden;border-top:1px solid var(--bdr)}
+.loghdr{padding:6px 10px;font-size:.72rem;font-weight:600;color:var(--dim);background:var(--bg3)}
+.logbody{flex:1;overflow-y:auto;padding:4px 6px;font-family:'JetBrains Mono',monospace;font-size:.68rem;line-height:1.5;background:var(--bg)}
+.logbody::-webkit-scrollbar{width:3px}.logbody::-webkit-scrollbar-thumb{background:var(--bdr)}
+.ll{padding:1px 0;word-break:break-all}
+.ll.info{color:var(--info)}.ll.ok{color:var(--ok)}.ll.err{color:var(--err)}.ll.warn{color:var(--warn)}
+
+/* ===== SNIP OVERLAY ===== */
+.snip{display:none;position:fixed;inset:0;z-index:1000;flex-direction:column;background:#000}
+.snip.on{display:flex}
+.snip .bar{padding:7px 14px;display:flex;align-items:center;gap:10px;background:var(--bg2);border-bottom:1px solid var(--bdr)}
+.snip .bar b{white-space:nowrap}
+.snip .bar .inf{flex:1;font-size:.8rem;color:var(--dim)}
+.snip .coord{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:var(--cyan);background:var(--bg);padding:2px 8px;border-radius:4px;border:1px solid var(--bdr)}
+.snip .wrap{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;position:relative;cursor:crosshair;background:#0a0a0a}
+.snip .wrap img{max-width:100%;max-height:100%;user-select:none;-webkit-user-drag:none}
+.snip .sel{position:absolute;border:2px solid var(--err);background:rgba(239,68,68,.15);pointer-events:none;display:none}
+
+/* ===== PREVIEW ===== */
+.prev{display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.92);align-items:center;justify-content:center}
+.prev.on{display:flex}
+.prev img{max-width:90%;max-height:90%;border-radius:8px}
+.prev .x{position:absolute;top:14px;right:22px;font-size:1.6rem;color:#fff;cursor:pointer;background:transparent;border:none}
+
+/* ===== DIALOG ===== */
+.dlg{display:none;position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.65);align-items:center;justify-content:center}
+.dlg.on{display:flex}
+.dlg .box{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:20px;min-width:320px;max-width:440px}
+.dlg .box h4{margin-bottom:10px;font-size:.9rem}
+.dlg .box label{font-size:.72rem;color:var(--dim);display:block;margin-bottom:3px}
+.dlg .box input,.dlg .box select{width:100%;padding:7px 9px;border-radius:6px;border:1px solid var(--bdr);background:var(--bgin);color:var(--txt);font-size:.82rem;margin-bottom:8px;outline:none}
+.dlg .box input:focus,.dlg .box select:focus{border-color:var(--acc)}
+.dlg .dbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:6px}
+.dlg .dbtns button{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-size:.8rem;font-weight:600}
+.dlg .dbtns .ok{background:var(--acc);color:#fff}.dlg .dbtns .ok:hover{background:var(--acc2)}
+.dlg .dbtns .cn{background:var(--bg3);color:var(--dim)}.dlg .dbtns .cn:hover{background:var(--bg4)}
+.scpick{max-height:280px;overflow-y:auto;margin-bottom:8px}
+.scpick .row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--bdr)}
+.scpick .row:hover{background:var(--bg3)}
+.scpick .row span{flex:1;font-size:.82rem}
+.scpick .row button{padding:3px 10px;border:0;border-radius:4px;background:var(--acc);color:#fff;cursor:pointer;font-size:.76rem}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="topbar">
+    <span class="logo">🖥️ Advanced Editor</span>
+    <span class="wsn" id="wsn"></span>
+    <button class="tb" onclick="doCapture()">📸 Ekran Yakala</button>
+    <button class="tb" onclick="doSave()">💾 Kaydet</button>
+    <button class="tb pr" onclick="doRun()" id="bRun">▶ Çalıştır</button>
+    <button class="tb dn" onclick="doStop()" id="bStop" disabled>⏹ Durdur</button>
+  </div>
+
+  <div class="left">
+    <div class="sec">Smart Recorder</div>
+    <button class="ab rc" id="bRec" onclick="toggleRec()"><span class="i">🔴</span>Kaydı Başlat</button>
+    <button class="ab rc" onclick="doRecCheck()" style="background:#e91e63"><span class="i">📸</span>Record Check</button>
+    <div class="hr"></div>
+    <div class="sec">Temel Aksiyonlar</div>
+    <button class="ab" onclick="doSnip('CLICK','left')"><span class="i">🖱️</span>Sol Tıkla (Manuel)</button>
+    <button class="ab" onclick="doSnip('CLICK','right')"><span class="i">🖱️</span>Sağ Tıkla (Manuel)</button>
+    <button class="ab" onclick="doType()"><span class="i">✍️</span>Type</button>
+    <button class="ab" onclick="doKey()"><span class="i">⌨️</span>Tuş Bas</button>
+    <button class="ab" onclick="doScroll()"><span class="i">↕️</span>Kaydır (Scroll)</button>
+    <button class="ab" onclick="doOcrClick()"><span class="i">🔍</span>Metne Tıkla (OCR)</button>
+    <button class="ab" onclick="doOcrRead()"><span class="i">📖</span>Metin Oku (OCR)</button>
+    <button class="ab" onclick="doWait()"><span class="i">⏳</span>Wait</button>
+    <button class="ab" onclick="doLaunch()"><span class="i">🚀</span>Launch App</button>
+    <button class="ab" onclick="doSnip('ASSERT_EXISTS','left')"><span class="i">✅</span>Assert (Manuel)</button>
+    <div class="hr"></div>
+    <div class="sec">Doğrulama</div>
+    <button class="ab" onclick="doValidate()"><span class="i">🪟</span>Pencere Doğrula</button>
+  </div>
+
+  <div class="center">
+    <div class="shdr">
+      <h3>Senaryo Adımları</h3>
+      <span class="badge" id="cnt">0</span>
+      <button class="clrbtn" onclick="clearAll()">🗑️ Temizle</button>
+    </div>
+    <div class="slist" id="SL"></div>
+  </div>
+
+  <div class="right">
+    <div class="rh">Kontrol Paneli</div>
+    <div class="cbtns">
+      <button class="cb run" onclick="doRun()" id="bR2">▶️ Çalıştır</button>
+      <button class="cb stp" onclick="doStop()" id="bS2" disabled>⛔ Durdur</button>
+      <button class="cb sav" onclick="doSave()">💾 Kaydet</button>
+      <button class="cb scn" onclick="doLoadList()">📂 Senaryolar</button>
+      <button class="cb fld" onclick="doFolder()">📁 Veri Klasörünü Aç</button>
+    </div>
+    <div class="spd">
+      <label>İşlem Gecikmesi: <span id="spV">0.5</span>s</label>
+      <input type="range" min="0" max="5" step="0.1" value="0.5" oninput="S.delay=+this.value;Q('spV').textContent=S.delay.toFixed(1)">
+    </div>
+    <div class="logsec">
+      <div class="loghdr">📋 Log Çıktısı</div>
+      <div class="logbody" id="LOG"></div>
+    </div>
+  </div>
+</div>
+
+<div class="snip" id="SNIP">
+  <div class="bar">
+    <b>✂️ Hedef Bölgeyi Seçin</b>
+    <span class="inf">Sürükleyerek hedef alanı işaretleyin, bırakın</span>
+    <span class="coord" id="sCo">x: -, y: -</span>
+    <button class="tb" onclick="snipCancel()">✕ İptal</button>
+  </div>
+  <div class="wrap" id="sW"><img id="sI" draggable="false"><div class="sel" id="sS"></div></div>
+</div>
+
+<div class="prev" id="PREV" onclick="Q('PREV').classList.remove('on')">
+  <button class="x">✕</button><img id="pI">
+</div>
+
+<div class="dlg" id="DLG"><div class="box" id="dB"></div></div>
+
+<script src="js/app.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ===== HELPERS ===== */
+window.Q = function(id){ return document.getElementById(id) };
+function esc(t){ if(!t) return ""; var d = document.createElement("div"); d.textContent = t; return d.innerHTML }
+
+/* ===== STATE ===== */
+var S = window.S = {
+  steps: [], recording: false, running: false,
+  recWS: null, runWS: null, delay: 0.5,
+  pending: null,
+  wsId: new URLSearchParams(location.search).get("workspace")
+};
+
+Theme.init();
+if(S.wsId) Q("wsn").textContent = "WS #" + S.wsId;
+
+/* ===== API ===== */
+var BASE = API_URL + "/desktop";
+async function dpost(path, body){
+  var headers = { "Content-Type": "application/json" };
+  var token = localStorage.getItem("token");
+  if(token) headers["Authorization"] = "Bearer " + token;
+  var r = await fetch(BASE + path, { method: "POST", headers: headers, body: JSON.stringify(body || {}) });
+  if(!r.ok){
+    var e;
+    try { e = await r.json() } catch(ex) { e = { detail: r.statusText } }
+    throw new Error(e.detail || r.statusText);
+  }
+  return r.json();
+}
+
+/* ===== LOG ===== */
+function log(m, t){
+  var el = Q("LOG"), d = document.createElement("div");
+  d.className = "ll " + (t || "info");
+  d.textContent = "[" + new Date().toLocaleTimeString("tr-TR") + "] " + m;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+
+/* ===== RENDER ===== */
+var LBL = {
+  CLICK: "\u{1F5B1}\uFE0F T\u0131kla", CLICK_TEXT: "\u{1F50D} OCR T\u0131kla",
+  TYPE: "\u270D\uFE0F Yaz", PRESS_KEY: "\u2328\uFE0F Tu\u015F",
+  SCROLL: "\u2195\uFE0F Scroll", WAIT: "\u23F3 Bekle",
+  LAUNCH_APP: "\u{1F680} Uygulama", ASSERT_EXISTS: "\u2705 Assert",
+  READ_TEXT: "\u{1F4D6} OCR Oku", VALIDATE_WINDOW: "\u{1FA9F} Pencere"
+};
+
+function render(){
+  var list = Q("SL"); Q("cnt").textContent = S.steps.length;
+  if(!S.steps.length){
+    list.innerHTML = '<div class="empty"><div class="icon">\u{1F4CB}</div><p>Hen\u00FCz ad\u0131m eklenmedi</p><p style="font-size:.74rem;margin-top:4px">Sol panelden aksiyon se\u00E7in veya Smart Recorder kullan\u0131n</p></div>';
+    return;
+  }
+  list.innerHTML = S.steps.map(function(s, i){
+    var lb = LBL[s.type] || s.type;
+    var btn = (s.type === "CLICK" ? (s.params.button === "right" ? " (Sa\u011F)" : " (Sol)") : "");
+    var det = "";
+    if(s.type === "CLICK" && s.params.by_image) det = "Img: " + (s.params.target_name || s.params.filename || "g\u00F6rsel");
+    else if(s.type === "CLICK_TEXT") det = "Metin: '" + esc(s.params.text) + "'";
+    else if(s.type === "TYPE") det = "'" + esc(s.params.text) + "'";
+    else if(s.type === "PRESS_KEY") det = s.params.key;
+    else if(s.type === "SCROLL") det = s.params.amount + " birim";
+    else if(s.type === "WAIT") det = s.params.seconds + "s";
+    else if(s.type === "LAUNCH_APP") det = esc(s.params.path || "");
+    else if(s.type === "ASSERT_EXISTS") det = s.params.target_name || "g\u00F6rsel";
+    else if(s.type === "VALIDATE_WINDOW") det = esc(s.params.title || "");
+
+    var img = s.params.screenshot_b64 || s.params.screenshot;
+    var th = img
+      ? '<div class="thumb" onclick="showPrev(' + i + ')"><img src="data:image/png;base64,' + img + '"></div>'
+      : '<div class="thumb no">\u{1F4F7}</div>';
+
+    var si = "";
+    if(s._st === "success") si = '<span style="color:var(--ok)">\u2713</span>';
+    if(s._st === "failed")  si = '<span style="color:var(--err)">\u2717</span>';
+    if(s._st === "running") si = '<span style="color:var(--warn)">\u27F3</span>';
+
+    return '<div class="sc ' + (s._st || "") + '">'
+      + '<div class="sn">' + (i+1) + '</div>' + th
+      + '<div class="sinfo"><div class="lbl">' + lb + btn + ' ' + si + '</div>'
+      + '<div class="det">' + det + '</div>'
+      + (s._err ? '<div class="errmsg">' + esc(s._err) + '</div>' : '')
+      + '</div><div class="sbtns">'
+      + '<button class="sbtn" onclick="mvStep(' + i + ',-1)">\u2B06</button>'
+      + '<button class="sbtn" onclick="mvStep(' + i + ',1)">\u2B07</button>'
+      + '<button class="sbtn del" onclick="delStep(' + i + ')">\u2715</button>'
+      + '</div></div>';
+  }).join("");
+  list.scrollTop = list.scrollHeight;
+}
+
+window.delStep = function(i){ S.steps.splice(i, 1); render() };
+window.mvStep = function(i, d){ var j = i+d; if(j<0||j>=S.steps.length) return; var t = S.steps[i]; S.steps[i] = S.steps[j]; S.steps[j] = t; render() };
+window.clearAll = function(){ if(!S.steps.length) return; if(!confirm("T\u00FCm ad\u0131mlar\u0131 silmek istedi\u011Finize emin misiniz?")) return; S.steps = []; render(); log("Temizlendi", "warn") };
+window.showPrev = function(i){ var img = S.steps[i] && (S.steps[i].params.screenshot_b64 || S.steps[i].params.screenshot); if(!img) return; Q("pI").src = "data:image/png;base64," + img; Q("PREV").classList.add("on") };
+
+/* ===== DIALOG ===== */
+function dialog(title, fields, cb){
+  var h = '<h4>' + esc(title) + '</h4>';
+  fields.forEach(function(f, idx){
+    h += '<label>' + esc(f.label) + '</label>';
+    if(f.type === "select"){
+      h += '<select id="df' + idx + '">';
+      f.opts.forEach(function(o){ h += '<option value="' + esc(o) + '">' + esc(o) + '</option>' });
+      h += '</select>';
+    } else {
+      h += '<input id="df' + idx + '" type="' + (f.type||"text") + '" placeholder="' + (esc(f.ph)||"") + '" value="' + (esc(f.val)||"") + '">';
+    }
+  });
+  h += '<div class="dbtns"><button class="cn" onclick="dlgX()">İptal</button><button class="ok" onclick="dlgOk()">Tamam</button></div>';
+  Q("dB").innerHTML = h; Q("DLG").classList.add("on");
+  window._dlgCb = function(){ var v = fields.map(function(_, i){ return Q("df"+i).value }); Q("DLG").classList.remove("on"); cb(v) };
+  setTimeout(function(){ var e = Q("df0"); if(e) e.focus() }, 80);
+}
+window.dlgX = function(){ Q("DLG").classList.remove("on") };
+window.dlgOk = function(){ if(window._dlgCb) window._dlgCb() };
+
+/* ===== SCREENSHOT ===== */
+async function takeScreenshot(){
+  log("Ekran g\u00F6r\u00FCnt\u00FCs\u00FC al\u0131n\u0131yor...");
+  try {
+    var d = await dpost("/screenshot", {});
+    if(d.screenshot){ log("Ekran al\u0131nd\u0131 (" + d.width + "x" + d.height + ")", "ok"); return d.screenshot }
+  } catch(e){ log("Ekran al\u0131namad\u0131: " + e.message, "err"); Toast.error(e.message) }
+  return null;
+}
+window.doCapture = async function(){ var ss = await takeScreenshot(); if(ss) Toast.success("Ekran al\u0131nd\u0131") };
+
+/* ===== SNIP TOOL ===== */
+var _snipB64 = null, _snipDraw = false, _snipSX = 0, _snipSY = 0;
+
+function openSnip(b64){
+  _snipB64 = b64;
+  var img = Q("sI");
+  img.onload = function(){ Q("SNIP").classList.add("on"); log("Snip arac\u0131 a\u00E7\u0131ld\u0131 \u2014 b\u00F6lge se\u00E7in") };
+  img.src = "data:image/png;base64," + b64;
+}
+
+Q("sW").addEventListener("mousedown", function(ev){
+  if(ev.target !== Q("sI")) return;
+  _snipSX = ev.clientX; _snipSY = ev.clientY; _snipDraw = true;
+  var sel = Q("sS"), wr = Q("sW").getBoundingClientRect();
+  sel.style.display = "block";
+  sel.style.left = (_snipSX - wr.left + Q("sW").scrollLeft) + "px";
+  sel.style.top = (_snipSY - wr.top + Q("sW").scrollTop) + "px";
+  sel.style.width = "0"; sel.style.height = "0";
+});
+
+Q("sW").addEventListener("mousemove", function(ev){
+  var img = Q("sI"), r = img.getBoundingClientRect();
+  if(img.naturalWidth){
+    var sx = img.naturalWidth/r.width, sy = img.naturalHeight/r.height;
+    var mx = Math.round((ev.clientX - r.left)*sx), my = Math.round((ev.clientY - r.top)*sy);
+    if(mx >= 0 && my >= 0) Q("sCo").textContent = "x: " + mx + ", y: " + my;
+  }
+  if(!_snipDraw) return;
+  var sel = Q("sS"), wr = Q("sW").getBoundingClientRect();
+  sel.style.left = (Math.min(_snipSX, ev.clientX) - wr.left + Q("sW").scrollLeft) + "px";
+  sel.style.top = (Math.min(_snipSY, ev.clientY) - wr.top + Q("sW").scrollTop) + "px";
+  sel.style.width = Math.abs(ev.clientX - _snipSX) + "px";
+  sel.style.height = Math.abs(ev.clientY - _snipSY) + "px";
+});
+
+Q("sW").addEventListener("mouseup", function(ev){
+  if(!_snipDraw) return; _snipDraw = false;
+  Q("sS").style.display = "none";
+  var img = Q("sI"), r = img.getBoundingClientRect();
+  var sx = img.naturalWidth/r.width, sy = img.naturalHeight/r.height;
+  var x1 = Math.round((Math.min(_snipSX, ev.clientX) - r.left)*sx);
+  var y1 = Math.round((Math.min(_snipSY, ev.clientY) - r.top)*sy);
+  var w = Math.round(Math.abs(ev.clientX - _snipSX)*sx);
+  var h = Math.round(Math.abs(ev.clientY - _snipSY)*sy);
+  if(w < 10 || h < 10){ log("Se\u00E7im \u00E7ok k\u00FC\u00E7\u00FCk", "warn"); return }
+
+  // Canvas ile crop
+  var c = document.createElement("canvas"); c.width = w; c.height = h;
+  var ctx = c.getContext("2d");
+  var tmp = new Image();
+  tmp.onload = function(){
+    ctx.drawImage(tmp, x1, y1, w, h, 0, 0, w, h);
+    var cropped = c.toDataURL("image/png").split(",")[1];
+    snipClose();
+    onSnipDone(cropped, x1, y1, w, h);
+  };
+  tmp.src = "data:image/png;base64," + _snipB64;
+});
+
+window.snipCancel = function(){ snipClose(); S.pending = null };
+function snipClose(){ Q("SNIP").classList.remove("on"); _snipDraw = false; Q("sS").style.display = "none" }
+
+function onSnipDone(b64, x, y, w, h){
+  if(!S.pending) return;
+  var name = "snip_" + Date.now() + ".png";
+  var step = {
+    type: S.pending.type,
+    params: { by_image: true, screenshot_b64: b64, target_name: name, region: {x:x,y:y,w:w,h:h}, button: S.pending.button || "left" },
+    description: "", _st: null, _err: null
+  };
+  if(S.pending.type === "CLICK") step.description = (step.params.button === "right" ? "Sa\u011F T\u0131kla" : "Sol T\u0131kla") + ": " + name;
+  else if(S.pending.type === "ASSERT_EXISTS") step.description = "Assert: " + name;
+  else if(S.pending.type === "READ_TEXT") step.description = "OCR Read region";
+
+  // Asset'i backend'e kaydet
+  dpost("/save-asset", { name: name, image_b64: b64, workspace_id: S.wsId }).catch(function(){});
+
+  S.steps.push(step); render();
+  log("Ad\u0131m eklendi: " + step.description, "ok");
+  Toast.success("Ad\u0131m #" + S.steps.length);
+  S.pending = null;
+}
+
+/* ===== ACTION HANDLERS ===== */
+window.doSnip = async function(type, btn){
+  S.pending = { type: type, button: btn || "left" };
+  var ss = await takeScreenshot();
+  if(!ss){ S.pending = null; return }
+  openSnip(ss);
+};
+
+window.doType = function(){
+  dialog("Metin Yaz", [{label:"Yaz\u0131lacak Metin", ph:"metin..."}], function(v){
+    if(!v[0]) return;
+    S.steps.push({type:"TYPE", params:{text:v[0]}, description:"Type '"+v[0]+"'"});
+    render(); log("Type eklendi", "ok");
+  });
+};
+
+window.doKey = function(){
+  dialog("Tu\u015F Bas", [{label:"Tu\u015F", type:"select", opts:["enter","tab","esc","backspace","delete","space","home","end","up","down","left","right","f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12","ctrl+c","ctrl+v","ctrl+a","ctrl+s","ctrl+z","alt+tab","alt+f4"]}], function(v){
+    S.steps.push({type:"PRESS_KEY", params:{key:v[0]}, description:"Press: "+v[0]});
+    render(); log("Tu\u015F: "+v[0], "ok");
+  });
+};
+
+window.doScroll = function(){
+  dialog("Kayd\u0131r", [{label:"Miktar (negatif=a\u015Fa\u011F\u0131)", ph:"-500", val:"-3"}], function(v){
+    var a = parseInt(v[0])||0;
+    S.steps.push({type:"SCROLL", params:{amount:a}, description:"Scroll: "+a});
+    render(); log("Scroll: "+a, "ok");
+  });
+};
+
+window.doWait = function(){
+  dialog("Bekle", [{label:"S\u00FCre (saniye)", ph:"2", val:"2"}], function(v){
+    var s = parseFloat(v[0])||1;
+    S.steps.push({type:"WAIT", params:{seconds:s}, description:"Wait "+s+"s"});
+    render(); log("Wait: "+s+"s", "ok");
+  });
+};
+
+window.doLaunch = function(){
+  dialog("Uygulama A\u00E7", [{label:"Uygulama Yolu", ph:"C:\\\\...\\\\app.exe"}], function(v){
+    if(!v[0]) return;
+    S.steps.push({type:"LAUNCH_APP", params:{path:v[0]}, description:"Launch: "+v[0]});
+    render(); log("Launch eklendi", "ok");
+  });
+};
+
+window.doOcrClick = function(){
+  dialog("Metne T\u0131kla (OCR)", [{label:"T\u0131klanacak metin", ph:"metin..."}], function(v){
+    if(!v[0]) return;
+    S.steps.push({type:"CLICK_TEXT", params:{text:v[0]}, description:"OCR Click: '"+v[0]+"'"});
+    render(); log("OCR Click eklendi", "ok");
+  });
+};
+
+window.doOcrRead = function(){ S.pending = {type:"READ_TEXT"}; takeScreenshot().then(function(ss){ if(ss) openSnip(ss); else S.pending = null }) };
+window.doRecCheck = function(){ S.pending = {type:"ASSERT_EXISTS"}; takeScreenshot().then(function(ss){ if(ss) openSnip(ss); else S.pending = null }) };
+
+window.doValidate = function(){
+  dialog("Pencere Do\u011Frula", [{label:"Pencere Ba\u015Fl\u0131\u011F\u0131", ph:"Chrome"}], function(v){
+    if(!v[0]) return;
+    S.steps.push({type:"VALIDATE_WINDOW", params:{title:v[0], timeout:5}, description:"Validate: "+v[0]});
+    render(); log("Validate eklendi", "ok");
+  });
+};
+
+window.doFolder = function(){ dpost("/open-folder", {workspace_id:S.wsId}).then(function(){ Toast.success("Klas\u00F6r a\u00E7\u0131ld\u0131") }).catch(function(e){ Toast.error(e.message) }) };
+
+/* ===== SMART RECORDER ===== */
+window.toggleRec = async function(){
+  if(S.recording){ stopRec(); return }
+  log("Kay\u0131t ba\u015Flat\u0131l\u0131yor...");
+  try { await dpost("/record/start", {workspace_id: S.wsId}) }
+  catch(e){ log("Ba\u015Flat\u0131lamad\u0131: "+e.message, "err"); Toast.error(e.message); return }
+
+  S.recording = true;
+  Q("bRec").innerHTML = '<span class="i">\u23F9</span>Kayd\u0131 Bitir (ESC)';
+  Q("bRec").classList.add("on");
+  log("\u{1F534} Kay\u0131t ba\u015Flad\u0131! Masa\u00FCst\u00FCnde i\u015Flemlerinizi yap\u0131n...", "warn");
+  Toast.info("Kay\u0131t ba\u015Flad\u0131 — ESC ile bitirin");
+
+  try {
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    var host = new URL(API_URL).host;
+    S.recWS = new WebSocket(proto + "//" + host + "/api/desktop/record/ws");
+    S.recWS.onmessage = function(ev){
+      try {
+        var m = JSON.parse(ev.data);
+        if(m.type === "step"){
+          var s = { type: m.action_type || "CLICK", params: {}, description: m.description || "" };
+          if(m.action_type === "CLICK"){
+            s.params = { by_image: true, target_name: m.filename || "capture.png", screenshot_b64: m.screenshot || null, filepath: m.filepath || "", button: m.button || "left" };
+          } else if(m.action_type === "TYPE"){
+            s.params = { text: m.text };
+          } else if(m.action_type === "PRESS_KEY"){
+            s.params = { key: m.key };
+          }
+          S.steps.push(s); render();
+          log("Kay\u0131t: " + (m.description || m.action_type));
+        }
+        if(m.type === "stopped") onRecStop();
+      } catch(ex){}
+    };
+    S.recWS.onclose = function(){ if(S.recording) onRecStop() };
+  } catch(e){ log("WS ba\u011Flanamad\u0131", "warn") }
+};
+
+function stopRec(){ dpost("/record/stop", {}).catch(function(){}); onRecStop() }
+function onRecStop(){
+  S.recording = false;
+  if(S.recWS){ try{S.recWS.close()}catch(e){} S.recWS = null }
+  Q("bRec").innerHTML = '<span class="i">\u{1F534}</span>Kayd\u0131 Ba\u015Flat';
+  Q("bRec").classList.remove("on");
+  log("\u2705 Kay\u0131t tamamland\u0131! " + S.steps.length + " ad\u0131m.", "ok");
+  Toast.success("Kay\u0131t tamamland\u0131 — " + S.steps.length + " ad\u0131m");
+}
+
+/* ===== RUN ===== */
+window.doRun = async function(){
+  if(!S.steps.length){ Toast.error("\u00C7al\u0131\u015Ft\u0131r\u0131lacak ad\u0131m yok"); return }
+  if(S.running) return;
+  S.running = true;
+  Q("bRun").disabled = Q("bR2").disabled = true;
+  Q("bStop").disabled = Q("bS2").disabled = false;
+  S.steps.forEach(function(s){ s._st = null; s._err = null }); render();
+  log("\u25B6 Senaryo \u00E7al\u0131\u015Ft\u0131r\u0131l\u0131yor (" + S.steps.length + " ad\u0131m)...", "warn");
+
+  try {
+    var payload = { workspace_id: S.wsId, action_delay: S.delay, steps: S.steps.map(function(s){ return {type:s.type, params:s.params, description:s.description} }) };
+    var res = await dpost("/run", payload);
+    if(res.test_id){
+      var proto = location.protocol === "https:" ? "wss:" : "ws:";
+      var host = new URL(API_URL).host;
+      S.runWS = new WebSocket(proto + "//" + host + "/api/desktop/ws/" + res.test_id);
+      S.runWS.onmessage = function(ev){
+        try {
+          var m = JSON.parse(ev.data);
+          if(m.type === "step_start" && m.index != null){ S.steps[m.index]._st = "running"; render(); log("Ad\u0131m " + (m.index+1) + " \u00E7al\u0131\u015F\u0131yor...") }
+          if(m.type === "step_result" && m.index != null){
+            S.steps[m.index]._st = m.success ? "success" : "failed";
+            if(m.error) S.steps[m.index]._err = m.error;
+            if(m.screenshot) S.steps[m.index].params.screenshot_b64 = m.screenshot;
+            render();
+            log("Ad\u0131m " + (m.index+1) + ": " + (m.success ? "\u2713 Ba\u015Far\u0131l\u0131" : "\u2717 " + (m.error||"Hata")), m.success ? "ok" : "err");
+          }
+          if(m.type === "complete") onRunDone();
+        } catch(ex){}
+      };
+      S.runWS.onclose = function(){ if(S.running) onRunDone() };
+    }
+  } catch(e){ log("Hata: "+e.message, "err"); Toast.error(e.message); onRunDone() }
+};
+
+function onRunDone(){
+  S.running = false;
+  Q("bRun").disabled = Q("bR2").disabled = false;
+  Q("bStop").disabled = Q("bS2").disabled = true;
+  if(S.runWS){ try{S.runWS.close()}catch(e){} S.runWS = null }
+  var fc = S.steps.filter(function(s){ return s._st === "failed" }).length;
+  Toast[fc ? "error" : "success"](fc ? "Tamamland\u0131 — "+fc+" ba\u015Far\u0131s\u0131z" : "Ba\u015Far\u0131yla tamamland\u0131!");
+}
+
+window.doStop = function(){
+  dpost("/stop", {}).catch(function(){});
+  if(S.runWS) S.runWS.close();
+  S.running = false;
+  Q("bRun").disabled = Q("bR2").disabled = false;
+  Q("bStop").disabled = Q("bS2").disabled = true;
+  log("\u26D4 Durduruldu", "warn");
+};
+
+/* ===== SAVE / LOAD ===== */
+window.doSave = function(){
+  if(!S.steps.length){ Toast.error("Kaydedilecek ad\u0131m yok"); return }
+  dialog("Senaryoyu Kaydet", [{label:"Senaryo Ad\u0131", ph:"Senaryo_1", val:"Senaryo_"+new Date().toISOString().slice(0,10)}], function(v){
+    if(!v[0]) return;
+    var data = {name:v[0], steps:S.steps, version:2, created_at:new Date().toISOString()};
+    dpost("/save-scenario", {workspace_id:S.wsId, name:v[0], data:data}).then(function(){
+      log("Kaydedildi: "+v[0], "ok"); Toast.success("Kaydedildi");
+    }).catch(function(){
+      localStorage.setItem("adv_sc_"+v[0], JSON.stringify(data));
+      log("Lokale kaydedildi", "warn");
+    });
+  });
+};
+
+window.doLoadList = async function(){
+  var list = [];
+  try { var r = await dpost("/list-scenarios", {workspace_id:S.wsId}); list = r.scenarios || [] } catch(e){}
+  for(var k=0; k<localStorage.length; k++){
+    var key = localStorage.key(k);
+    if(key && key.startsWith("adv_sc_")){
+      try { var v = JSON.parse(localStorage.getItem(key)); list.push({name:v.name||key.replace("adv_sc_",""), data:v, local:true}) } catch(ex){}
+    }
+  }
+  if(!list.length){ Toast.info("Kay\u0131tl\u0131 senaryo yok"); return }
+  var h = '<h4>Senaryolar</h4><div class="scpick">';
+  list.forEach(function(s, i){ h += '<div class="row"><span>'+(i+1)+'. '+esc(s.name)+(s.local?' <span style="color:var(--dim)">(lokal)</span>':'')+'</span><button onclick="loadSc('+i+')">Y\u00FCkle</button></div>' });
+  h += '</div><div class="dbtns"><button class="cn" onclick="dlgX()">Kapat</button></div>';
+  Q("dB").innerHTML = h; Q("DLG").classList.add("on");
+  window._scList = list;
+};
+window.loadSc = function(i){
+  var s = window._scList[i];
+  if(s && s.data && s.data.steps){ S.steps = s.data.steps; render(); log("Y\u00FCklendi: "+s.name, "ok"); Toast.success("Y\u00FCklendi") }
+  Q("DLG").classList.remove("on");
+};
+
+/* ===== KEYBOARD ===== */
+document.addEventListener("keydown", function(e){
+  if(e.key === "Escape"){
+    if(Q("SNIP").classList.contains("on")){ snipCancel(); return }
+    if(Q("DLG").classList.contains("on")){ dlgX(); return }
+    if(Q("PREV").classList.contains("on")){ Q("PREV").classList.remove("on"); return }
+  }
+});
+
+/* ===== INIT ===== */
+render();
+log("Advanced Editor haz\u0131r" + (S.wsId ? " (WS #"+S.wsId+")" : ""));
+dpost("/status", {}).then(function(d){
+  log("Desktop Agent ba\u011Fl\u0131 \u2713" + (d.opencv ? " (OpenCV Aktif)" : " (Fallback modu)"), "ok");
+}).catch(function(){ log("Desktop Agent ba\u011Fl\u0131 de\u011Fil — backend \u00E7al\u0131\u015F\u0131yor mu?", "warn") });
+
+})();
+</script>
+</body>
+</html>

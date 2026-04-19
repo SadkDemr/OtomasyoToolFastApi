@@ -23,7 +23,7 @@ const Auth = {
     setToken(token) { Storage.set('token', token); },
     getUser() { return Storage.get('user'); },
     setUser(user) { Storage.set('user', user); },
-    getCurrentUser() { return this.getUser(); }, // Alias for getUser
+    getCurrentUser() { return this.getUser(); },
     isAdmin() { 
         const user = this.getUser();
         return user && user.role === 'admin';
@@ -81,10 +81,8 @@ const API = {
             const data = await response.json();
             
             if (!response.ok) {
-                // HATA DUZELTME: Nesne gelirse stringe cevir
                 let errorMsg = data.detail || 'Bir hata oluştu';
                 if (typeof errorMsg === 'object') {
-                    // Pydantic validation hatası ise detaylandır
                     if (Array.isArray(errorMsg)) {
                         errorMsg = errorMsg.map(e => `${e.loc[1]}: ${e.msg}`).join(', ');
                     } else {
@@ -103,7 +101,8 @@ const API = {
     get(endpoint) { return this.request(endpoint, { method: 'GET' }); },
     post(endpoint, data) { return this.request(endpoint, { method: 'POST', body: data }); },
     put(endpoint, data) { return this.request(endpoint, { method: 'PUT', body: data }); },
-    delete(endpoint) { return this.request(endpoint, { method: 'DELETE' }); }
+    delete(endpoint) { return this.request(endpoint, { method: 'DELETE' }); },
+    patch(endpoint, data) { return this.request(endpoint, { method: 'PATCH', body: data }); }
 };
 
 // Auth API
@@ -143,7 +142,7 @@ const DevicesAPI = {
     },
     get(id) { return API.get(`/devices/${id}`); },
     create(data) { return API.post('/devices', data); },
-    update(id, data) { return API.put(`/devices/${id}`, data); }, // PUT eklendi
+    update(id, data) { return API.put(`/devices/${id}`, data); },
     delete(id) { return API.delete(`/devices/${id}`); },
     lock(id) { return API.post(`/devices/${id}/lock`, {}); },
     unlock(id) { return API.post(`/devices/${id}/unlock`, {}); }
@@ -159,7 +158,53 @@ const TestAPI = {
     }
 };
 
-// Theme, Toast, Modal, Utils, UI (Aynen Kalacak)
+/* ============================================
+   YENİ API'LAR - Workspace & Admin
+   ============================================ */
+
+// Workspace API (Git tabanlı proje yönetimi)
+const WorkspaceAPI = {
+    catalog() { return API.get('/workspaces/catalog'); },
+    my() { return API.get('/workspaces/my'); },
+    get(id) { return API.get(`/workspaces/${id}`); },
+    clone(repoId) { return API.post('/workspaces/clone', { repository_id: repoId }); },
+    delete(id) { return API.delete(`/workspaces/${id}`); },
+    // Git işlemleri
+    pull(id) { return API.post(`/workspaces/${id}/pull`); },
+    commit(id, message) { return API.post(`/workspaces/${id}/commit`, { message }); },
+    push(id) { return API.post(`/workspaces/${id}/push`); },
+    status(id) { return API.get(`/workspaces/${id}/status`); },
+    // Dosya işlemleri
+    files(id) { return API.get(`/workspaces/${id}/files`); },
+    readFile(id, filePath) { return API.post(`/workspaces/${id}/files/read`, { path: filePath }); },
+    writeFile(id, filePath, content) { return API.post(`/workspaces/${id}/files/write`, { path: filePath, content }); },
+    // Action mapper
+    getActions(lang, type) { return API.get(`/workspaces/actions?lang=${lang}&type=${type}`); },
+    getLocators() { return API.get('/workspaces/locators'); },
+    validateStep(step) { return API.post('/workspaces/validate', step); },
+    generateCode(steps) { return API.post('/workspaces/generate-code', steps); }
+};
+
+// Admin API (Kullanıcı yönetimi, repo yönetimi, loglar)
+const AdminAPI = {
+    // Kullanıcılar
+    listUsers() { return API.get('/admin/users'); },
+    createUser(data) { return API.post('/admin/users', data); },
+    updateUser(id, data) { return API.put(`/admin/users/${id}`, data); },
+    deleteUser(id) { return API.delete(`/admin/users/${id}`); },
+    // Repository'ler
+    listRepos() { return API.get('/admin/repositories'); },
+    createRepo(data) { return API.post('/admin/repositories', data); },
+    updateRepo(id, data) { return API.put(`/admin/repositories/${id}`, data); },
+    deleteRepo(id) { return API.delete(`/admin/repositories/${id}`); },
+    // Koşum logları
+    getLogs(params) { return API.get(`/admin/logs${params ? '?' + params : ''}`); }
+};
+
+/* ============================================
+   Theme, Toast, Modal, Utils, UI
+   ============================================ */
+
 const Theme = {
     get() { return Storage.get('theme') || 'light'; },
     set(theme) {
@@ -204,7 +249,7 @@ const Toast = {
         }, duration);
     },
     success(msg) { this.show(msg, 'success'); },
-    error(msg) { this.show(msg, 'error'); },
+    error(msg) { this.show(msg, 'error', 5000); },
     info(msg) { this.show(msg, 'info'); }
 };
 
@@ -242,7 +287,6 @@ const UI = {
         document.querySelectorAll('.user-role').forEach(el => el.textContent = user.role === 'admin' ? 'Yönetici' : 'Kullanıcı');
     },
     
-    // Admin section kontrolü
     showAdminSection() {
         const adminSection = document.getElementById('adminSection');
         if (adminSection && Auth.isAdmin()) {
@@ -257,7 +301,6 @@ const UI = {
         }
     },
     
-    // Sayfa yüklendiğinde admin kontrolü yap
     initAdminControls() {
         if (Auth.isAdmin()) {
             this.showAdminSection();
@@ -269,5 +312,5 @@ const UI = {
 
 document.addEventListener('DOMContentLoaded', () => { 
     Theme.init(); 
-    UI.initAdminControls(); // Admin kontrolü
+    UI.initAdminControls();
 });

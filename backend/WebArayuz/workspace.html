@@ -9,44 +9,7 @@
 </head>
 <body>
     <div class="app-container">
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <div class="logo-icon">🧪</div>
-                    <span>Test Platform</span>
-                </div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Ana Menu</div>
-                    <a href="index.html" class="nav-item"><span class="nav-item-icon">📊</span><span>Dashboard</span></a>
-                    <a href="workspace.html" class="nav-item active"><span class="nav-item-icon">💼</span><span>Workspace</span></a>
-                    <a href="scenarios.html" class="nav-item"><span class="nav-item-icon">📝</span><span>Senaryolar</span></a>
-                    <a href="jobs.html" class="nav-item"><span class="nav-item-icon">🚀</span><span>İş Paketleri (Jobs)</span></a>
-                </div>
-                
-                <div class="nav-section" id="adminSection" style="display:none;">
-                    <div class="nav-section-title">Admin</div>
-                    <a href="admin-repos.html" class="nav-item"><span class="nav-item-icon">🔧</span><span>Repository Yönetimi</span></a>
-                </div>
-                
-                <div class="nav-section">
-                    <div class="nav-section-title">Test Turleri</div>
-                    <a href="web-test.html" class="nav-item"><span class="nav-item-icon">🌐</span><span>Web Test</span></a>
-                    <a href="mobile-test.html" class="nav-item"><span class="nav-item-icon">📲</span><span>Mobil Test</span></a>
-                    <a href="desktop-test.html" class="nav-item"><span class="nav-item-icon">🖥️</span><span>Desktop Test</span></a>
-                </div>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info" onclick="if(confirm('Cikis yapmak istiyor musunuz?')) Auth.logout();">
-                    <div class="user-avatar">?</div>
-                    <div class="user-details">
-                        <div class="user-name">Yukleniyor...</div>
-                        <div class="user-role">-</div>
-                    </div>
-                </div>
-            </div>
-        </aside>
+        <div id="sidebar-container"></div>
         
         <main class="main-content">
             <header class="header">
@@ -70,25 +33,15 @@
                     </button>
                 </div>
 
-                <!-- Tab 1: Katalog -->
                 <div class="tab-content" id="catalog-tab">
-                    <div class="card">
-                        <div class="card-body" id="catalogContainer">
-                            <div style="text-align:center; padding:40px; color:var(--text-muted);">
-                                Katalog yükleniyor...
-                            </div>
-                        </div>
+                    <div id="catalogContainer">
+                        <div style="text-align:center; padding:40px; color:var(--text-muted);">Katalog yükleniyor...</div>
                     </div>
                 </div>
 
-                <!-- Tab 2: Benim Workspace -->
                 <div class="tab-content" id="my-workspace-tab" style="display:none;">
-                    <div class="card">
-                        <div class="card-body" id="workspaceContainer">
-                            <div style="text-align:center; padding:40px; color:var(--text-muted);">
-                                Workspace'ler yükleniyor...
-                            </div>
-                        </div>
+                    <div id="workspaceContainer">
+                        <div style="text-align:center; padding:40px; color:var(--text-muted);">Workspace'ler yükleniyor...</div>
                     </div>
                 </div>
             </div>
@@ -96,6 +49,7 @@
     </div>
 
     <script src="js/app.js"></script>
+    <script src="js/sidebar.js"></script>
     <script>
     (function() {
         "use strict";
@@ -105,55 +59,54 @@
         const catalogContainer = document.getElementById("catalogContainer");
         const workspaceContainer = document.getElementById("workspaceContainer");
 
-        // ── Tab Switching ──
+        // Tab Switching
         document.querySelectorAll(".tab-btn").forEach(tab => {
             tab.addEventListener("click", () => {
-                const targetTab = tab.dataset.tab;
-                
+                const target = tab.dataset.tab;
                 document.querySelectorAll(".tab-btn").forEach(t => {
                     t.classList.remove("active");
                     t.style.borderBottomColor = "transparent";
                     t.style.color = "var(--text-muted)";
                 });
-                
                 document.querySelectorAll(".tab-content").forEach(c => c.style.display = "none");
-                
                 tab.classList.add("active");
                 tab.style.borderBottomColor = "var(--accent-primary)";
                 tab.style.color = "var(--accent-primary)";
-                document.getElementById(targetTab + "-tab").style.display = "block";
+                document.getElementById(target + "-tab").style.display = "block";
             });
         });
 
-        // ── Tip İkonları ──
         const TYPE_ICONS = {
-            "mobile-ios": "📱",
-            "mobile-android": "🤖",
-            "web": "🌐",
-            "desktop": "🖥️",
+            "mobile-ios": "📱", "mobile-android": "🤖", "mobile": "📲",
+            "web": "🌐", "web-selenium": "🌐",
+            "desktop": "🖥️", "web-desktop": "🌐🖥️",
             "api": "🔗"
         };
 
-        // ============================================================
-        // KATALOG
-        // ============================================================
+        // ===== Route to correct page based on repository type =====
+        function getTargetPage(repoType) {
+            if (["desktop", "web-desktop"].includes(repoType)) return "desktop-test.html";
+            if (["mobile", "mobile-android", "mobile-ios"].includes(repoType)) return "mobile-test.html";
+            return "web-test.html";
+        }
 
+        // ===== CATALOG =====
         async function loadCatalog() {
             try {
                 const data = await API.get("/workspaces/catalog");
                 renderCatalog(data.catalog || []);
             } catch (err) {
-                catalogContainer.innerHTML = `<div class="empty-state"><p>Katalog yüklenemedi: ${err.message}</p></div>`;
+                catalogContainer.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-muted);">Katalog yüklenemedi: ${err.message}</div>`;
             }
         }
 
         function renderCatalog(repos) {
-            if (repos.length === 0) {
+            if (!repos.length) {
                 catalogContainer.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📚</div>
-                        <h3 class="empty-state-title">Henüz repo yok</h3>
-                        <p class="empty-state-description">Admin kullanıcı henüz repository eklemedi.</p>
+                    <div style="text-align:center; padding:60px; color:var(--text-muted);">
+                        <div style="font-size:3rem; opacity:0.3; margin-bottom:12px;">📚</div>
+                        <h3>Henüz repo yok</h3>
+                        <p>Admin kullanıcı henüz repository eklemedi.</p>
                     </div>`;
                 return;
             }
@@ -162,26 +115,23 @@
             <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px;">
                 ${repos.map(r => {
                     const icon = TYPE_ICONS[r.repo_type] || "📦";
-                    const statusBadge = r.is_cloned_by_me 
-                        ? `<span class="badge badge-success">✓ Clone'landı</span>`
-                        : "";
-                    const actionBtn = r.is_cloned_by_me
-                        ? `<button class="btn btn-secondary btn-sm" onclick="openWorkspace('${r.my_workspace_id}')">Aç</button>`
-                        : `<button class="btn btn-primary btn-sm" onclick="cloneRepo(${r.id})">Clone</button>`;
-
+                    const cloned = r.is_cloned_by_me;
                     return `
                     <div class="card" style="padding:20px;">
                         <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                             <div style="font-size:2rem;">${icon}</div>
                             <div style="flex:1; min-width:0;">
-                                <h3 style="margin:0; font-size:1rem; font-weight:600;">${Utils.escapeHtml(r.name)}</h3>
-                                <div style="font-size:0.75rem; color:var(--text-muted); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${Utils.escapeHtml(r.repo_url)}</div>
+                                <h3 style="margin:0; font-size:1rem;">${escapeHtml(r.name)}</h3>
+                                <div style="font-size:0.75rem; color:var(--text-muted); font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.repo_url)}</div>
                             </div>
                         </div>
-                        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">${Utils.escapeHtml(r.description || "Açıklama yok")}</p>
+                        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">${escapeHtml(r.description || "Açıklama yok")}</p>
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                            ${statusBadge}
-                            ${actionBtn}
+                            ${cloned ? '<span class="badge badge-success">✓ Clone edildi</span>' : ''}
+                            ${cloned
+                                ? `<button class="btn btn-secondary btn-sm" onclick="openWorkspace(${r.my_workspace_id}, '${r.repo_type}')">Aç</button>`
+                                : `<button class="btn btn-primary btn-sm" onclick="cloneRepo(${r.id})">Clone</button>`
+                            }
                         </div>
                     </div>`;
                 }).join("")}
@@ -189,46 +139,36 @@
         }
 
         window.cloneRepo = async function(repoId) {
-            if (!confirm("Bu repository workspace'inize clone'lanacak. Devam etmek istiyor musunuz?")) return;
-
+            if (!confirm("Bu repository workspace'inize clone'lanacak. Devam?")) return;
             try {
                 await API.post("/workspaces/clone", { repository_id: repoId });
-                Toast.success("Clone işlemi başlatıldı. Bu birkaç saniye sürebilir...");
-                
-                setTimeout(() => {
-                    loadCatalog();
-                    loadMyWorkspaces();
-                }, 3000);
-            } catch (err) {
-                Toast.error("Clone başarısız: " + err.message);
-            }
+                Toast.success("Clone başlatıldı...");
+                setTimeout(() => { loadCatalog(); loadMyWorkspaces(); }, 3000);
+            } catch (err) { Toast.error("Clone hatası: " + err.message); }
         };
 
-        window.openWorkspace = function(workspaceId) {
-            // Direkt editör sayfasına git
-            window.location.href = `editor.html?workspace=${workspaceId}`;
+        window.openWorkspace = function(workspaceId, repoType) {
+            const page = getTargetPage(repoType);
+            window.location.href = page;
         };
 
-        // ============================================================
-        // BENİM WORKSPACE'LERİM
-        // ============================================================
-
+        // ===== MY WORKSPACES =====
         async function loadMyWorkspaces() {
             try {
                 const data = await API.get("/workspaces/my");
                 renderWorkspaces(data.workspaces || []);
             } catch (err) {
-                workspaceContainer.innerHTML = `<div class="empty-state"><p>Workspace'ler yüklenemedi: ${err.message}</p></div>`;
+                workspaceContainer.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-muted);">Yüklenemedi: ${err.message}</div>`;
             }
         }
 
         function renderWorkspaces(workspaces) {
-            if (workspaces.length === 0) {
+            if (!workspaces.length) {
                 workspaceContainer.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">💼</div>
-                        <h3 class="empty-state-title">Henüz clone'ladığınız repo yok</h3>
-                        <p class="empty-state-description">Katalogdan bir repository seçip clone edebilirsiniz.</p>
+                    <div style="text-align:center; padding:60px; color:var(--text-muted);">
+                        <div style="font-size:3rem; opacity:0.3; margin-bottom:12px;">💼</div>
+                        <h3>Henüz clone'ladığınız repo yok</h3>
+                        <p>Katalogdan bir repository seçip clone edebilirsiniz.</p>
                     </div>`;
                 return;
             }
@@ -237,27 +177,23 @@
             <div style="display:flex; flex-direction:column; gap:12px;">
                 ${workspaces.map(ws => {
                     const icon = TYPE_ICONS[ws.repository_type] || "📦";
-                    
-                    let statusBadge = "";
-                    if (ws.has_changes) {
-                        statusBadge = `<span class="badge" style="background:#fff3cd; color:#856404;">⚠️ Değişiklikler var</span>`;
-                    } else {
-                        statusBadge = `<span class="badge badge-success">✓ Sync'li</span>`;
-                    }
+                    const targetPage = getTargetPage(ws.repository_type);
+                    const statusBadge = ws.has_changes
+                        ? `<span class="badge" style="background:#fff3cd; color:#856404;">⚠️ Değişiklikler var</span>`
+                        : `<span class="badge badge-success">✓ Sync'li</span>`;
 
                     return `
                     <div class="card" style="padding:20px;">
                         <div style="display:flex; align-items:center; gap:16px;">
                             <div style="font-size:2.5rem;">${icon}</div>
                             <div style="flex:1; min-width:0;">
-                                <h3 style="margin:0 0 4px 0; font-size:1rem; font-weight:600;">${Utils.escapeHtml(ws.repository_name)}</h3>
-                                <div style="font-size:0.78rem; color:var(--text-muted); font-family:monospace;">Branch: ${Utils.escapeHtml(ws.branch_name)}</div>
+                                <h3 style="margin:0 0 4px;">${escapeHtml(ws.repository_name)}</h3>
+                                <div style="font-size:0.78rem; color:var(--text-muted); font-family:monospace;">Branch: ${escapeHtml(ws.branch_name)} • Tip: ${ws.repository_type || '-'}</div>
                                 <div style="margin-top:8px;">${statusBadge}</div>
                             </div>
                             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                                <button class="btn btn-primary btn-sm" onclick="openWorkspace(${ws.id})">Aç</button>
+                                <button class="btn btn-primary btn-sm" onclick="window.location.href='${targetPage}'">Aç</button>
                                 <button class="btn btn-secondary btn-sm" onclick="pullWorkspace(${ws.id})">Pull</button>
-                                <button class="btn btn-success btn-sm" onclick="syncScenarios(${ws.id})">🔄 Sync Scenarios</button>
                                 ${ws.has_changes ? `<button class="btn btn-success btn-sm" onclick="pushWorkspace(${ws.id})">Push</button>` : ""}
                                 <button class="btn btn-ghost btn-sm" onclick="showStatus(${ws.id})">Status</button>
                             </div>
@@ -270,76 +206,35 @@
         window.pullWorkspace = async function(wsId) {
             try {
                 const data = await API.post(`/workspaces/${wsId}/pull`);
-                
-                if (data.has_conflicts) {
-                    Toast.error("⚠️ Merge conflict! Lütfen manuel çözün.");
-                } else if (data.success) {
-                    Toast.success("✓ Pull başarılı");
-                    loadMyWorkspaces();
-                } else {
-                    Toast.error("Pull başarısız: " + data.message);
-                }
-            } catch (err) {
-                Toast.error("Pull hatası: " + err.message);
-            }
-        };
-
-        window.syncScenarios = async function(wsId) {
-            if (!confirm("Database'deki tüm senaryolar bu workspace'e aktarılıp push edilecek. Devam?")) {
-                return;
-            }
-            
-            try {
-                Toast.info("Senaryolar sync ediliyor...");
-                const data = await API.post(`/workspaces/${wsId}/sync-scenarios`);
-                
-                Toast.success(`✓ ${data.synced_count} senaryo sync edildi ve push edildi!`);
-                loadMyWorkspaces();
-            } catch (err) {
-                Toast.error("Sync hatası: " + err.message);
-            }
+                if (data.has_conflicts) Toast.error("⚠️ Merge conflict!");
+                else { Toast.success("Pull başarılı"); loadMyWorkspaces(); }
+            } catch (err) { Toast.error(err.message); }
         };
 
         window.pushWorkspace = async function(wsId) {
             const msg = prompt("Commit mesajı:", "Update scenarios");
             if (!msg) return;
-
             try {
                 await API.post(`/workspaces/${wsId}/commit`, { message: msg });
                 await API.post(`/workspaces/${wsId}/push`);
-                
-                Toast.success("✓ Push başarılı");
+                Toast.success("Push başarılı");
                 loadMyWorkspaces();
-            } catch (err) {
-                Toast.error("Push hatası: " + err.message);
-            }
+            } catch (err) { Toast.error(err.message); }
         };
 
         window.showStatus = async function(wsId) {
             try {
                 const data = await API.get(`/workspaces/${wsId}/status`);
-                
-                if (!data.is_cloned) {
-                    alert("Clone işlemi devam ediyor...");
-                    return;
-                }
-
-                if (data.total_changes === 0) {
-                    alert("✓ Değişiklik yok, her şey sync'li.");
-                } else {
-                    alert(`⚠️ ${data.total_changes} dosya değişti:\n\n` + 
-                          data.changed_files.join("\n"));
-                }
-            } catch (err) {
-                Toast.error("Status alınamadı: " + err.message);
-            }
+                if (data.total_changes === 0) alert("✓ Değişiklik yok.");
+                else alert(`⚠️ ${data.total_changes} dosya değişti:\n\n${data.changed_files.join("\n")}`);
+            } catch (err) { Toast.error(err.message); }
         };
 
-        // ── İlk Yükleme ──
-        UI.renderUserInfo();
+        function escapeHtml(t) { if (!t) return ""; const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+
+        // Init
         loadCatalog();
         loadMyWorkspaces();
-
     })();
     </script>
 </body>
