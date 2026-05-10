@@ -1,0 +1,11 @@
+[Unit]
+Description=OtomasyoTool Deploy Timer — her 60 saniyede git pull kontrol
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=otomasyon-deploy.service
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

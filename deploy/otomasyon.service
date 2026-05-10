@@ -1,0 +1,22 @@
+[Unit]
+Description=OtomasyoTool FastAPI Sunucu
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=otomasyon
+Group=otomasyon
+WorkingDirectory=/opt/otomasyon/backend
+ExecStart=/opt/otomasyon/backend/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+
+# Logları journald'e yönlendir
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=otomasyon
+
+[Install]
+WantedBy=multi-user.target
