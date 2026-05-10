@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# SQLite
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Workspace verisi
+backend/workspaces/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Env / secrets
+.env
+ai_config.json
