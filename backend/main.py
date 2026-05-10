@@ -40,6 +40,8 @@ from routers.advanced_editor_router import router as advanced_editor_router
 from routers.ai_test_generator_router import router as ai_gen_router
 # ☕ Java Test Generator (Ollama / gemma3:4b)
 from routers.java_generator_router import router as java_gen_router
+# 🥒 BDD Generator
+from routers.bdd_generator_router import router as bdd_gen_router
 
 app = FastAPI(title="Test Otomasyon Platformu API", version="2.1.0")
 
@@ -68,6 +70,8 @@ app.include_router(advanced_editor_router)
 app.include_router(ai_gen_router)
 # ☕ Java Test Generator
 app.include_router(java_gen_router)
+# 🥒 BDD Generator
+app.include_router(bdd_gen_router)
 
 web_ui = os.path.join(BASE_DIR, "WebArayuz")
 if os.path.exists(web_ui):

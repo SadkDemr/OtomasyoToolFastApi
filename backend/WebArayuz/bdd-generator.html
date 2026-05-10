@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BDD Generator - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .page-content { padding: 24px; max-width: 1400px; }
+
+        .platform-tabs {
+            display: flex; gap: 6px;
+            padding: 5px; background: var(--bg-tertiary);
+            border: 1px solid var(--border-color); border-radius: var(--radius-md);
+        }
+        .platform-tab {
+            flex: 1; padding: 8px 16px; border: none;
+            border-radius: var(--radius-sm); font-size: 0.88rem; font-weight: 600;
+            cursor: pointer; transition: var(--transition);
+            background: transparent; color: var(--text-muted);
+        }
+        .platform-tab.active { background: var(--bg-primary); color: var(--text-primary); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+        .platform-tab.android.active { color: #3ddc84; }
+        .platform-tab.ios.active     { color: #007aff; }
+
+        .gen-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 1024px) { .gen-layout { grid-template-columns: 1fr; } }
+
+        .gen-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg); padding: 24px;
+            display: flex; flex-direction: column; gap: 16px;
+        }
+        .gen-card-title {
+            font-weight: 600; font-size: 1rem; color: var(--text-primary);
+            display: flex; align-items: center; gap: 8px;
+            padding-bottom: 14px; border-bottom: 1px solid var(--border-color);
+        }
+
+        .form-group  { display: flex; flex-direction: column; gap: 6px; }
+        .form-label  { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+        .form-input  { padding: 9px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem; font-family: inherit; transition: var(--transition); outline: none; }
+        .form-input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.12); }
+        .form-textarea { padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); color: var(--text-primary); font-size: 0.83rem; font-family: 'JetBrains Mono', monospace; line-height: 1.7; resize: vertical; min-height: 200px; outline: none; transition: var(--transition); }
+        .form-textarea:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.12); }
+
+        .textarea-footer { display: flex; justify-content: flex-end; margin-top: -10px; }
+        .textarea-counter { font-size: 0.73rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+        /* JSON Mapping bölümü */
+        .mapping-section { display: flex; flex-direction: column; gap: 10px; }
+        .mapping-section-header {
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .btn-add-page {
+            padding: 4px 10px; font-size: 0.75rem; border-radius: var(--radius-sm);
+            border: 1px solid var(--accent-primary); background: transparent;
+            color: var(--accent-primary); cursor: pointer; transition: var(--transition); font-family: inherit;
+        }
+        .btn-add-page:hover { background: rgba(79,70,229,0.08); }
+
+        .page-mapping-item {
+            border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        .page-mapping-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .page-name-input {
+            flex: 1; border: none; background: transparent;
+            color: var(--text-primary); font-size: 0.85rem; font-weight: 600;
+            font-family: 'JetBrains Mono', monospace; outline: none;
+        }
+        .btn-remove-page {
+            padding: 2px 8px; font-size: 0.73rem; border-radius: var(--radius-sm);
+            border: 1px solid rgba(239,68,68,0.3); background: transparent;
+            color: var(--danger); cursor: pointer; transition: var(--transition); font-family: inherit;
+        }
+        .btn-remove-page:hover { background: rgba(239,68,68,0.1); }
+
+        .page-mapping-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+
+        .file-drop-zone {
+            border: 2px dashed var(--border-color); border-radius: var(--radius-sm);
+            padding: 10px 14px; text-align: center; cursor: pointer;
+            transition: var(--transition); color: var(--text-muted); font-size: 0.78rem;
+        }
+        .file-drop-zone:hover, .file-drop-zone.drag-over { border-color: var(--accent-primary); background: rgba(79,70,229,0.04); color: var(--accent-primary); }
+        .file-drop-zone input { display: none; }
+
+        .json-loaded-bar {
+            display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+            background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25);
+            border-radius: var(--radius-sm); font-size: 0.76rem; color: var(--success);
+        }
+        .json-loaded-bar .close-btn { margin-left: auto; cursor: pointer; opacity: 0.6; }
+        .json-loaded-bar .close-btn:hover { opacity: 1; }
+
+        .json-textarea {
+            width: 100%; min-height: 80px; max-height: 200px;
+            padding: 8px 10px; border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm); background: var(--bg-primary);
+            color: var(--text-primary); font-size: 0.76rem;
+            font-family: 'JetBrains Mono', monospace; line-height: 1.5;
+            resize: vertical; outline: none; transition: var(--transition); box-sizing: border-box;
+        }
+        .json-textarea:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(79,70,229,0.1); }
+        .json-error { font-size: 0.73rem; color: var(--danger); margin-top: 2px; display: none; }
+
+        /* Accordion */
+        .accordion-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 14px; background: var(--bg-tertiary);
+            border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            cursor: pointer; user-select: none; font-size: 0.85rem;
+            font-weight: 600; color: var(--text-secondary); transition: var(--transition);
+        }
+        .accordion-header:hover { border-color: var(--accent-primary); color: var(--text-primary); }
+        .accordion-header .acc-arrow { font-size: 0.7rem; transition: transform 0.2s; }
+        .accordion-header.open .acc-arrow { transform: rotate(180deg); }
+        .accordion-body { display: none; padding: 16px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md); }
+        .accordion-body.open { display: block; }
+        .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .cfg-grid .full { grid-column: 1 / -1; }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+        .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-primary); cursor: pointer; }
+        .checkbox-row label { font-size: 0.87rem; color: var(--text-primary); cursor: pointer; }
+
+        /* Butonlar */
+        .action-row { display: flex; gap: 10px; }
+        .btn-generate {
+            flex: 1; padding: 12px 20px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #fff; border: none; border-radius: var(--radius-md);
+            font-size: 0.93rem; font-weight: 600; cursor: pointer;
+            transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-generate:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+        .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+        .btn-reset { padding: 10px 14px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 0.88rem; font-weight: 500; cursor: pointer; transition: var(--transition); white-space: nowrap; }
+        .btn-reset:hover { border-color: var(--danger); color: var(--danger); }
+
+        .spinner { width: 17px; height: 17px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Çıktı */
+        .output-panel { display: flex; flex-direction: column; gap: 16px; }
+
+        .script-viewer { background: #1e1e2e; border-radius: var(--radius-md); border: 1px solid #2d2d4a; overflow: hidden; }
+        .script-viewer-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; background: #252540; border-bottom: 1px solid #2d2d4a; }
+        .svh-left { display: flex; align-items: center; gap: 10px; }
+        .svh-left span { font-size: 0.78rem; color: #8888aa; font-family: 'JetBrains Mono', monospace; }
+        .svh-right { display: flex; gap: 6px; }
+        .header-btn { padding: 4px 10px; font-size: 0.73rem; border-radius: var(--radius-sm); border: 1px solid #3d3d5a; background: #2d2d4a; color: #aaaacc; cursor: pointer; transition: var(--transition); font-family: inherit; }
+        .header-btn:hover { background: #3d3d5a; color: #cdd6f4; }
+        .header-btn.active { background: rgba(16,185,129,0.2); border-color: #10b981; color: #10b981; }
+
+        .script-code { padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.81rem; color: #cdd6f4; white-space: pre; overflow: auto; max-height: 560px; line-height: 1.7; }
+        .script-edit-area { display: none; width: 100%; min-height: 460px; background: #1a1a2e; color: #cdd6f4; font-family: 'JetBrains Mono', monospace; font-size: 0.81rem; border: none; outline: none; resize: vertical; padding: 14px 16px; box-sizing: border-box; line-height: 1.7; border-top: 1px solid #2d2d4a; }
+        .script-placeholder { padding: 60px 16px; text-align: center; color: #4a4a6a; font-size: 0.85rem; }
+        .script-placeholder .bdd-icon { font-size: 2.5rem; display: block; margin-bottom: 10px; opacity: 0.4; }
+
+        .java-keyword { color: #cba6f7; }
+        .java-string  { color: #a6e3a1; }
+        .java-comment { color: #6c7086; font-style: italic; }
+        .java-number  { color: #fab387; }
+
+        /* Step badge */
+        .step-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 0.71rem; font-weight: 600; }
+        .step-badge.mapped { background: rgba(16,185,129,0.12); color: #10b981; }
+        .step-badge.page   { background: rgba(99,102,241,0.12);  color: #6366f1; }
+        .step-badge.todo   { background: rgba(245,158,11,0.12);   color: #f59e0b; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div id="sidebar-container"></div>
+
+    <main class="main-content">
+        <header class="header">
+            <div class="header-left">
+                <h1 class="page-title">🥒 BDD Generator</h1>
+                <p style="margin:6px 0 0; color:var(--text-muted); font-size:0.88rem;">
+                    Gherkin BDD senaryolarını Java Appium koduna çevirir — XPath mapping tabanlı
+                </p>
+            </div>
+            <div class="header-right">
+                <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <div class="gen-layout">
+
+                <!-- ── SOL: GİRİŞ ── -->
+                <div class="gen-card">
+
+                    <!-- Platform -->
+                    <div class="platform-tabs">
+                        <button class="platform-tab ios active"     id="tabIos"     onclick="switchPlatform('ios')">🍎 iOS</button>
+                        <button class="platform-tab android"        id="tabAndroid" onclick="switchPlatform('android')">🤖 Android</button>
+                    </div>
+
+                    <!-- BDD Senaryo -->
+                    <div class="gen-card-title">🥒 BDD Senaryo</div>
+                    <div class="form-group">
+                        <label class="form-label">Gherkin Adımları</label>
+                        <div class="file-drop-zone" id="bddDropZone">
+                            <input type="file" id="bddFileInput" accept=".feature,.txt,.bdd">
+                            📁 .feature dosyası sürükle / <strong>tıkla</strong>
+                            <span style="display:block;font-size:0.7rem;opacity:0.6;margin-top:2px;">.feature · .txt · .bdd</span>
+                        </div>
+                        <div class="json-loaded-bar" id="bddLoadedBar" style="display:none;">
+                            <span>✓</span>
+                            <span id="bddLoadedName" style="font-weight:600;"></span>
+                            <span class="close-btn" onclick="clearBddFile()" title="Temizle">✕</span>
+                        </div>
+                        <textarea class="form-textarea" id="bddInput" rows="10"
+                            placeholder="And I see ortak page
+When I click tutaraltbaslikeft
+And I am sil with tutaraltbaslikeft
+Then I type &quot;1&quot;
+And I see loginPage page
+When I click loginButton
+Then I see homeScreen"></textarea>
+                        <div class="textarea-footer">
+                            <span class="textarea-counter" id="bddCounter">0 satır · 0 karakter</span>
+                        </div>
+                    </div>
+
+                    <!-- JSON Mapping -->
+                    <div class="mapping-section">
+                        <div class="mapping-section-header">
+                            <span>XPath Mapping (JSON)</span>
+                            <button class="btn-add-page" onclick="addPageMapping()">+ Sayfa Ekle</button>
+                        </div>
+                        <div id="pageMappingList"></div>
+                    </div>
+
+                    <!-- Appium Config -->
+                    <div>
+                        <div class="accordion-header" id="cfgHeader" onclick="toggleConfig()">
+                            <span>⚙️ Appium Konfigürasyonu</span>
+                            <span class="acc-arrow">▼</span>
+                        </div>
+                        <div class="accordion-body" id="cfgBody">
+                            <div class="cfg-grid">
+                                <div class="form-group">
+                                    <label class="form-label">Appium URL</label>
+                                    <input type="text" class="form-input" id="cfg-appium-url" value="http://localhost:4723">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Platform Version</label>
+                                    <input type="text" class="form-input" id="cfg-platform-version" value="18" placeholder="18, 15 ...">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Device Name</label>
+                                    <input type="text" class="form-input" id="cfg-device-name" value="iPhone Device">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">UDID <span style="opacity:0.6;font-weight:400;">(opsiyonel)</span></label>
+                                    <input type="text" class="form-input" id="cfg-udid" placeholder="">
+                                </div>
+                            </div>
+                            <div id="ios-cfg" style="margin-top:10px;">
+                                <div class="form-group">
+                                    <label class="form-label">Bundle ID</label>
+                                    <input type="text" class="form-input" id="cfg-bundle-id" placeholder="com.example.app">
+                                </div>
+                            </div>
+                            <div id="android-cfg" style="display:none; margin-top:10px;">
+                                <div class="cfg-grid">
+                                    <div class="form-group">
+                                        <label class="form-label">App Package</label>
+                                        <input type="text" class="form-input" id="cfg-app-package" placeholder="com.example.app">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">App Activity <span style="opacity:0.6;font-weight:400;">(opsiyonel)</span></label>
+                                        <input type="text" class="form-input" id="cfg-app-activity" placeholder=".MainActivity">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="cfg-grid" style="margin-top:10px;">
+                                <div class="form-group full">
+                                    <label class="form-label">Class Name</label>
+                                    <input type="text" class="form-input" id="cfg-class-name" value="BDDGeneratedTest">
+                                </div>
+                                <div class="full">
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="cfg-no-reset" checked>
+                                        <label for="cfg-no-reset">noReset — Uygulamayı sıfırlama</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Butonlar -->
+                    <div class="action-row">
+                        <button class="btn-reset" onclick="resetAll()">↺ Sıfırla</button>
+                        <button class="btn-generate" id="btnGenerate" onclick="generateBDD()" disabled>
+                            <div class="spinner" id="genSpinner"></div>
+                            <span id="genBtnText">🥒 Java Kodu Üret</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── SAĞ: ÇIKTI ── -->
+                <div class="output-panel">
+                    <div class="gen-card" style="gap:14px;">
+                        <div class="gen-card-title" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                            <span id="outputTitle">🥒 Üretilen Java Kodu</span>
+                            <span id="lineCountBadge" style="display:none; font-size:0.73rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-weight:400;"></span>
+                        </div>
+
+                        <!-- Adım raporu -->
+                        <div id="stepReport" style="display:none;">
+                            <div style="font-size:0.76rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Adım Analizi</div>
+                            <div id="stepReportBody" style="display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto;"></div>
+                        </div>
+
+                        <!-- Viewer -->
+                        <div class="script-viewer">
+                            <div class="script-viewer-header">
+                                <div class="svh-left">
+                                    <span id="javaFileName">BDDGeneratedTest.java</span>
+                                </div>
+                                <div class="svh-right">
+                                    <button class="header-btn" id="btnEdit"     onclick="toggleEditCode()" style="display:none;">✏ Düzenle</button>
+                                    <button class="header-btn" id="btnCopy"     onclick="copyCode()"       style="display:none;">📋 Kopyala</button>
+                                    <button class="header-btn" id="btnDownload" onclick="downloadCode()"   style="display:none;">⬇ İndir</button>
+                                </div>
+                            </div>
+                            <div class="script-code" id="javaCode">
+                                <div class="script-placeholder">
+                                    <span class="bdd-icon">🥒</span>
+                                    Java kodu henüz üretilmedi.<br>
+                                    <span style="font-size:0.75rem;opacity:0.5;">Sol panelden BDD adımlarını gir ve butona bas.</span>
+                                </div>
+                            </div>
+                            <textarea class="script-edit-area" id="javaEditArea" spellcheck="false"></textarea>
+                        </div>
+
+                        <!-- Uyarılar -->
+                        <div id="warningsBox" style="display:none; padding:10px 14px; background:rgba(245,158,11,0.07); border:1px solid rgba(245,158,11,0.22); border-radius:var(--radius-md);">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;flex-wrap:wrap;">
+                                <span style="font-size:0.77rem; font-weight:600; color:#f59e0b;">⚠ Eşleşme Bulunamayan Adımlar</span>
+                                <button id="btnAiFill" onclick="fillTodos()"
+                                    style="padding:4px 12px;font-size:0.76rem;border-radius:var(--radius-sm);border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-family:inherit;transition:var(--transition);">
+                                    🤖 AI ile Tamamla
+                                </button>
+                            </div>
+                            <div id="warningsList" style="font-size:0.8rem; color:var(--text-secondary); line-height:1.8;"></div>
+                            <div id="aiStatus" style="display:none;font-size:0.75rem;color:#818cf8;margin-top:6px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    if (!Auth.checkAuth()) return;
+
+    let generatedCode   = "";
+    let isGenerating    = false;
+    let editMode        = false;
+    let currentPlatform = "ios";
+    let pageCounter     = 0;
+    let bddFileName     = "";    // yüklenen dosyanın adı (uzantısız)
+
+    // ── BDD Dosya yükleme ─────────────────────────────────────────────────
+    (function initBddDrop() {
+        const zone = document.getElementById("bddDropZone");
+        const fi   = document.getElementById("bddFileInput");
+
+        zone.addEventListener("click",    () => fi.click());
+        zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag-over"); });
+        zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+        zone.addEventListener("drop", e => {
+            e.preventDefault(); zone.classList.remove("drag-over");
+            const file = e.dataTransfer.files[0];
+            if (file) readBddFile(file);
+        });
+        fi.addEventListener("change", e => {
+            if (e.target.files[0]) { readBddFile(e.target.files[0]); e.target.value = ""; }
+        });
+    })();
+
+    function readBddFile(file) {
+        const reader = new FileReader();
+        reader.onload = ev => {
+            const content = ev.target.result;
+            document.getElementById("bddInput").value = content;
+            updateCounter();
+            updateGenerateBtn();
+
+            bddFileName = file.name.replace(/\.[^.]+$/, "");
+            const className = sanitizeClassName(bddFileName) || "BDDGeneratedTest";
+            document.getElementById("cfg-class-name").value    = className;
+            document.getElementById("javaFileName").textContent = className + ".java";
+
+            document.getElementById("bddLoadedName").textContent = file.name;
+            document.getElementById("bddLoadedBar").style.display = "flex";
+            document.getElementById("bddDropZone").style.display  = "none";
+            Toast.success(`"${file.name}" yüklendi`);
+        };
+        reader.readAsText(file, "UTF-8");
+    }
+
+    window.clearBddFile = function () {
+        bddFileName = "";
+        document.getElementById("bddInput").value             = "";
+        document.getElementById("bddLoadedBar").style.display = "none";
+        document.getElementById("bddDropZone").style.display  = "block";
+        document.getElementById("cfg-class-name").value       = "BDDGeneratedTest";
+        document.getElementById("javaFileName").textContent   = "BDDGeneratedTest.java";
+        updateCounter();
+        updateGenerateBtn();
+    };
+
+    // ── Platform switch ──────────────────────────────────────────────────
+    window.switchPlatform = function (platform) {
+        currentPlatform = platform;
+        document.getElementById("tabIos").classList.toggle("active",     platform === "ios");
+        document.getElementById("tabAndroid").classList.toggle("active", platform === "android");
+        document.getElementById("ios-cfg").style.display     = platform === "ios" ? "block" : "none";
+        document.getElementById("android-cfg").style.display = platform === "android" ? "block" : "none";
+
+        const vEl = document.getElementById("cfg-platform-version");
+        const dEl = document.getElementById("cfg-device-name");
+        if (platform === "android") {
+            if (!vEl.value || vEl.value === "18") vEl.value = "15";
+            if (!dEl.value || dEl.value === "iPhone Device") dEl.value = "Android Device";
+            document.getElementById("genBtnText").textContent = "🤖 Android Java Kodu Üret";
+            document.getElementById("outputTitle").textContent = "🤖 Üretilen Android Kodu";
+        } else {
+            if (!vEl.value || vEl.value === "15") vEl.value = "18";
+            if (!dEl.value || dEl.value === "Android Device") dEl.value = "iPhone Device";
+            document.getElementById("genBtnText").textContent = "🥒 Java Kodu Üret";
+            document.getElementById("outputTitle").textContent = "🥒 Üretilen Java Kodu";
+        }
+        _resetOutput();
+    };
+
+    // ── Accordion ────────────────────────────────────────────────────────
+    window.toggleConfig = function () {
+        document.getElementById("cfgHeader").classList.toggle("open");
+        document.getElementById("cfgBody").classList.toggle("open");
+    };
+
+    // ── BDD Textarea ─────────────────────────────────────────────────────
+    function updateCounter() {
+        const text  = document.getElementById("bddInput").value;
+        const lines = text ? text.split("\n").length : 0;
+        document.getElementById("bddCounter").textContent = `${lines} satır · ${text.length} karakter`;
+    }
+
+    function updateGenerateBtn() {
+        const hasText    = document.getElementById("bddInput").value.trim().length > 3;
+        const hasMapping = document.querySelectorAll(".page-mapping-item").length > 0;
+        document.getElementById("btnGenerate").disabled = !(hasText && hasMapping) || isGenerating;
+    }
+
+    document.getElementById("bddInput").addEventListener("input", () => {
+        updateCounter();
+        updateGenerateBtn();
+    });
+
+    // ── Sayfa Mapping Yönetimi ────────────────────────────────────────────
+    window.addPageMapping = function (pageName, jsonContent) {
+        pageCounter++;
+        const id   = "pm_" + pageCounter;
+        const list = document.getElementById("pageMappingList");
+
+        const item = document.createElement("div");
+        item.className = "page-mapping-item";
+        item.id        = id;
+        item.innerHTML = `
+            <div class="page-mapping-header">
+                <input type="text" class="page-name-input" placeholder="sayfa adı (örn: ortak)"
+                    value="${pageName || ""}" oninput="updateGenerateBtn()">
+                <button class="btn-remove-page" onclick="removePageMapping('${id}')">✕ Kaldır</button>
+            </div>
+            <div class="page-mapping-body">
+                <div class="file-drop-zone" id="drop_${id}">
+                    <input type="file" id="file_${id}" accept=".json">
+                    📁 JSON dosyası sürükle / <strong>tıkla</strong>
+                    <span style="display:block;font-size:0.7rem;opacity:0.6;margin-top:2px;">.json</span>
+                </div>
+                <div class="json-loaded-bar" id="loaded_${id}" style="display:none;">
+                    <span>✓</span>
+                    <span id="loadedName_${id}" style="font-weight:600;"></span>
+                    <span id="loadedCount_${id}" style="opacity:0.7;"></span>
+                    <span class="close-btn" onclick="clearJsonFile('${id}')" title="Temizle">✕</span>
+                </div>
+                <textarea class="json-textarea" id="jsonText_${id}"
+                    placeholder='{"elementKey": "//XCUIElementTypeButton[@name=\'btnName\']", ...}'
+                    oninput="validateJson('${id}'); updateGenerateBtn();">${jsonContent ? JSON.stringify(jsonContent, null, 2) : ""}</textarea>
+                <div class="json-error" id="jsonErr_${id}">⚠ Geçersiz JSON formatı</div>
+            </div>`;
+
+        list.appendChild(item);
+
+        // Drop zone olayları
+        const drop = document.getElementById("drop_" + id);
+        const fi   = document.getElementById("file_" + id);
+
+        drop.addEventListener("click",    () => fi.click());
+        drop.addEventListener("dragover",  e => { e.preventDefault(); drop.classList.add("drag-over"); });
+        drop.addEventListener("dragleave", () => drop.classList.remove("drag-over"));
+        drop.addEventListener("drop", e => {
+            e.preventDefault(); drop.classList.remove("drag-over");
+            const file = e.dataTransfer.files[0];
+            if (file) readJsonFile(file, id);
+        });
+        fi.addEventListener("change", e => {
+            if (e.target.files[0]) {
+                // Dosya adından sayfa adı öner
+                const nameInput = item.querySelector(".page-name-input");
+                if (!nameInput.value) {
+                    nameInput.value = e.target.files[0].name.replace(".json", "");
+                }
+                readJsonFile(e.target.files[0], id);
+                e.target.value = "";
+            }
+        });
+
+        updateGenerateBtn();
+    };
+
+    window.removePageMapping = function (id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+        updateGenerateBtn();
+    };
+
+    window.clearJsonFile = function (id) {
+        document.getElementById("loaded_" + id).style.display = "none";
+        document.getElementById("jsonText_" + id).value = "";
+        validateJson(id);
+        updateGenerateBtn();
+    };
+
+    // ── Lenient JSON parse ────────────────────────────────────────────────
+    // Önce standart JSON fixlerini dener; başarısız olursa regex ile
+    // "key":"value" çiftlerini doğrudan çıkarır (eksik virgül, duplicate key,
+    // trailing comma, Windows satır sonu fark etmez).
+    function lenientParse(raw) {
+        const s = raw.replace(/^﻿/, ''); // BOM temizle
+
+        // ── Önce düzeltilmiş JSON.parse dene ────────────────────────────
+        try {
+            let fixed = s;
+            fixed = fixed.replace(/,(\s*[}\]])/g, '$1');                               // trailing comma
+            fixed = fixed.replace(/(["\d\]}\w])([ \t]*\r?\n[ \t]*)(")/g, '$1,$2$3'); // eksik virgül
+            fixed = fixed.replace(/,(\s*),/g, ',$1');                                  // çift virgül
+
+            let parsed = JSON.parse(fixed);
+            if (parsed && parsed.elements && typeof parsed.elements === 'object') {
+                parsed = parsed.elements;
+            }
+            return _cleanMap(parsed);
+        } catch (_) { /* fallback'e geç */ }
+
+        // ── Regex fallback: "key" : "value" çiftlerini düz metin gibi çek ─
+        const result = {};
+        const re = /"([^"]+)"\s*:\s*"([^"]*)"/g;
+        let m;
+        while ((m = re.exec(s)) !== null) {
+            const k = m[1], v = m[2];
+            if (k && v) result[k] = v;
+        }
+
+        // elements wrapper meta-key'lerini çıkar
+        ['parent', 'loadTimeout'].forEach(k => delete result[k]);
+
+        if (Object.keys(result).length === 0) {
+            throw new Error('Dosyada hiçbir key-value çifti bulunamadı');
+        }
+        return result;
+    }
+
+    function _cleanMap(obj) {
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+        Object.keys(obj).forEach(k => {
+            if (!k || obj[k] === '' || obj[k] === null || obj[k] === undefined) delete obj[k];
+        });
+        return obj;
+    }
+
+    function readJsonFile(file, id) {
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const parsed = lenientParse(ev.target.result);
+                const count  = Object.keys(parsed).length;
+                document.getElementById("jsonText_" + id).value = JSON.stringify(parsed, null, 2);
+                document.getElementById("loadedName_" + id).textContent  = file.name;
+                document.getElementById("loadedCount_" + id).textContent = `· ${count} element`;
+                document.getElementById("loaded_" + id).style.display    = "flex";
+                document.getElementById("jsonErr_"  + id).style.display  = "none";
+                updateGenerateBtn();
+                Toast.success(`"${file.name}" yüklendi (${count} element)`);
+            } catch (e) {
+                Toast.error("Geçersiz JSON dosyası: " + file.name + " — " + e.message);
+            }
+        };
+        reader.readAsText(file, "UTF-8");
+    }
+
+    window.validateJson = function (id) {
+        const val = document.getElementById("jsonText_" + id).value.trim();
+        const err = document.getElementById("jsonErr_" + id);
+        if (!val) { err.style.display = "none"; return true; }
+        try { lenientParse(val); err.style.display = "none"; return true; }
+        catch (e) { err.style.display = "block"; err.textContent = "⚠ " + e.message; return false; }
+    };
+
+    function collectMappings() {
+        const mappings = {};
+        document.querySelectorAll(".page-mapping-item").forEach(item => {
+            const pageName = item.querySelector(".page-name-input").value.trim();
+            const jsonText = item.querySelector(".json-textarea").value.trim();
+            if (!pageName || !jsonText) return;
+            try {
+                mappings[pageName] = lenientParse(jsonText);
+            } catch (e) { /* invalid json — skip */ }
+        });
+        return mappings;
+    }
+
+    // ── Üret ─────────────────────────────────────────────────────────────
+    window.generateBDD = async function () {
+        if (isGenerating) return;
+
+        const bddText = document.getElementById("bddInput").value.trim();
+        if (!bddText) return;
+
+        const mappings = collectMappings();
+        if (Object.keys(mappings).length === 0) {
+            Toast.error("En az bir sayfa mapping eklemelisiniz.");
+            return;
+        }
+
+        // JSON doğrulama
+        let hasError = false;
+        document.querySelectorAll(".page-mapping-item").forEach(item => {
+            const id = item.id;
+            if (!validateJson(id)) hasError = true;
+        });
+        if (hasError) { Toast.error("JSON formatında hata var. Lütfen düzeltin."); return; }
+
+        isGenerating = true;
+        setGeneratingUI(true);
+
+        const className = sanitizeClassName(document.getElementById("cfg-class-name").value || "BDDGeneratedTest");
+        document.getElementById("cfg-class-name").value   = className;
+        document.getElementById("javaFileName").textContent = className + ".java";
+
+        const payload = {
+            bdd_scenario:     bddText,
+            mappings:         mappings,
+            platform:         currentPlatform,
+            appium_url:       document.getElementById("cfg-appium-url").value       || "http://localhost:4723",
+            platform_version: document.getElementById("cfg-platform-version").value || (currentPlatform === "ios" ? "18" : "15"),
+            device_name:      document.getElementById("cfg-device-name").value      || (currentPlatform === "ios" ? "iPhone Device" : "Android Device"),
+            udid:             document.getElementById("cfg-udid").value             || "",
+            no_reset:         document.getElementById("cfg-no-reset").checked,
+            class_name:       className,
+        };
+        if (currentPlatform === "ios") {
+            payload.bundle_id = document.getElementById("cfg-bundle-id").value || "";
+        } else {
+            payload.app_package  = document.getElementById("cfg-app-package").value  || "";
+            payload.app_activity = document.getElementById("cfg-app-activity").value || "";
+        }
+
+        try {
+            const data = await API.post("/bdd-gen/generate", payload);
+            generatedCode = data.script || "";
+            renderCode(generatedCode);
+            if (data.report) renderStepReport(data.report);
+            if (data.warnings && data.warnings.length) {
+                const todoSteps = (data.report || [])
+                    .filter(r => r.method === "todo")
+                    .map(r => r.step);
+                showWarnings(data.warnings, todoSteps);
+            } else hideWarnings();
+
+            data.warnings && data.warnings.length
+                ? Toast.error("Bazı elementler bulunamadı. // TODO satırlarını kontrol edin.")
+                : Toast.success("Java kodu üretildi!");
+        } catch (err) {
+            Toast.error("Üretme hatası: " + err.message);
+        } finally {
+            isGenerating = false;
+            setGeneratingUI(false);
+        }
+    };
+
+    function setGeneratingUI(loading) {
+        const label = currentPlatform === "android" ? "🤖 Android Java Kodu Üret" : "🥒 Java Kodu Üret";
+        document.getElementById("genSpinner").style.display  = loading ? "block" : "none";
+        document.getElementById("genBtnText").textContent    = loading ? "Üretiliyor..." : label;
+        document.getElementById("btnGenerate").disabled      = loading;
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────
+    function renderCode(code) {
+        const el = document.getElementById("javaCode");
+        el.innerHTML = syntaxHighlight(code);
+        const lines = code.split("\n").length;
+        document.getElementById("lineCountBadge").textContent   = `${lines} satır`;
+        document.getElementById("lineCountBadge").style.display = "inline";
+        document.getElementById("btnEdit").style.display        = "inline-block";
+        document.getElementById("btnCopy").style.display        = "inline-block";
+        document.getElementById("btnDownload").style.display    = "inline-block";
+        if (editMode) document.getElementById("javaEditArea").value = code;
+    }
+
+    function syntaxHighlight(code) {
+        const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        return code.split("\n").map(line => {
+            if (/^\s*\/\//.test(line)) return `<span class="java-comment">${esc(line)}</span>`;
+            let out = esc(line);
+            out = out.replace(/(&quot;[^&]*?&quot;)/g, '<span class="java-string">$1</span>');
+            ['public','class','static','void','new','try','catch','throws','import',
+             'return','if','else','for','while','Exception','true','false','null','assert']
+            .forEach(kw => { out = out.replace(new RegExp(`\\b(${kw})\\b`, 'g'), '<span class="java-keyword">$1</span>'); });
+            out = out.replace(/\b(\d+)\b/g, '<span class="java-number">$1</span>');
+            return out;
+        }).join("\n");
+    }
+
+    // ── Düzenle ──────────────────────────────────────────────────────────
+    window.toggleEditCode = function () {
+        const codeDiv  = document.getElementById("javaCode");
+        const editArea = document.getElementById("javaEditArea");
+        const btn      = document.getElementById("btnEdit");
+        editMode = !editMode;
+        if (editMode) {
+            editArea.value = generatedCode;
+            codeDiv.style.display  = "none";
+            editArea.style.display = "block";
+            btn.textContent = "💾 Kaydet"; btn.classList.add("active");
+            editArea.focus();
+        } else {
+            generatedCode     = editArea.value;
+            codeDiv.innerHTML = syntaxHighlight(generatedCode);
+            editArea.style.display = "none";
+            codeDiv.style.display  = "block";
+            btn.textContent = "✏ Düzenle"; btn.classList.remove("active");
+            document.getElementById("lineCountBadge").textContent = generatedCode.split("\n").length + " satır";
+        }
+    };
+
+    // ── Kopyala / İndir ───────────────────────────────────────────────────
+    window.copyCode = function () {
+        const code = editMode ? document.getElementById("javaEditArea").value : generatedCode;
+        if (!code) return;
+        navigator.clipboard.writeText(code)
+            .then(() => Toast.success("Java kodu panoya kopyalandı"))
+            .catch(() => {
+                const ta = document.createElement("textarea");
+                ta.value = code; document.body.appendChild(ta); ta.select();
+                document.execCommand("copy"); document.body.removeChild(ta);
+                Toast.success("Java kodu panoya kopyalandı");
+            });
+    };
+
+    window.downloadCode = function () {
+        const code  = editMode ? document.getElementById("javaEditArea").value : generatedCode;
+        if (!code) return;
+        const cname = sanitizeClassName(bddFileName || document.getElementById("cfg-class-name").value) || "BDDGeneratedTest";
+        const blob  = new Blob([code], { type: "text/x-java" });
+        const url   = URL.createObjectURL(blob);
+        const a     = document.createElement("a");
+        a.href = url; a.download = cname + ".java";
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+        Toast.success(cname + ".java indirildi");
+    };
+
+    // ── Adım raporu ────────────────────────────────────────────────────────
+    function renderStepReport(report) {
+        const wrap   = document.getElementById("stepReport");
+        const body   = document.getElementById("stepReportBody");
+        const counts = { mapped: 0, page: 0, todo: 0 };
+        report.forEach(r => { if (r.method in counts) counts[r.method]++; });
+
+        const summary = `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+            <span class="step-badge mapped">✓ Mapped: ${counts.mapped}</span>
+            <span class="step-badge page">📄 Page: ${counts.page}</span>
+            ${counts.todo ? `<span class="step-badge todo">⚠ TODO: ${counts.todo}</span>` : ""}
+        </div>`;
+
+        const rows = report.map(r => {
+            const cls   = r.method === "mapped" ? "mapped" : r.method === "page" ? "page" : "todo";
+            const icon  = r.method === "mapped" ? "✓" : r.method === "page" ? "📄" : "⚠";
+            const extra = r.xpath_value ? `<span style="color:#6366f1;font-family:'JetBrains Mono',monospace;font-size:0.7rem;margin-left:auto;flex-shrink:0;">${r.xpath_value}</span>` : "";
+            return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;background:var(--bg-primary);font-size:0.74rem;">
+                <span class="step-badge ${cls}" style="flex-shrink:0;">${icon}</span>
+                <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="${r.step.replace(/"/g,'&quot;')}">${r.step}</span>
+                ${extra}
+            </div>`;
+        }).join("");
+
+        body.innerHTML = summary + rows;
+        wrap.style.display = "block";
+    }
+
+    let _todoSteps = [];   // "todo" method'lu adımların raw metni
+
+    function showWarnings(warnings, todoSteps) {
+        _todoSteps = todoSteps || [];
+        document.getElementById("warningsList").innerHTML = warnings.map(w => `• ${w}`).join("<br>");
+        document.getElementById("warningsBox").style.display = "block";
+        document.getElementById("btnAiFill").style.display  = _todoSteps.length ? "inline-block" : "none";
+        document.getElementById("aiStatus").style.display   = "none";
+    }
+    function hideWarnings() {
+        document.getElementById("warningsBox").style.display = "none";
+        _todoSteps = [];
+    }
+
+    window.fillTodos = async function () {
+        if (!_todoSteps.length) return;
+        const btn    = document.getElementById("btnAiFill");
+        const status = document.getElementById("aiStatus");
+        btn.disabled = true;
+        btn.textContent = "⏳ Ollama yanıtlıyor...";
+        status.style.display = "block";
+        status.textContent   = `gemma3:4b ile ${_todoSteps.length} adım işleniyor...`;
+
+        try {
+            const data = await API.post("/bdd-gen/ai-fill-todos", {
+                todo_steps: _todoSteps,
+                platform:   currentPlatform,
+            });
+            if (!data.success || !data.codes) throw new Error("Boş yanıt");
+
+            let code = generatedCode;
+            let filled = 0;
+            for (const [step, aiCode] of Object.entries(data.codes)) {
+                if (!aiCode) continue;
+                const replacements = [
+                    `// TODO (element bulunamadı): ${step}\nThread.sleep(500);`,
+                    `// TODO: ${step}\nThread.sleep(500);`,
+                ];
+                for (const old of replacements) {
+                    if (code.includes(old)) {
+                        code = code.replace(old, `// ${step} (🤖 AI)\n${aiCode}`);
+                        filled++;
+                        break;
+                    }
+                }
+            }
+
+            generatedCode = code;
+            renderCode(generatedCode);
+
+            status.textContent   = `✓ ${filled} adım tamamlandı.`;
+            btn.textContent      = "✓ Tamamlandı";
+            btn.style.color      = "#10b981";
+            btn.style.borderColor = "rgba(16,185,129,0.4)";
+            if (filled > 0) Toast.success(`${filled} TODO adımı AI ile dolduruldu`);
+            else Toast.error("AI yanıtı kod üretemedi — Ollama çalışıyor mu?");
+        } catch (e) {
+            status.textContent = `⚠ Hata: ${e.message}`;
+            btn.disabled       = false;
+            btn.textContent    = "🤖 AI ile Tamamla";
+            Toast.error("Ollama bağlantı hatası: " + e.message);
+        }
+    };
+
+    // ── Yardımcılar ────────────────────────────────────────────────────────
+    function sanitizeClassName(name) {
+        return name.replace(/[^a-zA-Z0-9_]/g, "") || "BDDGeneratedTest";
+    }
+
+    document.getElementById("cfg-class-name").addEventListener("input", function () {
+        document.getElementById("javaFileName").textContent = sanitizeClassName(this.value) + ".java";
+    });
+
+    function _resetOutput() {
+        generatedCode = ""; editMode = false;
+        document.getElementById("javaCode").innerHTML =
+            `<div class="script-placeholder"><span class="bdd-icon">🥒</span>Java kodu henüz üretilmedi.<br>` +
+            `<span style="font-size:0.75rem;opacity:0.5;">Sol panelden BDD adımlarını gir ve butona bas.</span></div>`;
+        document.getElementById("javaEditArea").style.display   = "none";
+        document.getElementById("javaCode").style.display       = "block";
+        document.getElementById("lineCountBadge").style.display = "none";
+        ["btnEdit","btnCopy","btnDownload"].forEach(id => document.getElementById(id).style.display = "none");
+        document.getElementById("btnEdit").textContent = "✏ Düzenle";
+        document.getElementById("btnEdit").classList.remove("active");
+        document.getElementById("stepReport").style.display = "none";
+        hideWarnings();
+    }
+
+    window.resetAll = function () {
+        document.getElementById("bddInput").value = "";
+        document.getElementById("pageMappingList").innerHTML = "";
+        pageCounter = 0;
+        clearBddFile();
+        _resetOutput();
+        updateCounter();
+        updateGenerateBtn();
+        Toast.info("Sıfırlandı");
+    };
+
+    // ── Init ────────────────────────────────────────────────────────────────
+    addPageMapping();  // Başlangıçta bir sayfa kartı aç
+    updateCounter();
+})();
+</script>
+</body>
+</html>

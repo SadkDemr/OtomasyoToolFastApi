@@ -9,6 +9,25 @@
     <style>
         .page-content { padding: 24px; max-width: 1300px; }
 
+        /* Platform tab */
+        .platform-tabs {
+            display: flex; gap: 6px;
+            padding: 5px; background: var(--bg-tertiary);
+            border: 1px solid var(--border-color); border-radius: var(--radius-md);
+        }
+        .platform-tab {
+            flex: 1; padding: 8px 16px; border: none;
+            border-radius: var(--radius-sm); font-size: 0.88rem; font-weight: 600;
+            cursor: pointer; transition: var(--transition);
+            background: transparent; color: var(--text-muted);
+        }
+        .platform-tab.active {
+            background: var(--bg-primary); color: var(--text-primary);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+        }
+        .platform-tab.android.active { color: #3ddc84; }
+        .platform-tab.ios.active     { color: #007aff; }
+
         /* Durum bandı */
         .status-bar {
             display: flex; align-items: center; gap: 10px;
@@ -226,6 +245,13 @@
 
                 <!-- ── SOL: GİRİŞ ── -->
                 <div class="gen-card">
+
+                    <!-- Platform seçimi -->
+                    <div class="platform-tabs">
+                        <button class="platform-tab android active" id="tabAndroid" onclick="switchPlatform('android')">🤖 Android</button>
+                        <button class="platform-tab ios"            id="tabIos"     onclick="switchPlatform('ios')">🍎 iOS</button>
+                    </div>
+
                     <div class="gen-card-title">📋 Test Case Girişi</div>
 
                     <!-- Textarea -->
@@ -269,6 +295,7 @@ Telefon alanına "05001234567" yaz
                             <span class="acc-arrow">▼</span>
                         </div>
                         <div class="accordion-body" id="cfgBody">
+                            <!-- Ortak alanlar -->
                             <div class="cfg-grid">
                                 <div class="form-group">
                                     <label class="form-label">Appium URL</label>
@@ -284,8 +311,12 @@ Telefon alanına "05001234567" yaz
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">UDID <span style="opacity:0.6; font-weight:400;">(opsiyonel)</span></label>
-                                    <input type="text" class="form-input" id="cfg-udid" placeholder="RF8N12ABCDE">
+                                    <input type="text" class="form-input" id="cfg-udid" placeholder="">
                                 </div>
+                            </div>
+
+                            <!-- Android-specific -->
+                            <div class="cfg-grid" id="android-cfg-fields" style="margin-top:10px;">
                                 <div class="form-group">
                                     <label class="form-label">App Package</label>
                                     <input type="text" class="form-input" id="cfg-app-package" placeholder="com.example.myapp">
@@ -294,6 +325,18 @@ Telefon alanına "05001234567" yaz
                                     <label class="form-label">App Activity <span style="opacity:0.6; font-weight:400;">(opsiyonel)</span></label>
                                     <input type="text" class="form-input" id="cfg-app-activity" placeholder=".MainActivity">
                                 </div>
+                            </div>
+
+                            <!-- iOS-specific -->
+                            <div id="ios-cfg-fields" style="display:none; margin-top:10px;">
+                                <div class="form-group">
+                                    <label class="form-label">Bundle ID</label>
+                                    <input type="text" class="form-input" id="cfg-bundle-id" placeholder="com.example.myapp">
+                                </div>
+                            </div>
+
+                            <!-- Ortak alt alanlar -->
+                            <div class="cfg-grid" style="margin-top:10px;">
                                 <div class="form-group full">
                                     <label class="form-label">Class Name</label>
                                     <input type="text" class="form-input" id="cfg-class-name" value="GeneratedTest" placeholder="MyAppTest">
@@ -322,7 +365,7 @@ Telefon alanına "05001234567" yaz
                 <div class="output-panel">
                     <div class="gen-card" style="gap:14px;">
                         <div class="gen-card-title" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
-                            <span>☕ Üretilen Java Kodu</span>
+                            <span id="outputPanelTitle">☕ Üretilen Java Kodu</span>
                             <span id="lineCountBadge" style="display:none; font-size:0.73rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-weight:400;"></span>
                         </div>
 
@@ -375,10 +418,11 @@ Telefon alanına "05001234567" yaz
 
     if (!Auth.checkAuth()) return;
 
-    let generatedCode = "";
-    let isGenerating  = false;
-    let editMode      = false;
-    let className     = "GeneratedTest";
+    let generatedCode   = "";
+    let isGenerating    = false;
+    let editMode        = false;
+    let className       = "GeneratedTest";
+    let currentPlatform = "android";
 
     // ── Ollama durum ─────────────────────────────────────────────────────
     async function checkOllamaStatus() {
@@ -400,6 +444,41 @@ Telefon alanına "05001234567" yaz
             text.textContent = "✗ Ollama durumu alınamadı";
         }
     }
+
+    // ── Platform switch ──────────────────────────────────────────────────
+    window.switchPlatform = function (platform) {
+        currentPlatform = platform;
+
+        document.getElementById("tabAndroid").classList.toggle("active", platform === "android");
+        document.getElementById("tabIos").classList.toggle("active",     platform === "ios");
+
+        const isIos = platform === "ios";
+        document.getElementById("android-cfg-fields").style.display = isIos ? "none"  : "grid";
+        document.getElementById("ios-cfg-fields").style.display     = isIos ? "block" : "none";
+
+        const versionEl = document.getElementById("cfg-platform-version");
+        const deviceEl  = document.getElementById("cfg-device-name");
+
+        if (isIos) {
+            if (!versionEl.value || versionEl.value === "15") versionEl.value = "18";
+            if (!deviceEl.value  || deviceEl.value  === "Android Device") deviceEl.value = "iPhone Device";
+            versionEl.placeholder = "17, 18 ...";
+            deviceEl.placeholder  = "iPhone XR, iPhone 15 ...";
+            document.getElementById("cfg-udid").placeholder = "00008020-001D682A0A8A002E";
+            document.getElementById("outputPanelTitle").textContent = "🍎 Üretilen iOS Java Kodu";
+            document.getElementById("genBtnText").textContent       = "🍎 iOS Java Kodu Üret";
+        } else {
+            if (!versionEl.value || versionEl.value === "18") versionEl.value = "15";
+            if (!deviceEl.value  || deviceEl.value  === "iPhone Device") deviceEl.value = "Android Device";
+            versionEl.placeholder = "14, 15 ...";
+            deviceEl.placeholder  = "emulator-5554";
+            document.getElementById("cfg-udid").placeholder = "RF8N12ABCDE";
+            document.getElementById("outputPanelTitle").textContent = "☕ Üretilen Java Kodu";
+            document.getElementById("genBtnText").textContent       = "☕ Java Kodu Üret";
+        }
+
+        _resetOutput();
+    };
 
     // ── Accordion ────────────────────────────────────────────────────────
     window.toggleConfig = function () {
@@ -509,15 +588,20 @@ Telefon alanına "05001234567" yaz
 
         const payload = {
             test_case:        testCase,
+            platform:         currentPlatform,
             appium_url:       document.getElementById("cfg-appium-url").value       || "http://localhost:4723",
-            platform_version: document.getElementById("cfg-platform-version").value || "15",
-            device_name:      document.getElementById("cfg-device-name").value      || "Android Device",
+            platform_version: document.getElementById("cfg-platform-version").value || (currentPlatform === "ios" ? "18" : "15"),
+            device_name:      document.getElementById("cfg-device-name").value      || (currentPlatform === "ios" ? "iPhone Device" : "Android Device"),
             udid:             document.getElementById("cfg-udid").value             || "",
-            app_package:      document.getElementById("cfg-app-package").value      || "",
-            app_activity:     document.getElementById("cfg-app-activity").value     || "",
             no_reset:         document.getElementById("cfg-no-reset").checked,
             class_name:       className
         };
+        if (currentPlatform === "ios") {
+            payload.bundle_id = document.getElementById("cfg-bundle-id").value || "";
+        } else {
+            payload.app_package  = document.getElementById("cfg-app-package").value  || "";
+            payload.app_activity = document.getElementById("cfg-app-activity").value || "";
+        }
 
         try {
             const data = await API.post("/java-gen/generate", payload);
@@ -539,8 +623,9 @@ Telefon alanına "05001234567" yaz
     };
 
     function setGeneratingUI(loading) {
+        const idleLabel = currentPlatform === "ios" ? "🍎 iOS Java Kodu Üret" : "☕ Java Kodu Üret";
         document.getElementById("genSpinner").style.display = loading ? "block" : "none";
-        document.getElementById("genBtnText").textContent   = loading ? "Üretiliyor..." : "☕ Java Kodu Üret";
+        document.getElementById("genBtnText").textContent   = loading ? "Üretiliyor..." : idleLabel;
         document.getElementById("btnGenerate").disabled     = loading;
     }
 
@@ -669,21 +754,27 @@ Telefon alanına "05001234567" yaz
         document.getElementById("javaFileName").textContent = sanitizeClassName(this.value) + ".java";
     });
 
-    window.resetAll = function () {
-        document.getElementById("testCaseInput").value = "";
-        clearLoadedFile();
+    function _resetOutput() {
         generatedCode = "";
         editMode      = false;
+        const icon = currentPlatform === "ios" ? "🍎" : "☕";
         document.getElementById("javaCode").innerHTML =
-            '<div class="script-placeholder"><span class="java-icon">☕</span>Java kodu henüz üretilmedi.</div>';
-        document.getElementById("javaEditArea").style.display  = "none";
-        document.getElementById("javaCode").style.display     = "block";
+            `<div class="script-placeholder"><span class="java-icon">${icon}</span>Java kodu henüz üretilmedi.<br>` +
+            `<span style="font-size:0.75rem; opacity:0.5;">Sol panelden adımları gir ve butona bas.</span></div>`;
+        document.getElementById("javaEditArea").style.display   = "none";
+        document.getElementById("javaCode").style.display       = "block";
         document.getElementById("lineCountBadge").style.display = "none";
         ["btnEdit","btnCopy","btnDownload"].forEach(id => document.getElementById(id).style.display = "none");
         document.getElementById("btnEdit").textContent = "✏ Düzenle";
         document.getElementById("btnEdit").classList.remove("active");
         document.getElementById("stepReport").style.display = "none";
         hideWarnings();
+    }
+
+    window.resetAll = function () {
+        document.getElementById("testCaseInput").value = "";
+        clearLoadedFile();
+        _resetOutput();
         updateCounter();
         updateGenerateBtn();
         Toast.info("Sıfırlandı");

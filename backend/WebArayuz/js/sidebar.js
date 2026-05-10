@@ -70,6 +70,7 @@
             +     section("AI Araçlar",
                     item("ai-generator",   "&#129302;", "AI Test Generator")
                     + item("java-generator","&#9749;",  "Java Generator")
+                    + item("bdd-generator","&#129405;", "BDD Generator")
                   )
             +     section("Yönetim",
                     item("devices",   "&#128241;", "Cihazlar")
