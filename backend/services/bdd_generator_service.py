@@ -299,9 +299,13 @@ def _action_to_java(
     # ── Type (element lookup yok) ─────────────────────────────────────────────
     if action == "type":
         value = _je(param or "")
+        if is_ios:
+            type_line = f'driver.switchTo().activeElement().sendKeys("{value}");'
+        else:
+            type_line = f'driver.executeScript("mobile: type", Map.of("text", "{value}"));'
         return ([
             f'// {raw_step}',
-            f'driver.executeScript("mobile: type", Map.of("text", "{value}"));',
+            type_line,
             'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
         ], "mapped")
 
