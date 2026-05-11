@@ -169,6 +169,16 @@ def classify_step(text: str) -> dict:
     if m:
         return {"action": "assert", "element_key": f'"{m.group(1)}"', "param": None, "page": None}
 
+    # ── <element> element in <n> second(s) → element görünene kadar bekle ──────
+    m = re.match(r'^(.+?)\s+element\s+in\s+(\d+)\s+seconds?$', t, re.IGNORECASE)
+    if m:
+        return {"action": "wait_for_element", "element_key": m.group(1).strip(), "param": m.group(2), "page": None}
+
+    # ── <element> elementini <n> saniye bekle ─────────────────────────────────
+    m = re.match(r'^(.+?)\s+elementini?\s+(\d+)\s+(?:saniye|sn)\s*bekle$', t, re.IGNORECASE)
+    if m:
+        return {"action": "wait_for_element", "element_key": m.group(1).strip(), "param": m.group(2), "page": None}
+
     # ── I click <element> ─────────────────────────────────────────────────────
     m = re.match(r'^I click (.+)$', t, re.IGNORECASE)
     if m:
@@ -283,6 +293,21 @@ def _action_to_java(
             f'driver.executeScript("mobile: type", Map.of("text", "{value}"));',
             'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
         ], "mapped")
+
+    # ── Element görünene kadar bekle ─────────────────────────────────────────
+    if action == "wait_for_element":
+        if xpath_val is None and full_xpath is None:
+            return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
+        uxp = _build_ios_xpath(xpath_val) if (xpath_val and is_ios) else (
+              _build_android_xpath(xpath_val) if xpath_val else _je(full_xpath))
+        secs = int(param) if param and str(param).isdigit() else 20
+        if is_ios:
+            line = (f'new WebDriverWait(driver, Duration.ofSeconds({secs}))'
+                    f'.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("{uxp}")));')
+        else:
+            line = (f'new WebDriverWait(driver, Duration.ofSeconds({secs}))'
+                    f'.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("{uxp}")));')
+        return ([f'// {raw_step}', line], "mapped")
 
     # ── Element gerektiren aksiyonlar ─────────────────────────────────────────
     if xpath_val is None and full_xpath is None:

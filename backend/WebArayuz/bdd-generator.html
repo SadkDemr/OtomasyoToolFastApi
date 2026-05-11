@@ -159,6 +159,8 @@
         .header-btn { padding: 4px 10px; font-size: 0.73rem; border-radius: var(--radius-sm); border: 1px solid #3d3d5a; background: #2d2d4a; color: #aaaacc; cursor: pointer; transition: var(--transition); font-family: inherit; }
         .header-btn:hover { background: #3d3d5a; color: #cdd6f4; }
         .header-btn.active { background: rgba(16,185,129,0.2); border-color: #10b981; color: #10b981; }
+        .gen-card .header-btn { border-color: var(--border-color); background: var(--bg-tertiary); color: var(--text-secondary); }
+        .gen-card .header-btn:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
 
         .script-code { padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.81rem; color: #cdd6f4; white-space: pre; overflow: auto; max-height: 560px; line-height: 1.7; }
         .script-edit-area { display: none; width: 100%; min-height: 460px; background: #1a1a2e; color: #cdd6f4; font-family: 'JetBrains Mono', monospace; font-size: 0.81rem; border: none; outline: none; resize: vertical; padding: 14px 16px; box-sizing: border-box; line-height: 1.7; border-top: 1px solid #2d2d4a; }
@@ -209,7 +211,10 @@
                     <!-- BDD Senaryo -->
                     <div class="gen-card-title">🥒 BDD Senaryo</div>
                     <div class="form-group">
-                        <label class="form-label">Gherkin Adımları</label>
+                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                            <label class="form-label">Gherkin Adımları</label>
+                            <button class="header-btn" style="font-size:0.72rem;padding:3px 9px;" onclick="copyTextarea('bddInput')" title="Kopyala">📋 Kopyala</button>
+                        </div>
                         <div class="file-drop-zone" id="bddDropZone">
                             <input type="file" id="bddFileInput" accept=".feature,.txt,.bdd">
                             📁 .feature dosyası sürükle / <strong>tıkla</strong>
@@ -506,6 +511,9 @@ Then I see homeScreen"></textarea>
                     <span id="loadedCount_${id}" style="opacity:0.7;"></span>
                     <span class="close-btn" onclick="clearJsonFile('${id}')" title="Temizle">✕</span>
                 </div>
+                <div style="display:flex;justify-content:flex-end;margin-bottom:2px;">
+                    <button class="header-btn" style="font-size:0.7rem;padding:2px 8px;" onclick="copyTextarea('jsonText_${id}')" title="JSON'u kopyala">📋 Kopyala</button>
+                </div>
                 <textarea class="json-textarea" id="jsonText_${id}"
                     placeholder='{"elementKey": "//XCUIElementTypeButton[@name=\'btnName\']", ...}'
                     oninput="validateJson('${id}'); updateGenerateBtn();">${jsonContent ? JSON.stringify(jsonContent, null, 2) : ""}</textarea>
@@ -768,17 +776,42 @@ Then I see homeScreen"></textarea>
     };
 
     // ── Kopyala / İndir ───────────────────────────────────────────────────
+    function _copyToClipboard(text, successMsg) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(() => Toast.success(successMsg))
+                .catch(() => _fallbackCopy(text, successMsg));
+        } else {
+            _fallbackCopy(text, successMsg);
+        }
+    }
+
+    function _fallbackCopy(text, successMsg) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none;";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+            document.execCommand("copy");
+            Toast.success(successMsg);
+        } catch (e) {
+            Toast.error("Kopyalama başarısız — metni manuel seçip Ctrl+C kullanın");
+        }
+        document.body.removeChild(ta);
+    }
+
     window.copyCode = function () {
         const code = editMode ? document.getElementById("javaEditArea").value : generatedCode;
         if (!code) return;
-        navigator.clipboard.writeText(code)
-            .then(() => Toast.success("Java kodu panoya kopyalandı"))
-            .catch(() => {
-                const ta = document.createElement("textarea");
-                ta.value = code; document.body.appendChild(ta); ta.select();
-                document.execCommand("copy"); document.body.removeChild(ta);
-                Toast.success("Java kodu panoya kopyalandı");
-            });
+        _copyToClipboard(code, "Java kodu panoya kopyalandı");
+    };
+
+    window.copyTextarea = function (id) {
+        const el = document.getElementById(id);
+        if (!el || !el.value.trim()) return Toast.error("Kopyalanacak içerik yok");
+        _copyToClipboard(el.value, "Panoya kopyalandı");
     };
 
     window.downloadCode = function () {
