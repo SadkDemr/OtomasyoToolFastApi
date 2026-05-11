@@ -517,6 +517,33 @@ def _safe_input(driver, xpath, value):
     str_value = str(value)
     print(f"[INPUT] '{str_value}' yazılıyor... (xpath={xpath})")
 
+    # ── iOS: send_keys yeterli, ADB/mobile:type desteklenmiyor ───────────────
+    try:
+        _platform = driver.capabilities.get("platformName", "").lower()
+    except Exception:
+        _platform = ""
+    if _platform == "ios":
+        try:
+            _ios_el = driver.find_element(AppiumBy.XPATH, xpath) if xpath else None
+        except Exception:
+            _ios_el = None
+        try:
+            if _ios_el:
+                _ios_el.click()
+                import time as _t; _t.sleep(0.3)
+                _ios_el.send_keys(str_value)
+            else:
+                driver.switch_to.active_element.send_keys(str_value)
+            print(f"[INPUT] ✅ iOS send_keys: {str_value}")
+        except Exception as _e:
+            print(f"[INPUT] iOS send_keys hatası: {_e}")
+            try:
+                driver.switch_to.active_element.send_keys(str_value)
+                print(f"[INPUT] ✅ iOS active_element send_keys: {str_value}")
+            except Exception as _e2:
+                print(f"[INPUT] iOS yazma başarısız: {_e2}")
+        return
+
     # ── ADB yolu ──────────────────────────────────────────────────────────────
     def _adb_exec():
         _p = _sh.which("adb")
