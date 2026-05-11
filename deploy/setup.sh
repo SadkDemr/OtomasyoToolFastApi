@@ -21,6 +21,8 @@ echo ""
 
 # 1. Sistem bağımlılıkları
 echo "[1/7] Sistem paketleri kuruluyor..."
+# Bozuk PostgreSQL repo varsa temizle (proje SQLite kullanır, PostgreSQL gerekmez)
+rm -f /etc/apt/sources.list.d/pgdg.list /etc/apt/sources.list.d/postgresql.list
 apt-get update -qq
 apt-get install -y -qq python3 python3-pip python3-venv git curl
 
