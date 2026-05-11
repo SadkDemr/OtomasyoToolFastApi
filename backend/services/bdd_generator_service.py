@@ -179,18 +179,13 @@ def classify_step(text: str) -> dict:
     if m:
         return {"action": "wait_for_element", "element_key": m.group(1).strip(), "param": m.group(2), "page": None}
 
-    # ── I click <element> ─────────────────────────────────────────────────────
-    m = re.match(r'^I click (.+)$', t, re.IGNORECASE)
+    # ── I click / I tap <element> [element] ──────────────────────────────────
+    m = re.match(r'^I (?:click|tap) (.+?)(?:\s+element)?$', t, re.IGNORECASE)
     if m:
         return {"action": "click", "element_key": m.group(1).strip(), "param": None, "page": None}
 
-    # ── I tap <element> ───────────────────────────────────────────────────────
-    m = re.match(r'^I tap (.+)$', t, re.IGNORECASE)
-    if m:
-        return {"action": "click", "element_key": m.group(1).strip(), "param": None, "page": None}
-
-    # ── I am sil with <element>  →  clear ────────────────────────────────────
-    m = re.match(r'^I am sil with (.+)$', t, re.IGNORECASE)
+    # ── I am sil with <element> ───────────────────────────────────────────────
+    m = re.match(r'^I am sil with (.+?)(?:\s+element)?$', t, re.IGNORECASE)
     if m:
         return {"action": "clear", "element_key": m.group(1).strip(), "param": None, "page": None}
 
@@ -201,8 +196,8 @@ def classify_step(text: str) -> dict:
         param  = quoted[0] if quoted else m.group(1).strip('"\'')
         return {"action": "type", "element_key": None, "param": param, "page": None}
 
-    # ── I see <element>  →  assert ────────────────────────────────────────────
-    m = re.match(r'^I see (.+)$', t, re.IGNORECASE)
+    # ── I see <element> [element]  →  assert ─────────────────────────────────
+    m = re.match(r'^I see (.+?)(?:\s+element)?$', t, re.IGNORECASE)
     if m:
         return {"action": "assert", "element_key": m.group(1).strip(), "param": None, "page": None}
 
