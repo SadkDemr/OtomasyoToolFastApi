@@ -35,14 +35,20 @@ def extract_xpath_value(xpath: str) -> Optional[str]:
     return None
 
 
-def _build_ios_xpath(value: str) -> str:
-    v = value.replace("'", "\\'")
-    return f"//*[@name='{v}' or @label='{v}' or @value='{v}']"
+def extract_xpath_index(xpath: str) -> int:
+    """XPath sonundaki index değerini döner. Yoksa default 1."""
+    m = re.search(r'\)\[(\d+)\]$', xpath.strip())
+    return int(m.group(1)) if m else 1
 
 
-def _build_android_xpath(value: str) -> str:
+def _build_ios_xpath(value: str, index: int = 1) -> str:
     v = value.replace("'", "\\'")
-    return f"//*[@text='{v}' or @content-desc='{v}']"
+    return f"(//*[@name='{v}' or @label='{v}' or @value='{v}'])[{index}]"
+
+
+def _build_android_xpath(value: str, index: int = 1) -> str:
+    v = value.replace("'", "\\'")
+    return f"(//*[@text='{v}' or @content-desc='{v}'])[{index}]"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -108,8 +114,8 @@ def classify_step(text: str) -> dict:
     if re.search(r'ekran\s*görüntüsü|screenshot|capture\s*screen', tl):
         return {"action": "screenshot", "element_key": None, "param": None, "page": None}
 
-    # ── I see <page> page  →  page context switch ─────────────────────────────
-    m = re.match(r'^I see (.+?) page$', t, re.IGNORECASE)
+    # ── I see / see <page> page  →  page context switch ──────────────────────
+    m = re.match(r'^(?:I\s+)?see (.+?) page$', t, re.IGNORECASE)
     if m:
         return {"action": "page_context", "element_key": None, "param": None, "page": m.group(1).strip()}
 
@@ -119,7 +125,10 @@ def classify_step(text: str) -> dict:
         sec = m.group(1) or m.group(2)
         return {"action": "wait", "element_key": None, "param": sec, "page": None}
 
-    # ── I wait <n> ────────────────────────────────────────────────────────────
+    # ── wait for N seconds / I wait N / wait N seconds ───────────────────────
+    m = re.search(r'wait\s+(?:for\s+)?(\d+)\s+seconds?', tl)
+    if m:
+        return {"action": "wait", "element_key": None, "param": m.group(1), "page": None}
     m = re.match(r'^I wait (\d+)', t, re.IGNORECASE)
     if m:
         return {"action": "wait", "element_key": None, "param": m.group(1), "page": None}
@@ -179,25 +188,25 @@ def classify_step(text: str) -> dict:
     if m:
         return {"action": "wait_for_element", "element_key": m.group(1).strip(), "param": m.group(2), "page": None}
 
-    # ── I click / I tap <element> [element] ──────────────────────────────────
-    m = re.match(r'^I (?:click|tap) (.+?)(?:\s+element)?$', t, re.IGNORECASE)
+    # ── click / I click / tap / I tap <element> [element] ────────────────────
+    m = re.match(r'^(?:I\s+)?(?:click|tap) (.+?)(?:\s+element)?$', t, re.IGNORECASE)
     if m:
         return {"action": "click", "element_key": m.group(1).strip(), "param": None, "page": None}
 
-    # ── I am sil with <element> ───────────────────────────────────────────────
-    m = re.match(r'^I am sil with (.+?)(?:\s+element)?$', t, re.IGNORECASE)
+    # ── I am sil with / sil with <element> ───────────────────────────────────
+    m = re.match(r'^(?:I\s+)?(?:am\s+)?sil\s+with (.+?)(?:\s+element)?$', t, re.IGNORECASE)
     if m:
         return {"action": "clear", "element_key": m.group(1).strip(), "param": None, "page": None}
 
-    # ── I type "text" ─────────────────────────────────────────────────────────
-    m = re.match(r'^I type (.+)$', t, re.IGNORECASE)
+    # ── type / I type "text" ──────────────────────────────────────────────────
+    m = re.match(r'^(?:I\s+)?type (.+)$', t, re.IGNORECASE)
     if m:
         quoted = _extract_quoted(m.group(1))
         param  = quoted[0] if quoted else m.group(1).strip('"\'')
         return {"action": "type", "element_key": None, "param": param, "page": None}
 
-    # ── I see <element> [element]  →  assert ─────────────────────────────────
-    m = re.match(r'^I see (.+?)(?:\s+element)?$', t, re.IGNORECASE)
+    # ── see / I see <element> [element]  →  assert ───────────────────────────
+    m = re.match(r'^(?:I\s+)?see (.+?)(?:\s+element)?$', t, re.IGNORECASE)
     if m:
         return {"action": "assert", "element_key": m.group(1).strip(), "param": None, "page": None}
 
@@ -219,11 +228,13 @@ def _action_to_java(
     raw_step:    str,
     platform:    str,
     full_xpath:  Optional[str] = None,
+    xpath_index: int = 1,
 ) -> tuple[list[str], str]:
     """
     Returns (java_lines, method)
     method: "mapped" | "page" | "todo"
     full_xpath: attribute çıkarılamadığında direkt kullanılacak ham XPath
+    xpath_index: XPath'teki index değeri (yoksa default 1)
     """
     is_ios = platform.lower() != "android"
 
@@ -293,8 +304,8 @@ def _action_to_java(
     if action == "wait_for_element":
         if xpath_val is None and full_xpath is None:
             return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
-        uxp = _build_ios_xpath(xpath_val) if (xpath_val and is_ios) else (
-              _build_android_xpath(xpath_val) if xpath_val else _je(full_xpath))
+        uxp = _build_ios_xpath(xpath_val, xpath_index) if (xpath_val and is_ios) else (
+              _build_android_xpath(xpath_val, xpath_index) if xpath_val else _je(full_xpath))
         secs = int(param) if param and str(param).isdigit() else 20
         if is_ios:
             line = (f'new WebDriverWait(driver, Duration.ofSeconds({secs}))'
@@ -308,9 +319,9 @@ def _action_to_java(
     if xpath_val is None and full_xpath is None:
         return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
 
-    # Attribute değeri varsa yeni XPath üret, yoksa ham XPath'i direkt kullan
+    # Attribute değeri varsa index ile XPath üret, yoksa ham XPath'i direkt kullan
     if xpath_val is not None:
-        uxp = _build_ios_xpath(xpath_val) if is_ios else _build_android_xpath(xpath_val)
+        uxp = _build_ios_xpath(xpath_val, xpath_index) if is_ios else _build_android_xpath(xpath_val, xpath_index)
     else:
         uxp = _je(full_xpath)
 
@@ -383,6 +394,7 @@ def generate_bdd_java(
         # ── Element arama ────────────────────────────────────────────────
         xpath_value = None
         full_xpath  = None
+        xpath_index = 1
         found_page  = None
 
         if element_key:
@@ -395,6 +407,7 @@ def generate_bdd_java(
                 if current_page and current_page in mappings and element_key in mappings[current_page]:
                     full_xpath  = mappings[current_page][element_key]
                     xpath_value = extract_xpath_value(full_xpath)
+                    xpath_index = extract_xpath_index(full_xpath)
                     found_page  = current_page
                 else:
                     # Tüm sayfalarda tara
@@ -402,6 +415,7 @@ def generate_bdd_java(
                         if element_key in pmap:
                             full_xpath  = pmap[element_key]
                             xpath_value = extract_xpath_value(full_xpath)
+                            xpath_index = extract_xpath_index(full_xpath)
                             found_page  = pname
                             break
 
@@ -412,7 +426,7 @@ def generate_bdd_java(
                     )
 
         java_lines, method = _action_to_java(
-            action, xpath_value, param or element_key, step["raw"], platform, full_xpath
+            action, xpath_value, param or element_key, step["raw"], platform, full_xpath, xpath_index
         )
         code_blocks.append("\n".join(java_lines))
         report.append({
