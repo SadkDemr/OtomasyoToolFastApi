@@ -726,7 +726,7 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
                 const formData = new FormData();
                 formData.append("file", file);
                 const token = Auth.getToken();
-                const resp = await fetch("http://localhost:8000/api/ai-gen/parse-file", {
+                const resp = await fetch(`${window.location.protocol}//${window.location.hostname}:8000/api/ai-gen/parse-file`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}` },
                     body: formData
@@ -919,7 +919,7 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         clearLogs();
 
         const token = Auth.getToken();
-        const API_BASE = "http://localhost:8000/api";
+        const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api`;
 
         try {
             const response = await fetch(`${API_BASE}/ai-gen/execute`, {

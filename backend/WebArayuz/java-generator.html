@@ -539,7 +539,7 @@ Telefon alanına "05001234567" yaz
             try {
                 const fd = new FormData();
                 fd.append("file", file);
-                const resp = await fetch("http://localhost:8000/api/ai-gen/parse-file", {
+                const resp = await fetch(`${window.location.protocol}//${window.location.hostname}:8000/api/ai-gen/parse-file`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${Auth.getToken()}` },
                     body: fd

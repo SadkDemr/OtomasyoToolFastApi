@@ -1296,7 +1296,7 @@ Senaryo: Başarılı Giriş
     function connectEmulator(did) {
         if (wsEmulator) wsEmulator.close();
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsEmulator = new WebSocket(proto + '//localhost:8000/api/emulator/' + did.trim() + '/stream');
+        wsEmulator = new WebSocket(proto + '//' + window.location.hostname + ':8000/api/emulator/' + did.trim() + '/stream');
         wsEmulator.onopen = function() { el('noDevMsg').style.display = 'none'; el('screenImg').style.display = 'block'; Toast.success('Cihaza bağlandı'); };
         wsEmulator.onmessage = function(e) {
             var d = JSON.parse(e.data);
