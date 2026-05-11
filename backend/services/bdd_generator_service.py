@@ -178,6 +178,11 @@ def classify_step(text: str) -> dict:
     if m:
         return {"action": "assert", "element_key": f'"{m.group(1)}"', "param": None, "page": None}
 
+    # ── I see/click/tap <element> element in <n> seconds → wait_for_element ──
+    m = re.match(r'^(?:I\s+)?(?:see|click|tap)\s+(.+?)\s+element\s+in\s+(\d+)\s+seconds?$', t, re.IGNORECASE)
+    if m:
+        return {"action": "wait_for_element", "element_key": m.group(1).strip(), "param": m.group(2), "page": None}
+
     # ── <element> element in <n> second(s) → element görünene kadar bekle ──────
     m = re.match(r'^(.+?)\s+element\s+in\s+(\d+)\s+seconds?$', t, re.IGNORECASE)
     if m:
