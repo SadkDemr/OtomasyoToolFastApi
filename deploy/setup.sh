@@ -50,7 +50,8 @@ chown -R "$APP_USER:$APP_USER" "$SSH_DIR"
 # SSH config — GitHub için bu key'i kullan
 cat > "$SSH_DIR/config" <<EOF
 Host github.com
-    HostName github.com
+    HostName ssh.github.com
+    Port 443
     User git
     IdentityFile $KEY_FILE
     StrictHostKeyChecking no
