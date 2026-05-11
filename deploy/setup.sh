@@ -38,6 +38,7 @@ SSH_DIR="/home/$APP_USER/.ssh"
 KEY_FILE="$SSH_DIR/github_deploy"
 
 mkdir -p "$SSH_DIR"
+chown "$APP_USER:$APP_USER" "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 
 if [ ! -f "$KEY_FILE" ]; then
