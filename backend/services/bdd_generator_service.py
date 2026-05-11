@@ -213,10 +213,12 @@ def _action_to_java(
     param:       Optional[str],
     raw_step:    str,
     platform:    str,
+    full_xpath:  Optional[str] = None,
 ) -> tuple[list[str], str]:
     """
     Returns (java_lines, method)
     method: "mapped" | "page" | "todo"
+    full_xpath: attribute çıkarılamadığında direkt kullanılacak ham XPath
     """
     is_ios = platform.lower() != "android"
 
@@ -283,10 +285,14 @@ def _action_to_java(
         ], "mapped")
 
     # ── Element gerektiren aksiyonlar ─────────────────────────────────────────
-    if xpath_val is None:
+    if xpath_val is None and full_xpath is None:
         return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
 
-    uxp = _build_ios_xpath(xpath_val) if is_ios else _build_android_xpath(xpath_val)
+    # Attribute değeri varsa yeni XPath üret, yoksa ham XPath'i direkt kullan
+    if xpath_val is not None:
+        uxp = _build_ios_xpath(xpath_val) if is_ios else _build_android_xpath(xpath_val)
+    else:
+        uxp = _je(full_xpath)
 
     if action == "click":
         if is_ios:
@@ -356,6 +362,7 @@ def generate_bdd_java(
 
         # ── Element arama ────────────────────────────────────────────────
         xpath_value = None
+        full_xpath  = None
         found_page  = None
 
         if element_key:
@@ -366,24 +373,26 @@ def generate_bdd_java(
             else:
                 # Önce aktif sayfada ara
                 if current_page and current_page in mappings and element_key in mappings[current_page]:
-                    xpath_value = extract_xpath_value(mappings[current_page][element_key])
+                    full_xpath  = mappings[current_page][element_key]
+                    xpath_value = extract_xpath_value(full_xpath)
                     found_page  = current_page
                 else:
                     # Tüm sayfalarda tara
                     for pname, pmap in mappings.items():
                         if element_key in pmap:
-                            xpath_value = extract_xpath_value(pmap[element_key])
+                            full_xpath  = pmap[element_key]
+                            xpath_value = extract_xpath_value(full_xpath)
                             found_page  = pname
                             break
 
-                if xpath_value is None:
+                if xpath_value is None and full_xpath is None:
                     warnings.append(
                         f"Element bulunamadı: '{element_key}'"
                         + (f" (sayfa: {current_page})" if current_page else "")
                     )
 
         java_lines, method = _action_to_java(
-            action, xpath_value, param or element_key, step["raw"], platform
+            action, xpath_value, param or element_key, step["raw"], platform, full_xpath
         )
         code_blocks.append("\n".join(java_lines))
         report.append({
