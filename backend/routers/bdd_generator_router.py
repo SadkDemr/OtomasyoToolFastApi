@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from routers.auth import get_current_user
 from models.db_models import User
-from services.bdd_generator_service import generate_bdd_java
+from services.bdd_generator_service import generate_bdd_java, parse_java_custom_steps
 
 router = APIRouter(prefix="/api/bdd-gen", tags=["bdd-generator"])
 
@@ -37,6 +37,7 @@ class BDDGenerateRequest(BaseModel):
     bundle_id:        Optional[str]  = ""
     no_reset:         Optional[bool] = True
     class_name:       Optional[str]  = "BDDGeneratedTest"
+    custom_steps_java: Optional[str] = None   # MySteps.java içeriği
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -260,10 +261,13 @@ async def generate_bdd(
         if isinstance(mapping, dict)
     }
 
+    custom_steps = parse_java_custom_steps(req.custom_steps_java) if req.custom_steps_java else []
+
     result = generate_bdd_java(
-        bdd_text = req.bdd_scenario,
-        mappings = normalized_mappings,
-        platform = (req.platform or "ios").lower(),
+        bdd_text     = req.bdd_scenario,
+        mappings     = normalized_mappings,
+        platform     = (req.platform or "ios").lower(),
+        custom_steps = custom_steps,
     )
 
     platform = (req.platform or "ios").lower()
@@ -273,8 +277,9 @@ async def generate_bdd(
         final_code = _build_ios_template(req, result["steps_code"])
 
     return {
-        "success":  True,
-        "script":   final_code,
-        "report":   result["report"],
-        "warnings": result["warnings"],
+        "success":            True,
+        "script":             final_code,
+        "report":             result["report"],
+        "warnings":           result["warnings"],
+        "custom_steps_count": len(custom_steps),
     }

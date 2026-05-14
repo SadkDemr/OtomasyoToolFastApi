@@ -54,7 +54,7 @@
             +   '<div class="sidebar-header">'
             +     '<div class="logo">'
             +       '<div class="logo-icon">&#129514;</div>'
-            +       '<span>Test Platform <small style="opacity:0.6;font-size:0.7em;">v1.0.0</small></span>'
+            +       '<span>Test Platform <small style="opacity:0.6;font-size:0.7em;">v1.1.0</small></span>'
             +     '</div>'
             +   '</div>'
             +   '<nav class="sidebar-nav">'

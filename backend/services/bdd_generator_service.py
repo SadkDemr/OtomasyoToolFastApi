@@ -359,13 +359,117 @@ def _action_to_java(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# BÖLÜM 4.5: CUSTOM STEP PARSER (MySteps.java desteği)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _java_annotation_to_py_regex(pattern: str) -> str:
+    r"""
+    Java @And annotation string'ini Python regex'ine dönüştürür.
+    Java kaynak \\w → dosyada çift backslash → Python'da \w (word char).
+    """
+    # Java source'daki çift backslash → tek backslash (regex meta)
+    p = pattern.replace('\\\\', '\\')
+    # Cucumber expression → regex
+    p = p.replace('{int}',        r'(-?\d+)')
+    p = p.replace('{float}',      r'(-?\d+\.?\d*)')
+    p = p.replace('{string}',     r'"([^"]*)"')
+    p = p.replace('{word}',       r'(\w+)')
+    p = p.replace('{bigdecimal}', r'(-?\d+\.?\d*)')
+    if not p.startswith('^'):
+        p = '^' + p
+    if not p.endswith('$'):
+        p = p + '$'
+    return p
+
+
+_ANNOTATION_RE = re.compile(
+    r'@(?:And|Given|When|Then|But)\s*\(\s*(?:value\s*=\s*)?"([^"]+)"\s*\)\s*'
+    r'public\s+\S+\s+(\w+)\s*\(([^)]*)\)',
+    re.DOTALL,
+)
+
+
+def parse_java_custom_steps(java_code: str) -> list:
+    """
+    MySteps.java içindeki @And/@When/@Then/@Given adımlarını çıkarır.
+    Returns: [{"pattern", "method_name", "param_types", "py_regex"}]
+    """
+    results = []
+    for m in _ANNOTATION_RE.finditer(java_code):
+        annotation_pattern = m.group(1)
+        method_name        = m.group(2)
+        params_raw         = m.group(3).strip()
+
+        param_types: list[str] = []
+        if params_raw:
+            for param in params_raw.split(','):
+                parts = param.strip().split()
+                if len(parts) >= 2:
+                    param_types.append(parts[0])
+
+        try:
+            py_regex = _java_annotation_to_py_regex(annotation_pattern)
+            re.compile(py_regex)          # geçersiz regex'i atla
+        except re.error:
+            continue
+
+        results.append({
+            "pattern":     annotation_pattern,
+            "method_name": method_name,
+            "param_types": param_types,
+            "py_regex":    py_regex,
+        })
+    return results
+
+
+def match_custom_step(step_text: str, custom_steps: list) -> Optional[dict]:
+    """Step metnini custom adım listesiyle eşleştirir; ilk eşleşeni döner."""
+    for cs in custom_steps:
+        try:
+            m = re.match(cs["py_regex"], step_text, re.IGNORECASE)
+            if m:
+                return {**cs, "captured": list(m.groups())}
+        except re.error:
+            continue
+    return None
+
+
+def _custom_step_to_java(
+    method_name: str,
+    param_types: list,
+    captured:    list,
+    raw_step:    str,
+) -> tuple[list[str], str]:
+    """Custom step için mySteps.method(args) çağrısı üretir."""
+    _INT_TYPES   = {'int', 'long', 'Integer', 'Long', 'short', 'Short', 'byte', 'Byte'}
+    _FLOAT_TYPES = {'float', 'double', 'Float', 'Double'}
+    _BOOL_TYPES  = {'boolean', 'Boolean'}
+
+    args: list[str] = []
+    for i, val in enumerate(captured):
+        ptype = param_types[i] if i < len(param_types) else 'String'
+        if ptype in _INT_TYPES:
+            args.append(val or '0')
+        elif ptype in _FLOAT_TYPES:
+            args.append(val or '0.0')
+        elif ptype in _BOOL_TYPES:
+            args.append(val or 'false')
+        else:
+            args.append(f'"{_je(val or "")}"')
+
+    call = f'mySteps.{method_name}({", ".join(args)});'
+    return ([f'// {raw_step}', call], "custom")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # BÖLÜM 5: ANA FONKSİYON
 # ══════════════════════════════════════════════════════════════════════════════
 
 def generate_bdd_java(
-    bdd_text: str,
-    mappings: dict,   # {"pageName": {"elementKey": "//xpath...", ...}, ...}
-    platform: str = "ios",
+    bdd_text:     str,
+    mappings:     dict,     # {"pageName": {"elementKey": "//xpath...", ...}, ...}
+    platform:     str  = "ios",
+    custom_steps: list = None,  # parse_java_custom_steps() çıktısı
 ) -> dict:
     """
     BDD metnini parse edip Java kod bloklarına çevirir.
@@ -383,6 +487,22 @@ def generate_bdd_java(
     warnings:    list[str]  = []
 
     for step in steps:
+        # ── Custom step eşleşme (MySteps.java'dan yüklenenler) ────────────
+        if custom_steps:
+            cm = match_custom_step(step["text"], custom_steps)
+            if cm:
+                java_lines, _ = _custom_step_to_java(
+                    cm["method_name"], cm["param_types"], cm["captured"], step["raw"]
+                )
+                code_blocks.append("\n".join(java_lines))
+                report.append({
+                    "step":        step["raw"],
+                    "method":      "custom",
+                    "page":        current_page,
+                    "xpath_value": cm["method_name"],
+                })
+                continue
+
         classified  = classify_step(step["text"])
         action      = classified["action"]
         element_key = classified["element_key"]

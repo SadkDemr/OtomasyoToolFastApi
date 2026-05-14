@@ -176,7 +176,8 @@
         .step-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 0.71rem; font-weight: 600; }
         .step-badge.mapped { background: rgba(16,185,129,0.12); color: #10b981; }
         .step-badge.page   { background: rgba(99,102,241,0.12);  color: #6366f1; }
-        .step-badge.todo   { background: rgba(245,158,11,0.12);   color: #f59e0b; }
+        .step-badge.todo   { background: rgba(245,158,11,0.12);  color: #f59e0b; }
+        .step-badge.custom { background: rgba(6,182,212,0.12);   color: #06b6d4; }
     </style>
 </head>
 <body>
@@ -232,6 +233,25 @@ When I click loginButton
 Then I see homeScreen"></textarea>
                         <div class="textarea-footer">
                             <span class="textarea-counter" id="bddCounter">0 satır · 0 karakter</span>
+                        </div>
+                    </div>
+
+                    <!-- Custom Steps Java -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            Custom Step Tanımları
+                            <span style="font-weight:400;opacity:0.6;">(opsiyonel · MySteps.java)</span>
+                        </label>
+                        <div class="file-drop-zone" id="javaDropZone">
+                            <input type="file" id="javaFileInput" accept=".java">
+                            ⚡ MySteps.java sürükle / <strong>tıkla</strong>
+                            <span style="display:block;font-size:0.7rem;opacity:0.6;margin-top:2px;">@And/@When/@Then adımları otomatik tanınır</span>
+                        </div>
+                        <div class="json-loaded-bar" id="javaLoadedBar" style="display:none;">
+                            <span>⚡</span>
+                            <span id="javaLoadedName" style="font-weight:600;"></span>
+                            <span id="javaLoadedInfo" style="opacity:0.7;"></span>
+                            <span class="close-btn" onclick="clearJavaFile()" title="Temizle">✕</span>
                         </div>
                     </div>
 
@@ -382,6 +402,7 @@ Then I see homeScreen"></textarea>
     let currentPlatform = "ios";
     let pageCounter     = 0;
     let bddFileName     = "";    // yüklenen dosyanın adı (uzantısız)
+    let customStepsJava = "";    // MySteps.java içeriği
 
     // ── BDD Dosya yükleme ─────────────────────────────────────────────────
     (function initBddDrop() {
@@ -431,6 +452,47 @@ Then I see homeScreen"></textarea>
         document.getElementById("javaFileName").textContent   = "BDDGeneratedTest.java";
         updateCounter();
         updateGenerateBtn();
+    };
+
+    // ── MySteps.java Dosya yükleme ────────────────────────────────────────
+    (function initJavaDrop() {
+        const zone = document.getElementById("javaDropZone");
+        const fi   = document.getElementById("javaFileInput");
+
+        zone.addEventListener("click",    () => fi.click());
+        zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag-over"); });
+        zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+        zone.addEventListener("drop", e => {
+            e.preventDefault(); zone.classList.remove("drag-over");
+            const file = e.dataTransfer.files[0];
+            if (file) readJavaFile(file);
+        });
+        fi.addEventListener("change", e => {
+            if (e.target.files[0]) { readJavaFile(e.target.files[0]); e.target.value = ""; }
+        });
+    })();
+
+    function readJavaFile(file) {
+        if (!file.name.endsWith(".java")) {
+            Toast.error("Lütfen .java uzantılı bir dosya seçin");
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = ev => {
+            customStepsJava = ev.target.result;
+            document.getElementById("javaLoadedName").textContent = file.name;
+            document.getElementById("javaLoadedInfo").textContent = `· ${(file.size / 1024).toFixed(1)} KB`;
+            document.getElementById("javaLoadedBar").style.display = "flex";
+            document.getElementById("javaDropZone").style.display  = "none";
+            Toast.success(`"${file.name}" yüklendi — custom step'ler generate sırasında tanınacak`);
+        };
+        reader.readAsText(file, "UTF-8");
+    }
+
+    window.clearJavaFile = function () {
+        customStepsJava = "";
+        document.getElementById("javaLoadedBar").style.display = "none";
+        document.getElementById("javaDropZone").style.display  = "block";
     };
 
     // ── Platform switch ──────────────────────────────────────────────────
@@ -680,8 +742,9 @@ Then I see homeScreen"></textarea>
             platform_version: document.getElementById("cfg-platform-version").value || (currentPlatform === "ios" ? "18" : "15"),
             device_name:      document.getElementById("cfg-device-name").value      || (currentPlatform === "ios" ? "iPhone Device" : "Android Device"),
             udid:             document.getElementById("cfg-udid").value             || "",
-            no_reset:         document.getElementById("cfg-no-reset").checked,
-            class_name:       className,
+            no_reset:          document.getElementById("cfg-no-reset").checked,
+            class_name:        className,
+            custom_steps_java: customStepsJava || null,
         };
         if (currentPlatform === "ios") {
             payload.bundle_id = document.getElementById("cfg-bundle-id").value || "";
@@ -695,6 +758,10 @@ Then I see homeScreen"></textarea>
             generatedCode = data.script || "";
             renderCode(generatedCode);
             if (data.report) renderStepReport(data.report);
+            if (customStepsJava && data.custom_steps_count != null) {
+                document.getElementById("javaLoadedInfo").textContent =
+                    `· ${data.custom_steps_count} custom adım tanındı`;
+            }
             if (data.warnings && data.warnings.length) {
                 const todoSteps = (data.report || [])
                     .filter(r => r.method === "todo")
@@ -820,19 +887,32 @@ Then I see homeScreen"></textarea>
     function renderStepReport(report) {
         const wrap   = document.getElementById("stepReport");
         const body   = document.getElementById("stepReportBody");
-        const counts = { mapped: 0, page: 0, todo: 0 };
+        const counts = { mapped: 0, page: 0, todo: 0, custom: 0 };
         report.forEach(r => { if (r.method in counts) counts[r.method]++; });
 
         const summary = `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <span class="step-badge mapped">✓ Mapped: ${counts.mapped}</span>
             <span class="step-badge page">📄 Page: ${counts.page}</span>
-            ${counts.todo ? `<span class="step-badge todo">⚠ TODO: ${counts.todo}</span>` : ""}
+            ${counts.custom ? `<span class="step-badge custom">⚡ Custom: ${counts.custom}</span>` : ""}
+            ${counts.todo   ? `<span class="step-badge todo">⚠ TODO: ${counts.todo}</span>`    : ""}
         </div>`;
 
         const rows = report.map(r => {
-            const cls   = r.method === "mapped" ? "mapped" : r.method === "page" ? "page" : "todo";
-            const icon  = r.method === "mapped" ? "✓" : r.method === "page" ? "📄" : "⚠";
-            const extra = r.xpath_value ? `<span style="color:#6366f1;font-family:'JetBrains Mono',monospace;font-size:0.7rem;margin-left:auto;flex-shrink:0;">${r.xpath_value}</span>` : "";
+            const cls  = r.method === "mapped" ? "mapped"
+                       : r.method === "page"   ? "page"
+                       : r.method === "custom" ? "custom"
+                       : "todo";
+            const icon = r.method === "mapped" ? "✓"
+                       : r.method === "page"   ? "📄"
+                       : r.method === "custom" ? "⚡"
+                       : "⚠";
+            const labelColor = r.method === "custom" ? "#06b6d4" : "#6366f1";
+            const labelText  = r.method === "custom" && r.xpath_value
+                             ? r.xpath_value + "()"
+                             : (r.xpath_value || "");
+            const extra = labelText
+                ? `<span style="color:${labelColor};font-family:'JetBrains Mono',monospace;font-size:0.7rem;margin-left:auto;flex-shrink:0;">${labelText}</span>`
+                : "";
             return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;background:var(--bg-primary);font-size:0.74rem;">
                 <span class="step-badge ${cls}" style="flex-shrink:0;">${icon}</span>
                 <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="${r.step.replace(/"/g,'&quot;')}">${r.step}</span>
@@ -937,6 +1017,7 @@ Then I see homeScreen"></textarea>
         document.getElementById("pageMappingList").innerHTML = "";
         pageCounter = 0;
         clearBddFile();
+        clearJavaFile();
         _resetOutput();
         updateCounter();
         updateGenerateBtn();
