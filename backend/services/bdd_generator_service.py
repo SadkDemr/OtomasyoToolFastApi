@@ -6,6 +6,7 @@ JSON mapping dosyasındaki XPath'leri kullanır.
 """
 
 import re
+import textwrap
 from typing import Optional
 
 
@@ -388,11 +389,59 @@ _ANNOTATION_RE = re.compile(
     re.DOTALL,
 )
 
+# Framework satırları: MobileDevice ve AppiumDriver driver = device.getDriver()
+_FRAMEWORK_LINE_RE = re.compile(
+    r'^\s*(?:'
+    r'MobileDevice\s+\w+\s*=\s*\w+\.getCurrentDevice\(\)'
+    r'|AppiumDriver<[^>]+>\s+\w+\s*=\s*\w+\.getDriver\(\)'
+    r')\s*;',
+)
+
+
+def _extract_method_body(java_code: str, method_name: str) -> str:
+    """Method imzasından sonraki süslü parantez bloğunu çıkarır."""
+    pat = re.compile(
+        rf'public\s+\S+\s+{re.escape(method_name)}\s*\([^)]*\)[^{{]*\{{',
+        re.DOTALL,
+    )
+    m = pat.search(java_code)
+    if not m:
+        return ""
+    depth, i = 1, m.end()
+    while i < len(java_code) and depth:
+        c = java_code[i]
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+        i += 1
+    return java_code[m.end(): i - 1]
+
+
+def _adapt_body(body: str) -> str:
+    """
+    Method body'yi standalone Appium koduna uyarlar:
+      - MobileDevice / AppiumDriver driver = device.getDriver() satırlarını siler
+      - device.getDriver()     → driver
+      - device.findSelector(x) → By.xpath("/* x */")
+    Ardından ortak indent'i kaldırır ve 4 boşluk ekler.
+    """
+    out = []
+    for line in body.splitlines():
+        if _FRAMEWORK_LINE_RE.match(line):
+            continue
+        line = re.sub(r'\b\w+\.getDriver\(\)', 'driver', line)
+        line = re.sub(r'\b\w+\.findSelector\(([^)]+)\)', r'By.xpath("/* \1 */")', line)
+        out.append(line)
+    cleaned = textwrap.dedent('\n'.join(out)).strip()
+    # Her satıra 4 boşluk indent ekle (block {} içi)
+    return '\n'.join('    ' + ln if ln.strip() else '' for ln in cleaned.splitlines())
+
 
 def parse_java_custom_steps(java_code: str) -> list:
     """
     MySteps.java içindeki @And/@When/@Then/@Given adımlarını çıkarır.
-    Returns: [{"pattern", "method_name", "param_types", "py_regex"}]
+    Returns: [{"pattern", "method_name", "param_types", "py_regex", "body"}]
     """
     results = []
     for m in _ANNOTATION_RE.finditer(java_code):
@@ -409,15 +458,19 @@ def parse_java_custom_steps(java_code: str) -> list:
 
         try:
             py_regex = _java_annotation_to_py_regex(annotation_pattern)
-            re.compile(py_regex)          # geçersiz regex'i atla
+            re.compile(py_regex)
         except re.error:
             continue
+
+        raw_body     = _extract_method_body(java_code, method_name)
+        adapted_body = _adapt_body(raw_body) if raw_body else ""
 
         results.append({
             "pattern":     annotation_pattern,
             "method_name": method_name,
             "param_types": param_types,
             "py_regex":    py_regex,
+            "body":        adapted_body,
         })
     return results
 
@@ -436,29 +489,24 @@ def match_custom_step(step_text: str, custom_steps: list) -> Optional[dict]:
 
 def _custom_step_to_java(
     method_name: str,
-    param_types: list,
-    captured:    list,
+    body:        str,
     raw_step:    str,
 ) -> tuple[list[str], str]:
-    """Custom step için mySteps.method(args) çağrısı üretir."""
-    _INT_TYPES   = {'int', 'long', 'Integer', 'Long', 'short', 'Short', 'byte', 'Byte'}
-    _FLOAT_TYPES = {'float', 'double', 'Float', 'Double'}
-    _BOOL_TYPES  = {'boolean', 'Boolean'}
-
-    args: list[str] = []
-    for i, val in enumerate(captured):
-        ptype = param_types[i] if i < len(param_types) else 'String'
-        if ptype in _INT_TYPES:
-            args.append(val or '0')
-        elif ptype in _FLOAT_TYPES:
-            args.append(val or '0.0')
-        elif ptype in _BOOL_TYPES:
-            args.append(val or 'false')
-        else:
-            args.append(f'"{_je(val or "")}"')
-
-    call = f'mySteps.{method_name}({", ".join(args)});'
-    return ([f'// {raw_step}', call], "custom")
+    """
+    Custom step için method body'yi inline eder.
+    { } bloğu kullanarak değişken çakışmalarını önler.
+    """
+    if body:
+        lines = [
+            f'// ── {raw_step}',
+            f'// [{method_name}()]',
+            '{',
+            body,
+            '}',
+        ]
+    else:
+        lines = [f'// TODO (body çıkarılamadı): {raw_step}']
+    return (lines, "custom")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -492,7 +540,7 @@ def generate_bdd_java(
             cm = match_custom_step(step["text"], custom_steps)
             if cm:
                 java_lines, _ = _custom_step_to_java(
-                    cm["method_name"], cm["param_types"], cm["captured"], step["raw"]
+                    cm["method_name"], cm.get("body", ""), step["raw"]
                 )
                 code_blocks.append("\n".join(java_lines))
                 report.append({
