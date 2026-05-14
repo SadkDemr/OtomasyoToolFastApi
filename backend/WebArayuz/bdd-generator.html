@@ -26,6 +26,8 @@
 
         .gen-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 1024px) { .gen-layout { grid-template-columns: 1fr; } }
+        /* Grid hücrelerinin içerikle birlikte genişlemesini engelle */
+        .gen-layout > * { min-width: 0; }
 
         .gen-card {
             background: var(--bg-secondary); border: 1px solid var(--border-color);
@@ -153,7 +155,7 @@
         /* Çıktı */
         .output-panel { display: flex; flex-direction: column; gap: 16px; }
 
-        .script-viewer { background: #1e1e2e; border-radius: var(--radius-md); border: 1px solid #2d2d4a; overflow: hidden; }
+        .script-viewer { background: #1e1e2e; border-radius: var(--radius-md); border: 1px solid #2d2d4a; overflow: hidden; min-width: 0; }
         .script-viewer-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; background: #252540; border-bottom: 1px solid #2d2d4a; }
         .svh-left { display: flex; align-items: center; gap: 10px; }
         .svh-left span { font-size: 0.78rem; color: #8888aa; font-family: 'JetBrains Mono', monospace; }
@@ -162,7 +164,7 @@
         .header-btn:hover { background: #3d3d5a; color: #cdd6f4; }
         .header-btn.active { background: rgba(16,185,129,0.2); border-color: #10b981; color: #10b981; }
 
-        .script-code { padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.81rem; color: #cdd6f4; white-space: pre; overflow: auto; max-height: 560px; line-height: 1.7; }
+        .script-code { padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.81rem; color: #cdd6f4; white-space: pre; overflow-x: auto; overflow-y: auto; max-height: 560px; line-height: 1.7; max-width: 100%; box-sizing: border-box; }
         .script-edit-area { display: none; width: 100%; min-height: 460px; background: #1a1a2e; color: #cdd6f4; font-family: 'JetBrains Mono', monospace; font-size: 0.81rem; border: none; outline: none; resize: vertical; padding: 14px 16px; box-sizing: border-box; line-height: 1.7; border-top: 1px solid #2d2d4a; }
         .script-placeholder { padding: 60px 16px; text-align: center; color: #4a4a6a; font-size: 0.85rem; }
         .script-placeholder .bdd-icon { font-size: 2.5rem; display: block; margin-bottom: 10px; opacity: 0.4; }
@@ -238,21 +240,25 @@ Then I see homeScreen"></textarea>
 
                     <!-- Custom Steps Java -->
                     <div class="form-group">
-                        <label class="form-label">
-                            Custom Step Tanımları
-                            <span style="font-weight:400;opacity:0.6;">(opsiyonel · MySteps.java)</span>
-                        </label>
-                        <div class="file-drop-zone" id="javaDropZone">
-                            <input type="file" id="javaFileInput" accept=".java">
-                            ⚡ MySteps.java sürükle / <strong>tıkla</strong>
-                            <span style="display:block;font-size:0.7rem;opacity:0.6;margin-top:2px;">@And/@When/@Then adımları otomatik tanınır</span>
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                            <label class="form-label" style="margin:0;">
+                                Custom Step Tanımları
+                                <span style="font-weight:400;opacity:0.6;">(opsiyonel · MySteps.java)</span>
+                            </label>
+                            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                                <span id="javaLoadedInfo" style="display:none;font-size:0.72rem;color:#06b6d4;font-family:'JetBrains Mono',monospace;"></span>
+                                <label style="padding:3px 10px;font-size:0.73rem;border-radius:var(--radius-sm);border:1px solid var(--border-color);background:var(--bg-tertiary);color:var(--text-secondary);cursor:pointer;white-space:nowrap;transition:var(--transition);"
+                                    onmouseover="this.style.borderColor='var(--accent-primary)';this.style.color='var(--text-primary)'"
+                                    onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-secondary)'">
+                                    📁 Dosyadan Yükle
+                                    <input type="file" id="javaFileInput" accept=".java" style="display:none;">
+                                </label>
+                            </div>
                         </div>
-                        <div class="json-loaded-bar" id="javaLoadedBar" style="display:none;">
-                            <span>⚡</span>
-                            <span id="javaLoadedName" style="font-weight:600;"></span>
-                            <span id="javaLoadedInfo" style="opacity:0.7;"></span>
-                            <span class="close-btn" onclick="clearJavaFile()" title="Temizle">✕</span>
-                        </div>
+                        <textarea class="json-textarea" id="javaStepsTextarea"
+                            style="min-height:90px;max-height:200px;"
+                            placeholder="// MySteps.java içeriğini buraya yapıştırın&#10;// @And, @When, @Then annotasyonları otomatik tanınır"
+                            oninput="onJavaTextareaChange()"></textarea>
                     </div>
 
                     <!-- JSON Mapping -->
@@ -454,45 +460,28 @@ Then I see homeScreen"></textarea>
         updateGenerateBtn();
     };
 
-    // ── MySteps.java Dosya yükleme ────────────────────────────────────────
-    (function initJavaDrop() {
-        const zone = document.getElementById("javaDropZone");
-        const fi   = document.getElementById("javaFileInput");
-
-        zone.addEventListener("click",    () => fi.click());
-        zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag-over"); });
-        zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
-        zone.addEventListener("drop", e => {
-            e.preventDefault(); zone.classList.remove("drag-over");
-            const file = e.dataTransfer.files[0];
-            if (file) readJavaFile(file);
-        });
-        fi.addEventListener("change", e => {
-            if (e.target.files[0]) { readJavaFile(e.target.files[0]); e.target.value = ""; }
-        });
-    })();
-
-    function readJavaFile(file) {
-        if (!file.name.endsWith(".java")) {
-            Toast.error("Lütfen .java uzantılı bir dosya seçin");
-            return;
-        }
+    // ── MySteps.java Textarea ─────────────────────────────────────────────
+    document.getElementById("javaFileInput").addEventListener("change", function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
         const reader = new FileReader();
         reader.onload = ev => {
-            customStepsJava = ev.target.result;
-            document.getElementById("javaLoadedName").textContent = file.name;
-            document.getElementById("javaLoadedInfo").textContent = `· ${(file.size / 1024).toFixed(1)} KB`;
-            document.getElementById("javaLoadedBar").style.display = "flex";
-            document.getElementById("javaDropZone").style.display  = "none";
-            Toast.success(`"${file.name}" yüklendi — custom step'ler generate sırasında tanınacak`);
+            document.getElementById("javaStepsTextarea").value = ev.target.result;
+            onJavaTextareaChange();
+            Toast.success(`"${file.name}" yüklendi`);
         };
         reader.readAsText(file, "UTF-8");
-    }
+        e.target.value = "";
+    });
+
+    window.onJavaTextareaChange = function () {
+        customStepsJava = document.getElementById("javaStepsTextarea").value;
+    };
 
     window.clearJavaFile = function () {
         customStepsJava = "";
-        document.getElementById("javaLoadedBar").style.display = "none";
-        document.getElementById("javaDropZone").style.display  = "block";
+        document.getElementById("javaStepsTextarea").value = "";
+        document.getElementById("javaLoadedInfo").style.display = "none";
     };
 
     // ── Platform switch ──────────────────────────────────────────────────
@@ -759,8 +748,9 @@ Then I see homeScreen"></textarea>
             renderCode(generatedCode);
             if (data.report) renderStepReport(data.report);
             if (customStepsJava && data.custom_steps_count != null) {
-                document.getElementById("javaLoadedInfo").textContent =
-                    `· ${data.custom_steps_count} custom adım tanındı`;
+                const infoEl = document.getElementById("javaLoadedInfo");
+                infoEl.textContent = `⚡ ${data.custom_steps_count} custom adım`;
+                infoEl.style.display = "inline";
             }
             if (data.warnings && data.warnings.length) {
                 const todoSteps = (data.report || [])
@@ -1017,7 +1007,9 @@ Then I see homeScreen"></textarea>
         document.getElementById("pageMappingList").innerHTML = "";
         pageCounter = 0;
         clearBddFile();
-        clearJavaFile();
+        document.getElementById("javaStepsTextarea").value = "";
+        customStepsJava = "";
+        document.getElementById("javaLoadedInfo").style.display = "none";
         _resetOutput();
         updateCounter();
         updateGenerateBtn();
