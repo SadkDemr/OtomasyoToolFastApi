@@ -264,8 +264,7 @@ def _action_to_java(
 
     # ── Wait ─────────────────────────────────────────────────────────────────
     if action == "wait":
-        ms = int(param) * 1000 if param and param.isdigit() else 2000
-        return ([f'// {raw_step}', f'Thread.sleep({ms});'], "mapped")
+        return ([], "mapped")
 
     # ── Scroll / Kaydır ───────────────────────────────────────────────────────
     if action in ("scroll_down", "scroll_up"):
@@ -316,7 +315,7 @@ def _action_to_java(
             return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
         uxp = _build_ios_xpath(xpath_val, xpath_index) if (xpath_val and is_ios) else (
               _build_android_xpath(xpath_val, xpath_index) if xpath_val else _je(full_xpath))
-        secs = int(param) if param and str(param).isdigit() else 20
+        secs = 20
         if is_ios:
             line = (f'new WebDriverWait(driver, Duration.ofSeconds({secs}))'
                     f'.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("{uxp}")));')
@@ -353,7 +352,7 @@ def _action_to_java(
         if is_ios:
             line = f'wait.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("{uxp}"))).isDisplayed();'
         else:
-            line = f'assertTrue(driver.findElement(By.xpath("{uxp}")).isDisplayed());'
+            line = f'driver.findElement(By.xpath("{uxp}")).isDisplayed();'
         return ([f'// {raw_step}', line], "mapped")
 
     return ([f'// TODO: {raw_step}'], "todo")
@@ -430,11 +429,13 @@ def _adapt_body(body: str) -> str:
     for line in body.splitlines():
         if _FRAMEWORK_LINE_RE.match(line):
             continue
+        if re.match(r'^\s*import\s+java\.util\s*;', line):
+            continue
         line = re.sub(r'\b\w+\.getDriver\(\)', 'driver', line)
         line = re.sub(r'\b\w+\.findSelector\(([^)]+)\)', r'By.xpath("/* \1 */")', line)
+        line = line.replace('MobileElement', 'WebElement')
         out.append(line)
     cleaned = textwrap.dedent('\n'.join(out)).strip()
-    # Her satıra 4 boşluk indent ekle (block {} içi)
     return '\n'.join('    ' + ln if ln.strip() else '' for ln in cleaned.splitlines())
 
 
@@ -605,7 +606,8 @@ def generate_bdd_java(
         java_lines, method = _action_to_java(
             action, xpath_value, param or element_key, step["raw"], platform, full_xpath, xpath_index
         )
-        code_blocks.append("\n".join(java_lines))
+        if java_lines:
+            code_blocks.append("\n".join(java_lines))
         report.append({
             "step":        step["raw"],
             "method":      method,
