@@ -25,7 +25,8 @@ fi
 echo "$(date '+%Y-%m-%d %H:%M:%S') — Yeni commit bulundu: ${REMOTE:0:7}"
 echo "$(date '+%Y-%m-%d %H:%M:%S') — Pull yapılıyor..."
 
-git pull origin "$BRANCH" --quiet
+git fetch origin "$BRANCH" --quiet
+git reset --hard "origin/$BRANCH"
 
 # Yeni bağımlılık varsa yükle
 if git diff "$LOCAL" "$REMOTE" --name-only | grep -q "requirements.txt"; then
