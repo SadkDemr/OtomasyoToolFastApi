@@ -50,6 +50,7 @@ ACTION_MAP = {
     # Waits
     "wait": {
         "tr": "Bekle",
+        
         "en": "Wait",
         "params": ["seconds"],
         "selenium": "time.sleep({seconds})",
