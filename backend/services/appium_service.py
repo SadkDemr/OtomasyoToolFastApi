@@ -718,12 +718,8 @@ class AppiumService:
                 pass
 
     def show_keyboard(self):
-        """Klavyeyi göster"""
-        try:
-            cmd = [self.adb_path, "-s", self.current_device_id, "shell", "input", "keyevent", "62"]
-            subprocess.run(cmd, capture_output=True, timeout=2)
-        except:
-            pass
+        """Klavyeyi göster — element click zaten klavyeyi açar, ekstra keyevent gerekmez."""
+        pass
 
     def hide_keyboard(self):
         """Klavyeyi gizle"""
