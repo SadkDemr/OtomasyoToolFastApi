@@ -7,6 +7,14 @@ if not exist "venv" (
     exit /b 1
 )
 
+echo.
+echo GitHub'dan guncelleme cekiliyor...
+cd /d "%~dp0.."
+git pull
+cd /d "%~dp0"
+echo Guncelleme tamamlandi.
+echo.
+
 call venv\Scripts\activate.bat
 
 echo.
