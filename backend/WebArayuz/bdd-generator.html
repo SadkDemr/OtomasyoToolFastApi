@@ -180,6 +180,30 @@
         .step-badge.page   { background: rgba(99,102,241,0.12);  color: #6366f1; }
         .step-badge.todo   { background: rgba(245,158,11,0.12);  color: #f59e0b; }
         .step-badge.custom { background: rgba(6,182,212,0.12);   color: #06b6d4; }
+
+        /* Sayfa ipucu çubuğu */
+        .page-hint-bar {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+            padding: 7px 11px;
+            background: rgba(99,102,241,0.06);
+            border: 1px solid rgba(99,102,241,0.18);
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+        }
+        .page-hint-chip {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 8px; border-radius: 99px; font-size: 0.71rem; font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .page-hint-chip.ok      { background: rgba(16,185,129,0.12); color: #10b981; }
+        .page-hint-chip.missing { background: rgba(245,158,11,0.12);  color: #f59e0b; }
+        .btn-add-missing {
+            padding: 1px 7px; font-size: 0.69rem; border-radius: 99px;
+            border: 1px solid rgba(99,102,241,0.35); background: transparent;
+            color: var(--accent-primary); cursor: pointer; font-family: inherit;
+            transition: var(--transition); white-space: nowrap;
+        }
+        .btn-add-missing:hover { background: rgba(99,102,241,0.1); }
     </style>
 </head>
 <body>
@@ -236,6 +260,7 @@ Then I see homeScreen"></textarea>
                         <div class="textarea-footer">
                             <span class="textarea-counter" id="bddCounter">0 satır · 0 karakter</span>
                         </div>
+                        <div class="page-hint-bar" id="pageHintBar" style="display:none;"></div>
                     </div>
 
                     <!-- Custom Steps Java -->
@@ -444,6 +469,7 @@ Then I see homeScreen"></textarea>
             document.getElementById("bddLoadedName").textContent = file.name;
             document.getElementById("bddLoadedBar").style.display = "flex";
             document.getElementById("bddDropZone").style.display  = "none";
+            updatePageHints();
             Toast.success(`"${file.name}" yüklendi`);
         };
         reader.readAsText(file, "UTF-8");
@@ -458,6 +484,7 @@ Then I see homeScreen"></textarea>
         document.getElementById("javaFileName").textContent   = "BDDGeneratedTest.java";
         updateCounter();
         updateGenerateBtn();
+        updatePageHints();
     };
 
     // ── MySteps.java Textarea ─────────────────────────────────────────────
@@ -527,9 +554,57 @@ Then I see homeScreen"></textarea>
         document.getElementById("btnGenerate").disabled = !(hasText && hasMapping) || isGenerating;
     }
 
+    // ── Sayfa ipucu: feature'dan gerekli sayfa isimlerini çıkar ──────────
+    function parsePagesFromBdd(text) {
+        const pages = [];
+        const seen  = new Set();
+        const re    = /^[ \t]*(?:given|when|then|and|but|\*)\s+(?:i\s+)?see\s+(.+?)\s+page\s*$/gim;
+        let m;
+        while ((m = re.exec(text)) !== null) {
+            const p = m[1].trim();
+            if (p && !seen.has(p.toLowerCase())) {
+                seen.add(p.toLowerCase());
+                pages.push(p);
+            }
+        }
+        return pages;
+    }
+
+    function getLoadedPageNames() {
+        const names = new Set();
+        document.querySelectorAll(".page-mapping-item .page-name-input").forEach(inp => {
+            const v = inp.value.trim();
+            if (v) names.add(v.toLowerCase());
+        });
+        return names;
+    }
+
+    function updatePageHints() {
+        const bar     = document.getElementById("pageHintBar");
+        const bddText = document.getElementById("bddInput").value;
+        const pages   = parsePagesFromBdd(bddText);
+
+        if (pages.length === 0) { bar.style.display = "none"; return; }
+
+        const loaded = getLoadedPageNames();
+        const chips  = pages.map(p => {
+            const ok   = loaded.has(p.toLowerCase());
+            const safe = p.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+            if (ok) {
+                return `<span class="page-hint-chip ok">✓ ${p}</span>`;
+            }
+            return `<span class="page-hint-chip missing">⚠ ${p}</span>`
+                 + `<button class="btn-add-missing" onclick="addPageMapping('${safe}')">+ Ekle</button>`;
+        }).join(" ");
+
+        bar.innerHTML = `<span style="font-weight:600;color:var(--text-secondary);flex-shrink:0;">📄 Sayfalar:</span> ${chips}`;
+        bar.style.display = "flex";
+    }
+
     document.getElementById("bddInput").addEventListener("input", () => {
         updateCounter();
         updateGenerateBtn();
+        updatePageHints();
     });
 
     // ── Sayfa Mapping Yönetimi ────────────────────────────────────────────
@@ -544,7 +619,7 @@ Then I see homeScreen"></textarea>
         item.innerHTML = `
             <div class="page-mapping-header">
                 <input type="text" class="page-name-input" placeholder="sayfa adı (örn: ortak)"
-                    value="${pageName || ""}" oninput="updateGenerateBtn()">
+                    value="${pageName || ""}" oninput="updateGenerateBtn();updatePageHints()">
                 <button class="btn-remove-page" onclick="removePageMapping('${id}')">✕ Kaldır</button>
             </div>
             <div class="page-mapping-body">
@@ -592,12 +667,14 @@ Then I see homeScreen"></textarea>
         });
 
         updateGenerateBtn();
+        updatePageHints();
     };
 
     window.removePageMapping = function (id) {
         const el = document.getElementById(id);
         if (el) el.remove();
         updateGenerateBtn();
+        updatePageHints();
     };
 
     window.clearJsonFile = function (id) {

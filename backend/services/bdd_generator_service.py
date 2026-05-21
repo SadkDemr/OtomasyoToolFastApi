@@ -309,19 +309,18 @@ def _action_to_java(
             'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
         ], "mapped")
 
-    # ── Element görünene kadar bekle ─────────────────────────────────────────
+    # ── Element görünene kadar bekle (wait kullanılmaz, sade findElement) ───────
     if action == "wait_for_element":
         if xpath_val is None and full_xpath is None:
             return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
-        uxp = _build_ios_xpath(xpath_val, xpath_index) if (xpath_val and is_ios) else (
-              _build_android_xpath(xpath_val, xpath_index) if xpath_val else _je(full_xpath))
-        secs = 20
-        if is_ios:
-            line = (f'new WebDriverWait(driver, Duration.ofSeconds({secs}))'
-                    f'.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("{uxp}")));')
+        if xpath_val is not None:
+            uxp = _build_ios_xpath(xpath_val, xpath_index) if is_ios else _build_android_xpath(xpath_val, xpath_index)
         else:
-            line = (f'new WebDriverWait(driver, Duration.ofSeconds({secs}))'
-                    f'.until(ExpectedConditions.visibilityOfElementLocated(By.xpath("{uxp}")));')
+            uxp = _je(full_xpath)
+        if is_ios:
+            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).isDisplayed();'
+        else:
+            line = f'driver.findElement(By.xpath("{uxp}")).isDisplayed();'
         return ([f'// {raw_step}', line], "mapped")
 
     # ── Element gerektiren aksiyonlar ─────────────────────────────────────────
@@ -336,21 +335,21 @@ def _action_to_java(
 
     if action == "click":
         if is_ios:
-            line = f'wait.until(ExpectedConditions.elementToBeClickable(AppiumBy.xpath("{uxp}"))).click();'
+            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).click();'
         else:
             line = f'driver.findElement(By.xpath("{uxp}")).click();'
         return ([f'// {raw_step}', line], "mapped")
 
     if action == "clear":
         if is_ios:
-            line = f'wait.until(ExpectedConditions.elementToBeClickable(AppiumBy.xpath("{uxp}"))).clear();'
+            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).clear();'
         else:
             line = f'driver.findElement(By.xpath("{uxp}")).clear();'
         return ([f'// {raw_step}', line], "mapped")
 
     if action == "assert":
         if is_ios:
-            line = f'wait.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("{uxp}"))).isDisplayed();'
+            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).isDisplayed();'
         else:
             line = f'driver.findElement(By.xpath("{uxp}")).isDisplayed();'
         return ([f'// {raw_step}', line], "mapped")

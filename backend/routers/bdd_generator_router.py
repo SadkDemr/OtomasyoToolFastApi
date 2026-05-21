@@ -70,8 +70,6 @@ import io.appium.java_client.AppiumBy;
 import io.appium.java_client.ios.IOSDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.DesiredCapabilities;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
 import java.net.URL;
 import java.time.Duration;
 import java.util.Map;
@@ -91,7 +89,6 @@ IOSDriver driver = null;
 try {{
     driver = new IOSDriver(new URL("{appium}"), capabilities);
     driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(5));
-    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(20));
 
     {restart}
     Thread.sleep(2000);
@@ -194,8 +191,8 @@ async def _llm_fill_todos(todo_steps: List[str], platform: str) -> dict:
     is_ios = platform.lower() != "android"
     if is_ios:
         api_hint = (
-            'wait.until(ExpectedConditions.elementToBeClickable(AppiumBy.xpath("//*[@name=\'X\']"))).click();\n'
-            'wait.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("//*[@name=\'X\']"))).isDisplayed();\n'
+            'driver.findElement(AppiumBy.xpath("//*[@name=\'X\']")).click();\n'
+            'driver.findElement(AppiumBy.xpath("//*[@name=\'X\']")).isDisplayed();\n'
             'driver.executeScript("mobile: scroll", Map.of("direction", "down"));\n'
             'Thread.sleep(1000);'
         )
@@ -235,7 +232,7 @@ async def _llm_fill_todos(todo_steps: List[str], platform: str) -> dict:
         java_lines = [
             ln for ln in block.splitlines()
             if ln.strip().startswith("//")
-            or re.match(r'^\s*(wait|driver|Thread|assertTrue|assert|\{)', ln)
+            or re.match(r'^\s*(driver|Thread|assertTrue|assert|\{)', ln)
         ]
         result[step] = "\n".join(java_lines)
     return result
