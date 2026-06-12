@@ -517,8 +517,19 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
                     <div class="platform-params" id="params-desktop">
                         <div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:4px;">🖥️ Desktop Parametreleri</div>
                         <div class="form-group">
-                            <label class="form-label">Uygulama Yolu / Adı</label>
-                            <input type="text" class="form-input" id="desk-app" placeholder="C:\Program Files\App\app.exe veya notepad">
+                            <label class="form-label">Uygulama Yolu (.exe)</label>
+                            <input type="text" class="form-input" id="desk-app"
+                                placeholder="C:\Program Files\App\app.exe  (boş bırakılırsa başlatılmaz)">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Pencere Başlığı (opsiyonel)</label>
+                            <input type="text" class="form-input" id="desk-window"
+                                placeholder="Not Defteri  (pywinauto için pencereyi bulmak amacıyla)">
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 10px; background:rgba(79,70,229,0.05); border-radius:6px; line-height:1.6;">
+                            <strong>Gerekli kütüphaneler:</strong><br>
+                            <code>pip install pyautogui pywinauto pytesseract pillow</code><br>
+                            <span style="opacity:0.7;">pytesseract için Tesseract-OCR ayrıca kurulmalıdır.</span>
                         </div>
                     </div>
 
@@ -811,7 +822,8 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
             base.app_activity = document.getElementById("mob-activity").value;
             base.appium_url   = document.getElementById("mob-appium").value;
         } else if (selectedPlatform === "desktop") {
-            base.app_path = document.getElementById("desk-app").value;
+            base.app_path     = document.getElementById("desk-app").value;
+            base.window_title = document.getElementById("desk-window").value;
         }
         return base;
     }

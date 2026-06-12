@@ -9,6 +9,7 @@ AI Test Generator Router  v3  —  Hibrit Mimari
 import asyncio
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -43,6 +44,7 @@ class GenerateRequest(BaseModel):
     app_activity: Optional[str] = ""
     appium_url:   Optional[str] = "http://localhost:4723"
     app_path:     Optional[str] = ""
+    window_title: Optional[str] = ""
 
 class ExecuteRequest(BaseModel):
     script:   str
@@ -361,10 +363,83 @@ def _rule_web(step: str) -> list[str] | None:
     return None
 
 
+def _rule_desktop(step: str) -> list[str] | None:
+    """Türkçe / İngilizce desktop adımını pyautogui helper çağrılarına çevirir."""
+    s  = _clean_step(step)
+    if not s:
+        return None
+    sl     = s.lower()
+    quoted = _extract_quoted(s)
+
+    CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap|se[çc]|dokun)'
+    INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b)'
+    ASSERT_WORDS = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|görünmeli|bekleniyor)'
+
+    # ── Kısayol tuşu: "Ctrl+S" bas ───────────────────────────────────────────
+    hk = re.match(r'^["\']([^"\']+)["\']\s*(?:bas|kısayol|hotkey|tu[sş])$', s, re.IGNORECASE)
+    if hk:
+        keys = "', '".join(hk.group(1).lower().replace(' ', '').split('+'))
+        return [f'# {s}', f"_pag.hotkey('{keys}')", 'time.sleep(0.3)']
+
+    # ── Enter / Tab / Escape ──────────────────────────────────────────────────
+    if re.search(r'\benter\b', sl):
+        return [f'# {s}', '_pag.press("enter")', 'time.sleep(0.3)']
+    if re.search(r'\btab\b', sl):
+        return [f'# {s}', '_pag.press("tab")',   'time.sleep(0.2)']
+    if re.search(r'\bescape|esc\b', sl):
+        return [f'# {s}', '_pag.press("esc")',   'time.sleep(0.2)']
+
+    # ── Tıklama ───────────────────────────────────────────────────────────────
+    if re.search(CLICK_WORDS, sl) and quoted:
+        text = quoted[0]
+        return [f'# {s}', f"_safe_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
+
+    # ── Doğrulama ─────────────────────────────────────────────────────────────
+    if re.search(ASSERT_WORDS, sl) and quoted:
+        text = quoted[0]
+        return [f'# {s}', f"_safe_assert_desktop('{text}')"]
+
+    # ── Metin girişi ──────────────────────────────────────────────────────────
+    if re.search(INPUT_WORDS, sl) and quoted:
+        value = quoted[-1]
+        return [f'# {s}', f"_safe_type_desktop('{value}')", 'time.sleep(0.3)']
+
+    # ── Bekleme ───────────────────────────────────────────────────────────────
+    if re.search(r'(?:bekle|wait|sleep)', sl):
+        m = re.search(r'(\d+)', s)
+        return [f'# {s}', f'time.sleep({m.group(1) if m else "1"})']
+
+    # ── Kaydırma ─────────────────────────────────────────────────────────────
+    if re.search(r'(?:a[sş]a[gğ]|scroll\s*down|swipe\s*down)', sl):
+        return [f'# {s}', '_pag.scroll(-5)', 'time.sleep(0.3)']
+    if re.search(r'(?:yukar[iı]|scroll\s*up|swipe\s*up)', sl):
+        return [f'# {s}', '_pag.scroll(5)',  'time.sleep(0.3)']
+
+    # ── Ekran görüntüsü ───────────────────────────────────────────────────────
+    if re.search(r'ekran\s*g[oö]r[uü]nt[uü]s[uü]|screenshot', sl):
+        return [f'# {s}', f'_pag.screenshot(f"screenshot_{{int(time.time())}}.png")', 'print("[OK] Ekran görüntüsü alındı")']
+
+    # ── Pencere odakla ────────────────────────────────────────────────────────
+    if re.search(r'(?:pencere|window|odakla|focus|aktif)', sl) and quoted:
+        title = quoted[0]
+        return [
+            f'# {s}',
+            f'if _PW_OK:',
+            f'    try:',
+            f'        _PwApp(backend="uia").connect(title_re=".*{title}.*", timeout=5).top_window().set_focus()',
+            f'        print("[OK] Pencere odaklandı: {title}")',
+            f'    except Exception as _fe: print(f"[WARN] Pencere bulunamadı: {{_fe}}")',
+        ]
+
+    return None
+
+
 def _llm_fallback_steps_prompt(unrecognized: list[str], platform: str) -> str:
     """Kural motorunun tanıyamadığı adımlar için LLM prompt'u."""
     if platform == "mobile":
         api = "AppiumBy.XPATH, '//*[@text=\"X\"]'"
+    elif platform == "desktop":
+        api = "_safe_click_desktop('X') | _safe_type_desktop('X') | _safe_assert_desktop('X') | _pag.hotkey('ctrl','x')"
     else:
         api = "By.XPATH, '//*[contains(text(),\"X\")]'"
 
@@ -930,6 +1005,213 @@ def _safe_assert_web(driver, text):
 '''
 
 
+DESKTOP_HELPER = '''
+import pyautogui as _pag
+import subprocess as _dsproc
+import time, base64 as _b64, requests as _req, re as _re3, io as _io
+
+_pag.FAILSAFE = True
+_pag.PAUSE    = 0.25
+
+# ── Opsiyonel bağımlılıklar ───────────────────────────────────────────────────
+try:
+    import pytesseract as _tess
+    from PIL import Image as _PILImg
+    _TESS_OK = True
+except ImportError:
+    _TESS_OK = False
+    print("[DESKTOP] pytesseract yüklü değil — OCR devre dışı")
+
+try:
+    from pywinauto import Application as _PwApp
+    from pywinauto.findwindows import ElementNotFoundError as _PwNotFound
+    _PW_OK = True
+except ImportError:
+    _PW_OK = False
+    print("[DESKTOP] pywinauto yüklü değil — pencere kontrolü devre dışı")
+
+
+def _screenshot_b64():
+    shot = _pag.screenshot()
+    buf  = _io.BytesIO()
+    shot.save(buf, format="PNG")
+    return _b64.b64encode(buf.getvalue()).decode()
+
+
+def _vision_find_desktop(search_text):
+    """Gemini veya Ollama ile ekranda koordinat bul. (x, y) veya (None, None) döner."""
+    try:
+        shot_b64 = _screenshot_b64()
+        try:
+            import json as _js, pathlib as _pl
+            cfg = {}
+            _cp = _pl.Path(_AI_CONFIG_PATH) if "_AI_CONFIG_PATH" in dir() else None
+            if _cp and _cp.exists():
+                cfg = _js.loads(_cp.read_text(encoding="utf-8"))
+            gemini_key = cfg.get("gemini_api_key", "")
+        except Exception:
+            gemini_key = ""
+
+        _prompt = (f"Windows masaüstü ekranında \'{search_text}\' yazan veya "
+                   f"gösteren tıklanabilir elementi bul. Yanıtı sadece: x=NNN y=NNN")
+
+        if gemini_key:
+            resp = _req.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+                json={"contents": [{"parts": [
+                    {"text": _prompt},
+                    {"inline_data": {"mime_type": "image/png", "data": shot_b64}}
+                ]}]},
+                timeout=15
+            )
+            answer = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            resp = _req.post("http://localhost:11434/api/generate", json={
+                "model": "gemma3:4b", "prompt": _prompt,
+                "images": [shot_b64], "stream": False
+            }, timeout=30)
+            answer = resp.json().get("response", "")
+
+        mx = _re3.search(r"x[=:\s]*(\d+)", answer, _re3.IGNORECASE)
+        my = _re3.search(r"y[=:\s]*(\d+)", answer, _re3.IGNORECASE)
+        if mx and my:
+            x, y = int(mx.group(1)), int(my.group(1))
+            print(f"[VISION] Koordinat: ({x}, {y})")
+            return x, y
+        print(f"[VISION] Koordinat bulunamadı — yanıt: {answer[:80]}")
+    except Exception as _ve:
+        print(f"[VISION] Hata: {_ve}")
+    return None, None
+
+
+def _get_active_window():
+    """Aktif pencereyi pywinauto ile döndür."""
+    if not _PW_OK:
+        return None
+    try:
+        import ctypes
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        return _PwApp(backend="uia").connect(handle=hwnd).top_window()
+    except Exception:
+        return None
+
+
+def _safe_click_desktop(target, window_title=""):
+    """
+    Desktop tıklama — 4 strateji:
+    1. pywinauto pencere içi element
+    2. pytesseract OCR koordinatı
+    3. pyautogui.locateOnScreen() görsel eşleşme
+    4. Gemini / Ollama vision
+    """
+    print(f"[CLICK] \'{target}\' aranıyor...")
+
+    # 1. pywinauto ─────────────────────────────────────────────────────────────
+    if _PW_OK:
+        try:
+            if window_title:
+                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=5).top_window()
+            else:
+                _win = _get_active_window()
+
+            if _win:
+                for _ctrl in [
+                    lambda: _win.child_window(title=target, found_index=0),
+                    lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
+                    lambda: _win.child_window(auto_id=target, found_index=0),
+                ]:
+                    try:
+                        _el = _ctrl()
+                        if _el.exists(timeout=2):
+                            _el.set_focus()
+                            _el.click_input()
+                            print(f"[OK] pywinauto: \'{target}\'")
+                            return True
+                    except Exception:
+                        continue
+        except Exception as _e:
+            print(f"[CLICK] pywinauto başarısız: {_e}")
+
+    # 2. OCR ──────────────────────────────────────────────────────────────────
+    if _TESS_OK:
+        try:
+            shot = _pag.screenshot()
+            data = _tess.image_to_data(shot, lang="tur+eng", output_type=_tess.Output.DICT)
+            _tl  = target.lower()
+            for _i, _w in enumerate(data["text"]):
+                if _w and _tl in _w.lower() and data["conf"][_i] > 30:
+                    _cx = data["left"][_i] + data["width"][_i]  // 2
+                    _cy = data["top"][_i]  + data["height"][_i] // 2
+                    _pag.click(_cx, _cy)
+                    print(f"[OK] OCR: \'{_w}\' @ ({_cx},{_cy})")
+                    return True
+        except Exception as _e:
+            print(f"[CLICK] OCR başarısız: {_e}")
+
+    # 3. locateOnScreen (görsel dosya yoluysa) ──────────────────────────────────
+    import os as _os2
+    if _os2.path.isfile(target):
+        try:
+            loc = _pag.locateCenterOnScreen(target, confidence=0.8)
+            if loc:
+                _pag.click(loc)
+                print(f"[OK] Görsel eşleşme: {target}")
+                return True
+        except Exception as _e:
+            print(f"[CLICK] locateOnScreen başarısız: {_e}")
+
+    # 4. Vision AI ─────────────────────────────────────────────────────────────
+    print(f"[VISION] \'{target}\' için AI analiz...")
+    _vx, _vy = _vision_find_desktop(target)
+    if _vx and _vy:
+        _pag.click(_vx, _vy)
+        print(f"[OK] Vision: \'{target}\' @ ({_vx},{_vy})")
+        return True
+
+    raise Exception(f"Element bulunamadı: \'{target}\'")
+
+
+def _safe_type_desktop(text):
+    """Aktif alana metin yaz (pyautogui write)."""
+    print(f"[TYPE] \'{text}\'")
+    _pag.write(str(text), interval=0.04)
+    time.sleep(0.2)
+
+
+def _safe_assert_desktop(target):
+    """Ekranda element / metin doğrula."""
+    print(f"[ASSERT] \'{target}\' kontrol ediliyor...")
+
+    # pywinauto
+    if _PW_OK:
+        try:
+            _win = _get_active_window()
+            if _win:
+                _el = _win.child_window(title_re=f".*{target}.*", found_index=0)
+                if _el.exists(timeout=3):
+                    print(f"[OK] pywinauto: \'{target}\'"); return
+        except Exception:
+            pass
+
+    # OCR
+    if _TESS_OK:
+        try:
+            shot = _pag.screenshot()
+            _txt = _tess.image_to_string(shot, lang="tur+eng")
+            if target.lower() in _txt.lower():
+                print(f"[OK] OCR: \'{target}\'"); return
+        except Exception:
+            pass
+
+    # Vision
+    _vx, _vy = _vision_find_desktop(target)
+    if _vx and _vy:
+        print(f"[OK] Vision: \'{target}\'"); return
+
+    print(f"[WARN] \'{target}\' ekranda bulunamadı — adım geçiliyor")
+'''
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BÖLÜM 3: ŞABLONLAR
 # ══════════════════════════════════════════════════════════════════════════════
@@ -970,10 +1252,21 @@ time.sleep(3)
         "from appium.webdriver.common.appiumby import AppiumBy",
         "from selenium.webdriver.support.ui import WebDriverWait",
         "from selenium.webdriver.support import expected_conditions as EC",
-        "import time",
+        "import time, socket",
         "",
         f'_DEVICE_ID = "{device}"  # ADB komutları için cihaz ID',
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
+        "",
+        "# ── Appium bağlantı kontrolü ─────────────────────────────────",
+        f'_appium_host = "{appium.split("//")[-1].split("/")[0]}"',
+        f'_appium_port = {appium.rstrip("/").split(":")[-1] if ":" in appium.split("//")[-1] else 4723}',
+        "try:",
+        "    _s = socket.create_connection((_appium_host.split(':')[0], _appium_port), timeout=3)",
+        "    _s.close()",
+        "except OSError:",
+        f'    print(f"[HATA] Appium sunucusu {appium} adresinde çalışmıyor!")',
+        '    print("[HATA] Lütfen terminalde \\"appium\\" komutunu çalıştırın.")',
+        "    raise SystemExit(1)",
         "",
         VISION_HELPER,
         "",
@@ -987,6 +1280,8 @@ time.sleep(3)
         f'options.platform_name = "Android"',
         f'options.device_name   = "{device}"',
     ] + caps.splitlines() + [
+        "options.set_capability('skipServerInstallation', True)   # UiAutomator2 APK zaten kuruluysa yeniden yükleme",
+        "options.set_capability('skipDeviceInitialization', True) # Cihaz init adımlarını atla",
         "",
         f'print("Appium baglaniyor: {appium}")',
         f'driver = webdriver.Remote("{appium}", options=options)',
@@ -1077,6 +1372,11 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
         "",
         driver_setup,
         "",
+        "# ── Tarayıcı başlatılamadıysa net hata ver ───────────────────",
+        "if 'driver' not in dir():",
+        '    print("[HATA] Tarayıcı sürücüsü başlatılamadı. Chrome/Firefox kurulu mu?")',
+        "    raise SystemExit(1)",
+        "",
         VISION_HELPER_WEB,
         "",
         "driver.maximize_window()",
@@ -1106,6 +1406,64 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
     return "\n".join(lines)
 
 
+def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
+    app_path     = (req.app_path     or "").strip()
+    window_title = (req.window_title or "").strip()
+
+    # Escape backslashes so Windows paths don't cause unicode escape SyntaxError
+    app_path_esc     = app_path.replace('\\', '\\\\')
+    window_title_esc = window_title.replace('\\', '\\\\')
+
+    lines = [
+        "# -*- coding: utf-8 -*-",
+        "import pyautogui as _pag",
+        "import subprocess as _dsproc",
+        "import time",
+        "",
+        f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
+        f'_WINDOW_TITLE   = "{window_title_esc}"',
+        "",
+        DESKTOP_HELPER,
+        "",
+    ]
+
+    # Uygulama başlat
+    if app_path:
+        lines += [
+            f'# ── Uygulama başlat ─────────────────────────────────────────',
+            f'print("Başlatılıyor: {app_path_esc}")',
+            f'_app_proc = _dsproc.Popen([r"{app_path}"])',
+            'time.sleep(2)',
+            '',
+        ]
+
+    # Pencereyi öne getir
+    if window_title:
+        lines += [
+            f'# ── Pencereyi öne getir ─────────────────────────────────────',
+            'if _PW_OK:',
+            '    try:',
+            f'        _PwApp(backend="uia").connect(title_re=".*{window_title_esc}.*", timeout=10).top_window().set_focus()',
+            f'        print("[OK] Pencere: {window_title_esc}")',
+            '    except Exception as _we:',
+            '        print(f"[WARN] Pencere bulunamadı: {{_we}}")',
+            '',
+        ]
+
+    lines += ["try:"]
+    for line in steps_code.splitlines():
+        lines.append("    " + line if line.strip() else "")
+
+    lines += [
+        "",
+        "except Exception as e:",
+        '    print(f"HATA: {e}")',
+        "    raise",
+    ]
+
+    return "\n".join(lines)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BÖLÜM 4: ANA DÖNÜŞÜM MOTORU
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1116,7 +1474,11 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
     Döndürür: (kod_str, adım_raporu)
     adım_raporu: [{"step": "...", "method": "rule|llm|todo", "code": "..."}]
     """
-    rule_fn = _rule_mobile if req.platform == "mobile" else _rule_web
+    rule_fn = (
+        _rule_mobile  if req.platform == "mobile"  else
+        _rule_desktop if req.platform == "desktop" else
+        _rule_web
+    )
 
     code_lines   = []
     unrecognized = []
@@ -1174,6 +1536,17 @@ async def _ask_llm_for_steps(steps: list[str], platform: str) -> dict[str, str]:
             "  _safe_click(driver, 'text')  — click by visible text\n"
             "  _safe_input(driver, '//android.widget.EditText[1]', 'value')  — type text\n"
             "  _safe_assert(driver, 'text')  — verify element visible"
+        )
+    elif platform == "desktop":
+        api_note = (
+            "Use ONLY these helpers (pyautogui-based desktop automation):\n"
+            "  _safe_click_desktop('text', _WINDOW_TITLE)  — click element by visible text (pywinauto → OCR → vision)\n"
+            "  _safe_type_desktop('value')                 — type text into active field\n"
+            "  _safe_assert_desktop('text')                — verify text/element on screen\n"
+            "  _pag.hotkey('ctrl', 's')                    — keyboard shortcut\n"
+            "  _pag.press('enter')                         — press a key\n"
+            "  _pag.scroll(-3)                             — scroll down\n"
+            "  time.sleep(1)                               — wait"
         )
     else:
         api_note = (
@@ -1308,12 +1681,11 @@ async def ollama_status():
 @router.get("/adb/devices")
 async def adb_devices(current_user: User = Depends(get_current_user)):
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "adb", "devices",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        result = await asyncio.to_thread(
+            subprocess.run, ["adb", "devices"],
+            capture_output=True, timeout=10
         )
-        stdout, _ = await proc.communicate()
-        lines   = stdout.decode("utf-8", errors="replace").strip().splitlines()
+        lines   = result.stdout.decode("utf-8", errors="replace").strip().splitlines()
         devices = [l.split("\t")[0].strip() for l in lines[1:] if "\t" in l and "device" in l.split("\t")[1]]
         return {"devices": devices}
     except FileNotFoundError:
@@ -1323,13 +1695,12 @@ async def adb_devices(current_user: User = Depends(get_current_user)):
 @router.get("/adb/activity")
 async def adb_get_activity(device_id: str, app_package: str, current_user: User = Depends(get_current_user)):
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "adb", "-s", device_id, "shell", "cmd", "package",
-            "resolve-activity", "--brief", app_package,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["adb", "-s", device_id, "shell", "cmd", "package", "resolve-activity", "--brief", app_package],
+            capture_output=True, timeout=10
         )
-        stdout, _ = await proc.communicate()
-        output = stdout.decode("utf-8", errors="replace").strip()
+        output = result.stdout.decode("utf-8", errors="replace").strip()
         for line in output.splitlines():
             if "/" in line and app_package in line:
                 activity = line.split("/", 1)[1].strip()
@@ -1356,7 +1727,7 @@ async def generate_script(req: GenerateRequest, current_user: User = Depends(get
     elif req.platform == "web":
         final_script = _build_web_template(req, steps_code)
     else:
-        final_script = f"# Desktop desteği yakında\nprint('Desktop: {req.app_path}')\nimport time\ntime.sleep(2)\n"
+        final_script = _build_desktop_template(req, steps_code)
 
     todo_steps = [r for r in report if r["method"] == "todo"]
     warnings   = [f"Anlaşılamayan adım: {r['step']}" for r in todo_steps]
@@ -1387,20 +1758,22 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
         yield _sse("info", f"Platform: {req.platform}")
         yield _sse("info", "Kosum baslatiliyor...\n")
 
+        proc = None
         try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, tmp,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+            proc = subprocess.Popen(
+                [sys.executable, tmp],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
             )
+            loop = asyncio.get_event_loop()
             while True:
-                line = await proc.stdout.readline()
+                line = await loop.run_in_executor(None, proc.stdout.readline)
                 if not line:
                     break
                 yield _sse("log", line.decode("utf-8", errors="replace").rstrip())
 
-            await proc.wait()
+            await loop.run_in_executor(None, proc.wait)
             rc = proc.returncode
             if rc == 0:
                 yield _sse("success", f"\nKosum tamamlandi. (exit: {rc})")
@@ -1409,6 +1782,8 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
         except Exception as e:
             yield _sse("error", str(e))
         finally:
+            if proc and proc.poll() is None:
+                proc.terminate()
             try:
                 os.unlink(tmp)
             except Exception:
