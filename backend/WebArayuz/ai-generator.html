@@ -8,7 +8,13 @@
     <link rel="stylesheet" href="css/style.css">
     <style>
         /* ── Sayfa özgü stiller ── */
-        .page-content { padding: 24px; max-width: 1200px; }
+        .page-content {
+            padding: 24px;
+            width: 100%;
+            max-width: 1400px;
+            box-sizing: border-box;
+            overflow-x: hidden;
+        }
 
         /* Durum bandı */
         .status-bar {
@@ -32,7 +38,7 @@
         /* İki sütunlu ana layout */
         .gen-layout {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: 20px;
         }
         @media (max-width: 900px) { .gen-layout { grid-template-columns: 1fr; } }
@@ -46,6 +52,8 @@
             display: flex;
             flex-direction: column;
             gap: 18px;
+            min-width: 0;
+            overflow: hidden;
         }
         .gen-card-title {
             font-weight: 600;
@@ -109,13 +117,6 @@
             border-color: var(--accent-primary);
             box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
         }
-        .form-textarea {
-            resize: vertical;
-            min-height: 160px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            line-height: 1.6;
-        }
 
         /* Platform params bölümü */
         .platform-params {
@@ -170,6 +171,8 @@
             display: flex;
             flex-direction: column;
             gap: 16px;
+            min-width: 0;
+            overflow: hidden;
         }
 
         /* Script görüntüleyici */
@@ -178,6 +181,8 @@
             border-radius: var(--radius-md);
             border: 1px solid #2d2d4a;
             overflow: hidden;
+            min-width: 0;
+            width: 100%;
         }
         .script-viewer-header {
             display: flex;
@@ -186,17 +191,21 @@
             padding: 10px 14px;
             background: #252540;
             border-bottom: 1px solid #2d2d4a;
+            gap: 8px;
         }
-        .script-viewer-header span { font-size: 0.8rem; color: #8888aa; font-family: 'JetBrains Mono', monospace; }
+        .script-viewer-header span { font-size: 0.8rem; color: #8888aa; font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .script-code {
             padding: 16px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.82rem;
             color: #cdd6f4;
             white-space: pre;
-            overflow: auto;
-            max-height: 380px;
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 400px;
             line-height: 1.7;
+            width: 100%;
+            box-sizing: border-box;
         }
         .script-placeholder {
             padding: 40px 16px;
@@ -260,9 +269,12 @@
             color: #c9d1d9;
             min-height: 200px;
             max-height: 340px;
+            overflow-x: hidden;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
+            width: 100%;
+            box-sizing: border-box;
         }
         .log-line { margin-bottom: 1px; }
         .log-line.info    { color: #79c0ff; }
@@ -282,60 +294,6 @@
             font-weight: 600;
             background: rgba(79,70,229,0.12);
             color: var(--accent-primary);
-        }
-
-        /* Dosya yükleme */
-        .file-drop-zone {
-            border: 2px dashed var(--border-color);
-            border-radius: var(--radius-md);
-            padding: 16px 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: var(--transition);
-            color: var(--text-muted);
-            font-size: 0.85rem;
-        }
-        .file-drop-zone:hover, .file-drop-zone.drag-over {
-            border-color: var(--accent-primary);
-            background: rgba(79,70,229,0.04);
-            color: var(--accent-primary);
-        }
-        .file-drop-zone input { display: none; }
-
-        /* Yüklenen dosya bilgisi */
-        .file-loaded-bar {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 7px 12px;
-            background: rgba(16,185,129,0.08);
-            border: 1px solid rgba(16,185,129,0.25);
-            border-radius: var(--radius-sm);
-            font-size: 0.8rem;
-            color: var(--success);
-            margin-top: -8px;
-        }
-        .file-loaded-bar .file-close {
-            margin-left: auto;
-            cursor: pointer;
-            opacity: 0.6;
-            font-size: 1rem;
-            line-height: 1;
-        }
-        .file-loaded-bar .file-close:hover { opacity: 1; }
-
-        /* Textarea alt bilgi çubuğu */
-        .textarea-footer {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            gap: 12px;
-            margin-top: -12px;
-        }
-        .textarea-counter {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            font-family: 'JetBrains Mono', monospace;
         }
 
         /* Sıfırla butonu */
@@ -375,6 +333,245 @@
         .step-badge.rule { background: rgba(16,185,129,0.12); color: #10b981; }
         .step-badge.llm  { background: rgba(59,130,246,0.12); color: #3b82f6; }
         .step-badge.todo { background: rgba(245,158,11,0.12);  color: #f59e0b; }
+
+        /* ── Step List ── */
+        .step-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-add-step {
+            padding: 7px 14px;
+            border: 1px dashed var(--border-color);
+            border-radius: var(--radius-md);
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-add-step:hover { border-color: var(--accent-primary); color: var(--accent-primary); border-style: solid; }
+        .btn-add-step.img-btn { border-color: rgba(16,185,129,0.4); color: #10b981; }
+        .btn-add-step.img-btn:hover { border-color: #10b981; background: rgba(16,185,129,0.05); }
+        .btn-import-file {
+            margin-left: auto;
+            padding: 5px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.78rem;
+            transition: var(--transition);
+        }
+        .btn-import-file:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-height: 80px;
+            max-height: 380px;
+            overflow-x: hidden;
+            overflow-y: auto;
+            width: 100%;
+        }
+        .step-empty {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+            padding: 28px 16px;
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius-md);
+            line-height: 1.7;
+        }
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .step-item.running { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+        .step-item.done    { border-color: #10b981; background: rgba(16,185,129,0.05); }
+        .step-item.fail    { border-color: #ef4444; background: rgba(239,68,68,0.05); }
+        .step-num {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 16px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .step-type-badge {
+            padding: 2px 7px;
+            border-radius: 99px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .step-type-badge.text  { background: rgba(79,70,229,0.12); color: var(--accent-primary); }
+        .step-type-badge.image { background: rgba(16,185,129,0.12); color: #10b981; }
+        .step-content-input {
+            flex: 1;
+            padding: 4px 6px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            outline: none;
+            min-width: 0;
+        }
+        .step-content-input:focus { border-bottom-color: var(--accent-primary); }
+        .step-img-thumb {
+            height: 32px;
+            width: 52px;
+            object-fit: cover;
+            border-radius: 3px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .step-img-thumb:hover { border-color: #10b981; }
+        .step-img-placeholder {
+            font-size: 0.78rem;
+            color: #10b981;
+            cursor: pointer;
+            flex: 1;
+            text-decoration: underline;
+            text-decoration-style: dashed;
+        }
+        .step-status {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+        .step-status.running { color: #3b82f6; animation: stepPulse 1s ease-in-out infinite; }
+        .step-status.done    { color: #10b981; }
+        .step-status.fail    { color: #ef4444; }
+        @keyframes stepPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        .step-del-btn {
+            padding: 2px 5px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.85rem;
+            opacity: 0.4;
+            flex-shrink: 0;
+            line-height: 1;
+            border-radius: 3px;
+        }
+        .step-del-btn:hover { opacity: 1; color: var(--danger); background: rgba(239,68,68,0.08); }
+
+        /* ── Modals ── */
+        .ai-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .countdown-num {
+            font-size: 6rem;
+            font-weight: 800;
+            text-align: center;
+            color: var(--accent-primary);
+            line-height: 1;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .crop-canvas-wrap {
+            overflow: auto;
+            max-height: 70vh;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+        }
+        #cropCanvas { cursor: crosshair; display: block; }
+
+        /* Kaydet butonu */
+        .btn-save {
+            padding: 12px 18px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-save:hover:not(:disabled) { border-color: #10b981; color: #10b981; }
+        .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        /* Senaryo listesi modal */
+        .scenario-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            transition: border-color 0.2s;
+        }
+        .scenario-item:hover { border-color: var(--accent-primary); }
+        .scenario-item-name { flex: 1; font-size: 0.88rem; color: var(--text-primary); }
+        .btn-scenario-load {
+            padding: 5px 12px;
+            background: rgba(79,70,229,0.1);
+            color: var(--accent-primary);
+            border: 1px solid var(--accent-primary);
+            border-radius: var(--radius-sm);
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-scenario-del {
+            padding: 5px 10px;
+            background: rgba(239,68,68,0.06);
+            color: var(--danger);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: var(--radius-sm);
+            font-size: 0.78rem;
+            cursor: pointer;
+        }
+        .scenario-list-body {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            max-height: 380px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -386,7 +583,7 @@
             <div class="header-left">
                 <h1 class="page-title">🤖 AI Test Generator</h1>
                 <p style="margin:6px 0 0; color:var(--text-muted); font-size:0.9rem;">
-                    Test case'ini yapıştır → Platform seç → AI scriptini üret → Çalıştır
+                    Adımları ekle → Platform seç → Script üret → Çalıştır
                 </p>
             </div>
             <div class="header-right">
@@ -408,43 +605,23 @@
                 <!-- SOL: GİRİŞ PANELİ -->
                 <div class="gen-card">
                     <div class="gen-card-title">
-                        📋 Test Case Girişi
+                        📋 Senaryo Adımları
+                        <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+                            <button class="btn-import-file" onclick="openScenarios()" title="Kaydedilmiş senaryoları aç">📂 Senaryolar</button>
+                            <button class="btn-import-file" onclick="document.getElementById('fileImportInput').click()" title="Dosyadan adım içe aktar (her satır = 1 metin adımı)">📁 Dosyadan</button>
+                            <input type="file" id="fileImportInput" accept=".txt,.csv,.xlsx,.xls,.md" style="display:none">
+                        </span>
                     </div>
 
-                    <!-- Test Case Metin Girişi -->
-                    <div class="form-group">
-                        <label class="form-label">Test Case Metni</label>
-                        <textarea
-                            class="form-textarea"
-                            id="testCaseInput"
-                            placeholder="Test case'ini buraya yapıştır...
-
-Örnek:
-Adım 1: Tarayıcıyı aç
-Adım 2: https://example.com adresine git
-Adım 3: Kullanıcı adı alanına 'admin' yaz
-Adım 4: Şifre alanına '12345' yaz
-Adım 5: Giriş butonuna tıkla
-Adım 6: 'Hoş geldiniz' yazısını doğrula"
-                            rows="8"
-                        ></textarea>
-                        <div class="textarea-footer">
-                            <span class="textarea-counter" id="tcCounter">0 satır · 0 karakter</span>
-                        </div>
+                    <!-- Step Araç Çubuğu -->
+                    <div class="step-toolbar">
+                        <button class="btn-add-step" onclick="addTextStep()">＋ Metin Adımı</button>
+                        <button class="btn-add-step img-btn" id="btnAddImage" onclick="addImageStep()" style="display:none;">📷 Görsel Adım</button>
                     </div>
 
-                    <!-- Dosyadan Yükle -->
-                    <div class="file-drop-zone" id="dropZone">
-                        <input type="file" id="fileInput" accept=".txt,.csv,.xlsx,.xls,.md">
-                        <div>📁 Dosya sürükle bırak veya <strong>tıkla</strong><br>
-                            <span style="font-size:0.75rem; opacity:0.7;">.xlsx · .xls · .csv · .txt · .md</span>
-                        </div>
-                    </div>
-                    <div class="file-loaded-bar" id="fileLoadedBar" style="display:none;">
-                        <span>✓</span>
-                        <span id="fileLoadedName" style="font-weight:600;"></span>
-                        <span id="fileLoadedInfo" style="opacity:0.7;"></span>
-                        <span class="file-close" onclick="clearLoadedFile()" title="Temizle">✕</span>
+                    <!-- Step Listesi -->
+                    <div class="step-list" id="stepList">
+                        <div class="step-empty">Henüz adım yok.<br>Yukarıdaki butonlarla <strong>Metin</strong> veya <strong>Görsel</strong> adım ekleyin.</div>
                     </div>
 
                     <!-- Platform Seçimi -->
@@ -493,7 +670,7 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
                                 <input type="text" class="form-input" id="mob-device" placeholder="emulator-5554 veya RF8N12ABCDE" style="flex:1;">
                                 <button onclick="loadAdbDevices()" style="padding:8px 12px; border:1px solid var(--border-color); border-radius:var(--radius-sm); background:var(--bg-primary); color:var(--text-secondary); cursor:pointer; white-space:nowrap; font-size:0.8rem;" title="ADB cihazlarını listele">🔍 ADB</button>
                             </div>
-                            <div id="adb-device-list" style="display:none; margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;"></div>
+                            <div id="adb-device-list" style="display:none; margin-top:6px; flex-wrap:wrap; gap:6px;"></div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">App Package</label>
@@ -544,6 +721,42 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
                         Adım 4: "Hesabım" yazısının göründüğünü doğrula
                     </div>
 
+                    <!-- Desktop İpucu -->
+                    <div id="desk-hint-section" style="display:none; padding:12px; background:rgba(79,70,229,0.06); border-radius:var(--radius-md); border:1px solid rgba(79,70,229,0.2); font-size:0.8rem; color:var(--text-secondary); line-height:1.8;">
+                        <strong style="color:var(--accent-primary);">💡 Desktop Kural Seti</strong>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-top:8px;">
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Tıklama</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Kaydet" tıkla</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"dosya.txt" çift tıkla</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"öğe" sağ tıkla</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Dosya > Yeni" tıkla</code></div>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Yazma</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Merhaba" yaz</code> <span style="opacity:0.6;">(Türkçe ✓)</span></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"metin" kopyala</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">yapıştır</code></div>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Doğrulama / Bekleme</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Başarılı" görünmeli</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Yükleniyor" görünene kadar bekle</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">3 saniye bekle</code></div>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Klavye / Diğer</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Ctrl+S" bas</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">enter bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">escape bas</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">aşağı kaydır</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">yukarı kaydır</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">ekran görüntüsü al</code></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(79,70,229,0.15); opacity:0.7;">
+                            Görsel adımlar OpenCV ile eşleştirilir. Tırnak içi metin: pywinauto → OCR → Vision AI.
+                        </div>
+                    </div>
+
                     <!-- Generate Butonu -->
                     <div class="action-row">
                         <button class="btn-reset" onclick="resetAll()" title="Her şeyi sıfırla">↺ Sıfırla</button>
@@ -559,9 +772,9 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
 
                     <!-- Script Gösterici -->
                     <div class="gen-card" style="gap:12px;">
-                        <div class="gen-card-title" style="justify-content:space-between;">
-                            <span>⚙️ Üretilen Script</span>
-                            <div style="display:flex; align-items:center; gap:12px;">
+                        <div class="gen-card-title" style="justify-content:space-between; flex-wrap:wrap; gap:8px; min-width:0;">
+                            <span style="white-space:nowrap;">⚙️ Üretilen Script</span>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex-shrink:0;">
                                 <span id="platformBadge" style="display:none;" class="badge-platform"></span>
                                 <span class="toggle-script" id="toggleScript" onclick="toggleScriptView()" style="display:none;">Gizle</span>
                                 <button onclick="copyScript()" id="btnCopy" style="display:none; padding:4px 10px; font-size:0.78rem;" class="btn btn-secondary btn-sm">Kopyala</button>
@@ -584,10 +797,10 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
                                 <div class="script-code" id="scriptCode">
                                     <div class="script-placeholder">
                                         Script henüz üretilmedi.<br>
-                                        <span style="font-size:0.75rem; opacity:0.6;">Sol panelden test case'ini gir ve "Script Üret" butonuna bas.</span>
+                                        <span style="font-size:0.75rem; opacity:0.6;">Sol panelden adımları ekle ve "Script Üret" butonuna bas.</span>
                                     </div>
                                 </div>
-                                <textarea id="scriptEditArea" style="display:none; width:100%; min-height:400px; background:#1a1a2e; color:#c9d1d9; font-family:'JetBrains Mono',monospace; font-size:0.82rem; border:none; outline:none; resize:vertical; padding:12px; box-sizing:border-box; line-height:1.6;" spellcheck="false"></textarea>
+                                <textarea id="scriptEditArea" style="display:none; width:100%; min-height:400px; max-width:100%; background:#1a1a2e; color:#c9d1d9; font-family:'JetBrains Mono',monospace; font-size:0.82rem; border:none; outline:none; resize:vertical; padding:12px; box-sizing:border-box; line-height:1.6; overflow-x:auto;" spellcheck="false"></textarea>
                             </div>
                         </div>
 
@@ -597,6 +810,8 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
                                 <div class="spinner" id="execSpinner" style="border-top-color:#fff; border-color:rgba(255,255,255,0.3);"></div>
                                 <span id="execBtnText">▶ Çalıştır</span>
                             </button>
+                            <button id="btnStop" onclick="stopExecution()" style="display:none; padding:12px 18px; background:#dc2626; color:#fff; border:none; border-radius:var(--radius-md); cursor:pointer; font-size:0.9rem; font-weight:600; white-space:nowrap;">⏹ Durdur</button>
+                            <button class="btn-save" id="btnSave" onclick="openSaveModal()" disabled title="Senaryoyu Git workspace'e kaydet">💾 Kaydet</button>
                             <span class="exec-timer" id="execTimer" style="display:none;">0:00</span>
                         </div>
                     </div>
@@ -626,6 +841,69 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
     </main>
 </div>
 
+<!-- ── MODAL: Geri Sayım ── -->
+<div id="countdownModal" class="ai-modal-overlay" style="display:none;">
+    <div class="modal-box" style="max-width:340px; text-align:center; align-items:center;">
+        <div style="font-size:0.9rem; color:var(--text-muted);">Hedef uygulamaya geçin</div>
+        <div id="countdownNum" class="countdown-num">3</div>
+        <div style="font-size:0.85rem; color:var(--text-secondary);">saniye sonra ekran görüntüsü alınacak…</div>
+        <button class="btn-reset" onclick="cancelCountdown()" style="margin-top:4px;">İptal</button>
+    </div>
+</div>
+
+<!-- ── MODAL: Canvas Kırp ── -->
+<div id="cropModal" class="ai-modal-overlay" style="display:none;">
+    <div class="modal-box" style="max-width:min(880px,95vw); max-height:90vh; width:100%;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div>
+                <div style="font-weight:600; font-size:1rem;">Ekranı Kırp ve Adıma Ekle</div>
+                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:3px;">Tıkla ve sürükle → hedef alanı seç → Kırp ve Ekle</div>
+            </div>
+            <button class="step-del-btn" onclick="cancelCrop()" style="font-size:1.2rem; opacity:0.7;" title="İptal">✕</button>
+        </div>
+        <div class="crop-canvas-wrap">
+            <canvas id="cropCanvas"></canvas>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; align-items:center;">
+            <span id="cropSelectionInfo" style="font-size:0.78rem; color:var(--text-muted); flex:1;"></span>
+            <button class="btn-reset" onclick="cancelCrop()">İptal</button>
+            <button class="btn-generate" id="btnCropConfirm" onclick="confirmCrop()" disabled style="flex:none; padding:10px 20px;">✓ Kırp ve Ekle</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── MODAL: Senaryo Kaydet ── -->
+<div id="saveModal" class="ai-modal-overlay" style="display:none;">
+    <div class="modal-box" style="max-width:420px; width:100%;">
+        <div style="font-weight:600; font-size:1rem;">💾 Senaryoyu Kaydet</div>
+        <div style="font-size:0.85rem; color:var(--text-muted);">Senaryo adımları ve üretilen script Git workspace'e kaydedilecek.</div>
+        <div class="form-group">
+            <label class="form-label">Senaryo Adı</label>
+            <input type="text" class="form-input" id="saveScenarioName" placeholder="Örn: Giriş Yap Testi" maxlength="64">
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn-reset" onclick="closeSaveModal()">İptal</button>
+            <button class="btn-generate" id="btnSaveConfirm" onclick="doSaveScenario()" style="flex:none; padding:10px 22px;">
+                <div class="spinner" id="saveSpinner" style="border-top-color:#fff; border-color:rgba(255,255,255,0.3);"></div>
+                <span id="saveBtnText">Kaydet</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── MODAL: Kaydedilmiş Senaryolar ── -->
+<div id="scenariosModal" class="ai-modal-overlay" style="display:none;">
+    <div class="modal-box" style="max-width:540px; width:100%;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+            <div style="font-weight:600; font-size:1rem;">📂 Kaydedilmiş Senaryolar</div>
+            <button class="step-del-btn" onclick="closeScenariosModal()" style="font-size:1.2rem; opacity:0.7;">✕</button>
+        </div>
+        <div id="scenariosListBody" class="scenario-list-body">
+            <div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:24px;">Yükleniyor...</div>
+        </div>
+    </div>
+</div>
+
 <script src="js/app.js"></script>
 <script src="js/sidebar.js"></script>
 <script>
@@ -634,14 +912,29 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
 
     if (!Auth.checkAuth()) return;
 
-    // ── State ───────────────────────────────────────────────────────────────
+    // ── State ─────────────────────────────────────────────────────────────────
     let selectedPlatform = null;
     let generatedScript  = "";
     let scriptVisible    = true;
     let isGenerating     = false;
     let isExecuting      = false;
+    let scriptEditMode   = false;
 
-    // ── Ollama Durum Kontrolü ────────────────────────────────────────────────
+    // Step list: [{type, content, b64, action, status}]
+    let steps = [];
+
+    // Screenshot / crop state
+    let _captureTargetStepIdx = -1;
+    let _countdownInterval    = null;
+    let _screenshotB64        = "";
+    let _screenImg            = null;
+    let _cropRect             = null;
+    let _isDrawing            = false;
+    let _startX = 0, _startY = 0;
+
+    const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+
+    // ── Ollama Durum Kontrolü ─────────────────────────────────────────────────
     async function checkOllamaStatus() {
         const dot  = document.getElementById("statusDot");
         const text = document.getElementById("statusText");
@@ -662,71 +955,132 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         }
     }
 
-    // ── Platform Seçimi ──────────────────────────────────────────────────────
+    // ── Platform Seçimi ───────────────────────────────────────────────────────
     window.selectPlatform = function(platform) {
         selectedPlatform = platform;
         document.querySelectorAll(".platform-btn").forEach(b => b.classList.remove("selected"));
         document.querySelector(`[data-platform="${platform}"]`).classList.add("selected");
         document.querySelectorAll(".platform-params").forEach(p => p.classList.remove("visible"));
         document.getElementById(`params-${platform}`).classList.add("visible");
-        // Ekranı Tara sadece mobilde görünsün
-        document.getElementById("scan-section").style.display = platform === "mobile" ? "block" : "none";
+        document.getElementById("scan-section").style.display      = platform === "mobile"  ? "block" : "none";
+        document.getElementById("desk-hint-section").style.display = platform === "desktop" ? "block" : "none";
+        // Görsel adım butonu mobilde gizlenir
+        document.getElementById("btnAddImage").style.display = platform === "mobile" ? "none" : "inline-flex";
         updateGenerateBtn();
     };
 
     function updateGenerateBtn() {
-        const hasText     = document.getElementById("testCaseInput").value.trim().length > 10;
-        const hasPlatform = !!selectedPlatform;
-        document.getElementById("btnGenerate").disabled = !(hasText && hasPlatform) || isGenerating;
+        const hasValidStep = steps.some(s =>
+            (s.type === "text"  && s.content.trim().length > 0) ||
+            (s.type === "image" && s.b64.length > 0)
+        );
+        document.getElementById("btnGenerate").disabled = !(hasValidStep && selectedPlatform) || isGenerating;
     }
 
-    function updateCounter() {
-        const ta = document.getElementById("testCaseInput");
-        const text = ta.value;
-        const lines = text ? text.split("\n").length : 0;
-        const chars = text.length;
-        document.getElementById("tcCounter").textContent = `${lines} satır · ${chars} karakter`;
-    }
-
-    document.getElementById("testCaseInput").addEventListener("input", () => {
+    // ── Step Yönetimi ─────────────────────────────────────────────────────────
+    window.addTextStep = function() {
+        steps.push({ type: "text", content: "", b64: "", action: "click", status: null });
+        renderStepList();
         updateGenerateBtn();
-        updateCounter();
-    });
-
-    // ── Dosya Yükleme ────────────────────────────────────────────────────────
-    const dropZone  = document.getElementById("dropZone");
-    const fileInput = document.getElementById("fileInput");
-
-    dropZone.addEventListener("click", () => fileInput.click());
-    dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
-    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
-    dropZone.addEventListener("drop", e => {
-        e.preventDefault();
-        dropZone.classList.remove("drag-over");
-        const file = e.dataTransfer.files[0];
-        if (file) readFile(file);
-    });
-    fileInput.addEventListener("change", e => {
-        if (e.target.files[0]) {
-            readFile(e.target.files[0]);
-            e.target.value = ""; // Aynı dosya tekrar seçilebilsin
-        }
-    });
-
-    function showFileLoaded(name, info) {
-        document.getElementById("fileLoadedName").textContent = name;
-        document.getElementById("fileLoadedInfo").textContent = info;
-        document.getElementById("fileLoadedBar").style.display = "flex";
-    }
-
-    window.clearLoadedFile = function() {
-        document.getElementById("fileLoadedBar").style.display = "none";
-        document.getElementById("testCaseInput").value = "";
-        updateGenerateBtn();
-        updateCounter();
+        // Son input'u odakla
+        const inputs = document.querySelectorAll(".step-content-input");
+        if (inputs.length) inputs[inputs.length - 1].focus();
     };
 
-    async function readFile(file) {
+    window.addImageStep = function() {
+        const idx = steps.length;
+        steps.push({ type: "image", content: "", b64: "", action: "click", status: null });
+        renderStepList();
+        updateGenerateBtn();
+        startImageCapture(idx);
+    };
+
+    window.deleteStep = function(idx) {
+        steps.splice(idx, 1);
+        renderStepList();
+        updateGenerateBtn();
+    };
+
+    window.updateStepContent = function(idx, value) {
+        if (steps[idx]) steps[idx].content = value;
+        updateGenerateBtn();
+    };
+
+    window.retakeImage = function(idx) {
+        _captureTargetStepIdx = idx;
+        startImageCapture(idx);
+    };
+
+    function setStepStatus(idx, status) {
+        if (!steps[idx]) return;
+        steps[idx].status = status;
+        const row = document.getElementById(`step-row-${idx}`);
+        if (!row) return;
+        row.className = `step-item${status ? " " + status : ""}`;
+        const statusEl = row.querySelector(".step-status");
+        if (statusEl) {
+            const icons = { running: "⟳", done: "✓", fail: "✕" };
+            statusEl.textContent  = icons[status] || "·";
+            statusEl.className    = `step-status${status ? " " + status : ""}`;
+        }
+        if (status === "running") row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function resetStepStatuses() {
+        steps.forEach(s => { s.status = null; });
+        renderStepList();
+    }
+
+    function renderStepList() {
+        const list = document.getElementById("stepList");
+        if (steps.length === 0) {
+            list.innerHTML = '<div class="step-empty">Henüz adım yok.<br>Yukarıdaki butonlarla <strong>Metin</strong> veya <strong>Görsel</strong> adım ekleyin.</div>';
+            return;
+        }
+        list.innerHTML = steps.map((s, i) => renderStepRow(s, i)).join("");
+    }
+
+    function renderStepRow(s, i) {
+        const statusClass = s.status || "";
+        const statusIcon  = s.status === "running" ? "⟳" : s.status === "done" ? "✓" : s.status === "fail" ? "✕" : "·";
+        const typeLabel   = s.type === "text" ? "Metin" : "Görsel";
+        const typeCls     = s.type === "text" ? "text" : "image";
+
+        let contentHtml;
+        if (s.type === "text") {
+            contentHtml = `<input class="step-content-input" type="text" value="${escHtml(s.content)}"
+                placeholder="Adım açıklaması..." oninput="updateStepContent(${i}, this.value)">`;
+        } else {
+            if (s.b64) {
+                contentHtml = `<img class="step-img-thumb" src="data:image/png;base64,${s.b64}"
+                    onclick="retakeImage(${i})" title="Tıkla → Yeniden ekran görüntüsü al">
+                    <input class="step-content-input" type="text" value="${escHtml(s.content)}"
+                        placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${i}, this.value)"
+                        style="max-width:160px;">`;
+            } else {
+                contentHtml = `<span class="step-img-placeholder" onclick="retakeImage(${i})">📷 Tıkla → Ekran Al</span>`;
+            }
+        }
+
+        return `<div class="step-item${statusClass ? " " + statusClass : ""}" id="step-row-${i}">
+            <span class="step-num">${i + 1}</span>
+            <span class="step-type-badge ${typeCls}">${typeLabel}</span>
+            ${contentHtml}
+            <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
+            <button class="step-del-btn" onclick="deleteStep(${i})" title="Sil">✕</button>
+        </div>`;
+    }
+
+    function escHtml(s) {
+        return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    // ── Dosyadan İçe Aktar ────────────────────────────────────────────────────
+    document.getElementById("fileImportInput").addEventListener("change", async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        e.target.value = "";
+
         const name = file.name.toLowerCase();
         const isExcel = name.endsWith(".xlsx") || name.endsWith(".xls");
         const isCsv   = name.endsWith(".csv");
@@ -736,66 +1090,221 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
             try {
                 const formData = new FormData();
                 formData.append("file", file);
-                const token = Auth.getToken();
-                const resp = await fetch(`${window.location.protocol}//${window.location.hostname}:8000/api/ai-gen/parse-file`, {
+                const resp = await fetch(`${API_BASE}/ai-gen/parse-file`, {
                     method: "POST",
-                    headers: { "Authorization": `Bearer ${token}` },
+                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
                     body: formData
                 });
-                if (resp.status === 401) {
-                    Toast.error("Oturum süresi dolmuş, yeniden giriş yapılıyor...");
-                    setTimeout(() => { Auth.logout(); window.location.href = "login.html"; }, 1500);
-                    return;
-                }
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    throw new Error(err.detail || "Parse hatası");
-                }
+                if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Parse hatası"); }
                 const data = await resp.json();
-                document.getElementById("testCaseInput").value = data.text;
-                updateGenerateBtn();
-                updateCounter();
-                showFileLoaded(file.name, `· ${data.lines} satır`);
-                Toast.success(`"${file.name}" yüklendi (${data.lines} satır)`);
+                importTextAsSteps(data.text);
+                Toast.success(`"${file.name}" içe aktarıldı (${data.lines} satır)`);
             } catch (err) {
                 Toast.error("Dosya okunamadı: " + err.message);
             }
         } else {
             const reader = new FileReader();
             reader.onload = ev => {
-                const text = ev.target.result;
-                const lines = text.split("\n").filter(l => l.trim()).length;
-                document.getElementById("testCaseInput").value = text;
-                updateGenerateBtn();
-                updateCounter();
-                showFileLoaded(file.name, `· ${lines} satır`);
-                Toast.success(`"${file.name}" yüklendi`);
+                importTextAsSteps(ev.target.result);
+                Toast.success(`"${file.name}" içe aktarıldı`);
             };
             reader.readAsText(file, "UTF-8");
         }
+    });
+
+    function importTextAsSteps(text) {
+        const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+        lines.forEach(line => steps.push({ type: "text", content: line, b64: "", action: "click", status: null }));
+        renderStepList();
+        updateGenerateBtn();
     }
+
+    // ── Screenshot Akışı ─────────────────────────────────────────────────────
+    function startImageCapture(stepIdx) {
+        _captureTargetStepIdx = stepIdx;
+        document.getElementById("countdownModal").style.display = "flex";
+        let count = 3;
+        document.getElementById("countdownNum").textContent = count;
+        _countdownInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                document.getElementById("countdownNum").textContent = count;
+            } else {
+                clearInterval(_countdownInterval);
+                _countdownInterval = null;
+                document.getElementById("countdownModal").style.display = "none";
+                doScreenshot();
+            }
+        }, 1000);
+    }
+
+    window.cancelCountdown = function() {
+        if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+        document.getElementById("countdownModal").style.display = "none";
+        removeEmptyImageStep();
+        _captureTargetStepIdx = -1;
+    };
+
+    async function doScreenshot() {
+        try {
+            const resp = await fetch(`${API_BASE}/desktop/screenshot`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({})
+            });
+            if (!resp.ok) throw new Error("Ekran görüntüsü alınamadı (sunucu hatası)");
+            const data = await resp.json();
+            _screenshotB64 = data.screenshot || "";
+            if (!_screenshotB64) throw new Error("Ekran görüntüsü boş geldi");
+            showCropModal(_screenshotB64);
+        } catch (e) {
+            Toast.error("Screenshot hatası: " + e.message);
+            removeEmptyImageStep();
+            _captureTargetStepIdx = -1;
+        }
+    }
+
+    function removeEmptyImageStep() {
+        const idx = _captureTargetStepIdx;
+        if (idx >= 0 && steps[idx] && steps[idx].type === "image" && !steps[idx].b64) {
+            steps.splice(idx, 1);
+            renderStepList();
+            updateGenerateBtn();
+        }
+    }
+
+    function showCropModal(b64) {
+        _cropRect = null;
+        _isDrawing = false;
+        document.getElementById("btnCropConfirm").disabled = true;
+        document.getElementById("cropSelectionInfo").textContent = "";
+        document.getElementById("cropModal").style.display = "flex";
+
+        const canvas = document.getElementById("cropCanvas");
+        const ctx    = canvas.getContext("2d");
+
+        _screenImg = new Image();
+        _screenImg.onload = function() {
+            const maxW  = Math.min(820, window.innerWidth - 80);
+            const maxH  = Math.min(520, window.innerHeight - 220);
+            const scale = Math.min(maxW / _screenImg.width, maxH / _screenImg.height, 1);
+            canvas.width  = Math.round(_screenImg.width  * scale);
+            canvas.height = Math.round(_screenImg.height * scale);
+            canvas._imgScale = scale;
+            ctx.drawImage(_screenImg, 0, 0, canvas.width, canvas.height);
+        };
+        _screenImg.src = "data:image/png;base64," + b64;
+
+        canvas.onmousedown = onCropDown;
+        canvas.onmousemove = onCropMove;
+        canvas.onmouseup   = onCropUp;
+    }
+
+    function getCanvasPos(e) {
+        const r = e.target.getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    function onCropDown(e) {
+        _isDrawing = true;
+        const p = getCanvasPos(e);
+        _startX = p.x; _startY = p.y;
+        _cropRect = null;
+        document.getElementById("btnCropConfirm").disabled = true;
+        document.getElementById("cropSelectionInfo").textContent = "";
+    }
+
+    function onCropMove(e) {
+        if (!_isDrawing || !_screenImg) return;
+        const canvas = document.getElementById("cropCanvas");
+        const ctx    = canvas.getContext("2d");
+        const p      = getCanvasPos(e);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(_screenImg, 0, 0, canvas.width, canvas.height);
+        const rx = Math.min(_startX, p.x), ry = Math.min(_startY, p.y);
+        const rw = Math.abs(p.x - _startX),  rh = Math.abs(p.y - _startY);
+        if (rw > 2 && rh > 2) {
+            ctx.strokeStyle = "#3b82f6";
+            ctx.lineWidth   = 2;
+            ctx.strokeRect(rx, ry, rw, rh);
+            ctx.fillStyle   = "rgba(59,130,246,0.12)";
+            ctx.fillRect(rx, ry, rw, rh);
+        }
+    }
+
+    function onCropUp(e) {
+        if (!_isDrawing) return;
+        _isDrawing = false;
+        const canvas = document.getElementById("cropCanvas");
+        const p      = getCanvasPos(e);
+        const rx = Math.min(_startX, p.x), ry = Math.min(_startY, p.y);
+        const rw = Math.abs(p.x - _startX),  rh = Math.abs(p.y - _startY);
+        if (rw > 10 && rh > 10) {
+            _cropRect = { x: rx, y: ry, w: rw, h: rh };
+            const scale = canvas._imgScale || 1;
+            const sw = Math.round(rw / scale), sh = Math.round(rh / scale);
+            document.getElementById("btnCropConfirm").disabled = false;
+            document.getElementById("cropSelectionInfo").textContent = `Seçim: ${sw}×${sh} px`;
+        }
+    }
+
+    window.cancelCrop = function() {
+        document.getElementById("cropModal").style.display = "none";
+        removeEmptyImageStep();
+        _captureTargetStepIdx = -1;
+    };
+
+    window.confirmCrop = function() {
+        if (!_cropRect || _captureTargetStepIdx < 0 || !_screenImg) return;
+        const canvas = document.getElementById("cropCanvas");
+        const scale  = canvas._imgScale || 1;
+        const sx = Math.round(_cropRect.x / scale);
+        const sy = Math.round(_cropRect.y / scale);
+        const sw = Math.round(_cropRect.w / scale);
+        const sh = Math.round(_cropRect.h / scale);
+
+        const tmp = document.createElement("canvas");
+        tmp.width  = sw;
+        tmp.height = sh;
+        tmp.getContext("2d").drawImage(_screenImg, sx, sy, sw, sh, 0, 0, sw, sh);
+        const croppedB64 = tmp.toDataURL("image/png").replace("data:image/png;base64,", "");
+
+        const step = steps[_captureTargetStepIdx];
+        if (step) {
+            step.b64     = croppedB64;
+            step.content = step.content || "Görsel element";
+        }
+
+        document.getElementById("cropModal").style.display = "none";
+        _captureTargetStepIdx = -1;
+        renderStepList();
+        updateGenerateBtn();
+        Toast.success("Görsel adım eklendi ✓");
+    };
 
     // ── Script Üret ──────────────────────────────────────────────────────────
     window.generateScript = async function () {
         if (isGenerating) return;
-        const testCase = document.getElementById("testCaseInput").value.trim();
-        if (!testCase || !selectedPlatform) return;
+        if (!selectedPlatform) { Toast.error("Platform seçin"); return; }
+        const validSteps = steps.filter(s =>
+            (s.type === "text" && s.content.trim().length > 0) ||
+            (s.type === "image" && s.b64.length > 0)
+        );
+        if (validSteps.length === 0) { Toast.error("En az bir geçerli adım ekleyin"); return; }
 
         isGenerating = true;
         setGeneratingUI(true);
         resetOutput();
 
-        const payload = buildPayload(testCase);
+        const payload = buildPayload();
 
         try {
             const data = await API.post("/ai-gen/generate", payload);
             generatedScript = data.script || "";
             renderScript(generatedScript, selectedPlatform);
             document.getElementById("btnExecute").disabled = false;
-
-            // Adım raporu göster
+            document.getElementById("btnSave").disabled    = false;
             if (data.report) renderStepReport(data.report);
-
             if (data.warnings && data.warnings.length > 0) {
                 for (const w of data.warnings) appendLog("error", w);
                 Toast.error("Bazı adımlar anlaşılamadı. Raporu inceleyin.");
@@ -811,8 +1320,17 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         }
     };
 
-    function buildPayload(testCase) {
-        const base = { test_case: testCase, platform: selectedPlatform };
+    function buildPayload() {
+        const stepsList = steps.map(s => ({
+            type:      s.type,
+            content:   s.content,
+            image_b64: s.b64 || "",
+            action:    s.action || "click"
+        }));
+        // test_case geriye uyumluluk için (mobile fallback)
+        const testCase = steps.filter(s => s.type === "text").map(s => s.content).join("\n");
+
+        const base = { test_case: testCase, steps_list: stepsList, platform: selectedPlatform };
         if (selectedPlatform === "web") {
             base.browser    = document.getElementById("web-browser").value;
             base.target_url = document.getElementById("web-url").value;
@@ -849,12 +1367,10 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         const lines = code.split("\n").length;
         document.getElementById("scriptLineCount").textContent = `${lines} satır`;
 
-        // Badge
         const badge = document.getElementById("platformBadge");
-        badge.textContent = `${ICONS[platform]} ${NAMES[platform]}`;
+        badge.textContent   = `${ICONS[platform]} ${NAMES[platform]}`;
         badge.style.display = "inline-flex";
 
-        // Kontroller
         document.getElementById("toggleScript").style.display = "inline";
         document.getElementById("btnCopy").style.display      = "inline-block";
         document.getElementById("btnEdit").style.display      = "inline-block";
@@ -870,7 +1386,8 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         document.getElementById("btnCopy").style.display        = "none";
         document.getElementById("btnEdit").style.display        = "none";
         document.getElementById("btnExecute").disabled          = true;
-        // reset edit mode
+        document.getElementById("btnSave").disabled             = true;
+        document.getElementById("stepReport").style.display     = "none";
         scriptEditMode = false;
         document.getElementById("scriptEditArea").style.display = "none";
         document.getElementById("scriptCode").style.display     = "block";
@@ -878,7 +1395,6 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
     }
 
     // ── Script Düzenle ────────────────────────────────────────────────────────
-    let scriptEditMode = false;
     window.toggleEditScript = function () {
         const codeDiv  = document.getElementById("scriptCode");
         const editArea = document.getElementById("scriptEditArea");
@@ -898,19 +1414,16 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
             codeDiv.style.display  = "block";
             btnEdit.textContent = "Düzenle";
             btnEdit.classList.replace("btn-primary", "btn-secondary");
-            const lines = generatedScript.split("\n").length;
-            document.getElementById("scriptLineCount").textContent = lines + " satır";
+            document.getElementById("scriptLineCount").textContent = generatedScript.split("\n").length + " satır";
         }
     };
 
-    // ── Toggle Script Görünümü ────────────────────────────────────────────────
     window.toggleScriptView = function () {
         scriptVisible = !scriptVisible;
         document.getElementById("scriptViewerWrap").style.display = scriptVisible ? "block" : "none";
         document.getElementById("toggleScript").textContent = scriptVisible ? "Gizle" : "Göster";
     };
 
-    // ── Kopyala ───────────────────────────────────────────────────────────────
     window.copyScript = function () {
         if (!generatedScript) return;
         navigator.clipboard.writeText(generatedScript)
@@ -919,26 +1432,38 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
     };
 
     // ── Script Çalıştır (SSE) ────────────────────────────────────────────────
-    window.executeScript = async function () {
-        // Edit modundaysa önce textarea içeriğini kaydet
-        if (scriptEditMode) {
-            const editArea = document.getElementById("scriptEditArea");
-            generatedScript = editArea.value;
+    let _currentRunId  = null;
+    let _timerInterval = null;
+
+    window.stopExecution = async function () {
+        if (!_currentRunId) return;
+        try {
+            await fetch(`${API_BASE}/ai-gen/stop/${_currentRunId}`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            appendLog("error", "⏹ Koşum kullanıcı tarafından durduruldu.");
+        } catch (e) {
+            appendLog("error", "Durdurma hatası: " + e.message);
         }
+    };
+
+    window.executeScript = async function () {
+        if (scriptEditMode) generatedScript = document.getElementById("scriptEditArea").value;
         if (isExecuting || !generatedScript) return;
-        isExecuting = true;
+
+        isExecuting    = true;
+        _currentRunId  = null;
+        resetStepStatuses();
         setExecutingUI(true);
         clearLogs();
-
-        const token = Auth.getToken();
-        const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api`;
 
         try {
             const response = await fetch(`${API_BASE}/ai-gen/execute`, {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
+                    "Content-Type":  "application/json",
+                    "Authorization": `Bearer ${Auth.getToken()}`
                 },
                 body: JSON.stringify({ script: generatedScript, platform: selectedPlatform })
             });
@@ -961,12 +1486,16 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
                 buffer = parts.pop();
 
                 for (const part of parts) {
-                    const evtMatch   = part.match(/^event:\s*(\w+)/m);
-                    const dataLines  = [...part.matchAll(/^data:\s*(.*)/gm)].map(m => m[1]);
-                    const evtType    = evtMatch ? evtMatch[1] : "log";
-                    const dataText   = dataLines.join("\n");
+                    const evtMatch  = part.match(/^event:\s*(\S+)/m);
+                    const dataLines = [...part.matchAll(/^data:\s*(.*)/gm)].map(m => m[1]);
+                    const evtType   = evtMatch ? evtMatch[1] : "log";
+                    const dataText  = dataLines.join("\n");
 
-                    if (evtType === "done") break;
+                    if (evtType === "run_id")    { _currentRunId = dataText.trim(); continue; }
+                    if (evtType === "done")       { break; }
+                    if (evtType === "step_start") { setStepStatus(parseInt(dataText.trim()), "running"); continue; }
+                    if (evtType === "step_done")  { setStepStatus(parseInt(dataText.trim()), "done");    continue; }
+                    if (evtType === "step_fail")  { setStepStatus(parseInt(dataText.trim()), "fail");    continue; }
                     if (dataText.trim()) appendLog(evtType, dataText);
                 }
             }
@@ -974,29 +1503,30 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
             appendLog("error", "Bağlantı hatası: " + err.message);
             Toast.error(err.message);
         } finally {
-            isExecuting = false;
+            isExecuting   = false;
+            _currentRunId = null;
             setExecutingUI(false);
         }
     };
 
-    let _timerInterval = null;
-
     function setExecutingUI(loading) {
         const btn     = document.getElementById("btnExecute");
+        const btnStop = document.getElementById("btnStop");
         const spinner = document.getElementById("execSpinner");
         const text    = document.getElementById("execBtnText");
         const timer   = document.getElementById("execTimer");
         spinner.style.display = loading ? "block" : "none";
         text.textContent      = loading ? "Çalışıyor..." : "▶ Çalıştır";
         btn.disabled          = loading;
+        btnStop.style.display = loading ? "inline-block" : "none";
         if (loading) {
             let secs = 0;
             timer.style.display = "inline";
-            timer.textContent = "0:00";
+            timer.textContent   = "0:00";
             _timerInterval = setInterval(() => {
                 secs++;
                 const m = Math.floor(secs / 60), s = secs % 60;
-                timer.textContent = `${m}:${String(s).padStart(2,"0")}`;
+                timer.textContent = `${m}:${String(s).padStart(2, "0")}`;
             }, 1000);
         } else {
             clearInterval(_timerInterval);
@@ -1005,15 +1535,16 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
     }
 
     window.resetAll = function() {
-        document.getElementById("testCaseInput").value = "";
-        document.getElementById("fileLoadedBar").style.display = "none";
+        steps = [];
+        renderStepList();
         document.querySelectorAll(".platform-btn").forEach(b => b.classList.remove("selected"));
         document.querySelectorAll(".platform-params").forEach(p => p.classList.remove("visible"));
-        document.getElementById("scan-section").style.display = "none";
+        document.getElementById("scan-section").style.display       = "none";
+        document.getElementById("desk-hint-section").style.display  = "none";
+        document.getElementById("btnAddImage").style.display        = "none";
         selectedPlatform = null;
-        generatedScript = "";
+        generatedScript  = "";
         resetOutput();
-        updateCounter();
         updateGenerateBtn();
         Toast.info("Sıfırlandı");
     };
@@ -1021,18 +1552,14 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
     // ── Log Yardımcıları ─────────────────────────────────────────────────────
     function appendLog(type, text) {
         const body = document.getElementById("logBody");
-        // Placeholder'ı kaldır
-        const ph = body.querySelector(".log-placeholder");
+        const ph   = body.querySelector(".log-placeholder");
         if (ph) ph.remove();
 
         const lines = text.split("\n");
         for (const line of lines) {
-            if (line === "") {
-                body.appendChild(document.createElement("br"));
-                continue;
-            }
+            if (line === "") { body.appendChild(document.createElement("br")); continue; }
             const div = document.createElement("div");
-            div.className = `log-line ${type}`;
+            div.className   = `log-line ${type}`;
             div.textContent = line;
             body.appendChild(div);
         }
@@ -1068,67 +1595,16 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         Toast.info(`Cihaz seçildi: ${deviceId}`);
     };
 
-    // ── Ekran Tara (UI Element Keşif) ────────────────────────────────────────
-    window.scanScreen = async function () {
-        const deviceId = document.getElementById("mob-device").value.trim();
-        if (!deviceId) { Toast.error("Önce cihaz ID'sini girin"); return; }
-
-        const listEl = document.getElementById("element-list");
-        listEl.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:12px;">Ekran taranıyor...</div>';
-
-        try {
-            const data = await API.get(`/ai-gen/adb/screen-elements?device_id=${encodeURIComponent(deviceId)}`);
-            if (!data.elements || data.elements.length === 0) {
-                listEl.innerHTML = '<div style="color:var(--danger); padding:8px;">Element bulunamadı. Uygulama açık mı?</div>';
-                return;
-            }
-
-            listEl.innerHTML = data.elements.map(el => {
-                const label = el.text || el.content_desc || el.resource_id || "?";
-                const id    = el.resource_id;
-                const cls   = el.class;
-                return `
-                <div style="padding:6px 8px; border:1px solid var(--border-color); border-radius:var(--radius-sm); background:var(--bg-primary); cursor:pointer;"
-                     onclick="addElementToTestCase('${escEl(el.text)}', '${escEl(id)}', '${escEl(cls)}')"
-                     title="Tıkla → Test case'e ekle">
-                    <div style="font-weight:500; color:var(--text-primary);">${escEl(label)}</div>
-                    ${id ? `<div style="font-family:monospace; font-size:0.7rem; color:var(--text-muted);">${escEl(id)}</div>` : ''}
-                    <div style="font-size:0.7rem; color:var(--text-muted);">${escEl(cls)}</div>
-                </div>`;
-            }).join('');
-
-            Toast.success(`${data.total} element bulundu`);
-        } catch (err) {
-            listEl.innerHTML = `<div style="color:var(--danger); padding:8px;">Hata: ${err.message}</div>`;
-        }
-    };
-
-    function escEl(s) { return (s || '').replace(/'/g, "\\'").replace(/</g, '&lt;'); }
-
-    window.addElementToTestCase = function(text, resId, cls) {
-        const ta = document.getElementById("testCaseInput");
-        const existing = ta.value.trim();
-        const line = text
-            ? `- "${text}" elementine tıkla  [ID: ${resId || '?'}]`
-            : `- "${resId}" elementine tıkla`;
-        ta.value = existing ? existing + '\n' + line : line;
-        updateGenerateBtn();
-        Toast.info('Element test case\'e eklendi');
-    };
-
-    // ── ADB Aktivite Bul ──────────────────────────────────────────────────────
+    // ── ADB Aktivite Bul ─────────────────────────────────────────────────────
     window.findActivity = async function () {
-        const deviceId  = document.getElementById("mob-device").value.trim();
-        const pkg       = document.getElementById("mob-package").value.trim();
-        const hintEl    = document.getElementById("activity-hint");
-
+        const deviceId = document.getElementById("mob-device").value.trim();
+        const pkg      = document.getElementById("mob-package").value.trim();
+        const hintEl   = document.getElementById("activity-hint");
         if (!deviceId) { Toast.error("Önce cihaz ID'sini girin"); return; }
         if (!pkg)      { Toast.error("Önce App Package'ı girin"); return; }
-
         hintEl.style.display = "block";
         hintEl.textContent   = "ADB ile aktivite aranıyor...";
         hintEl.style.color   = "var(--text-muted)";
-
         try {
             const data = await API.get(`/ai-gen/adb/activity?device_id=${encodeURIComponent(deviceId)}&app_package=${encodeURIComponent(pkg)}`);
             if (data.found && data.activity) {
@@ -1146,24 +1622,26 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         }
     };
 
-    // ── Adım Raporu ───────────────────────────────────────────────────────────
+    // ── Adım Raporu ──────────────────────────────────────────────────────────
     function renderStepReport(report) {
-        const wrap = document.getElementById("stepReport");
-        const body = document.getElementById("stepReportBody");
-        const counts = { rule: 0, llm: 0, todo: 0 };
+        const wrap   = document.getElementById("stepReport");
+        const body   = document.getElementById("stepReportBody");
+        const counts = { rule: 0, llm: 0, todo: 0, image: 0 };
         report.forEach(r => { if (counts[r.method] !== undefined) counts[r.method]++; });
 
         const summary = `<div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
-            <span class="step-badge rule">✓ Kural motoru: ${counts.rule}</span>
+            <span class="step-badge rule">✓ Kural: ${counts.rule}</span>
             <span class="step-badge llm">🤖 AI: ${counts.llm}</span>
-            ${counts.todo ? `<span class="step-badge todo">⚠ Manuel: ${counts.todo}</span>` : ""}
+            ${counts.image ? `<span class="step-badge" style="background:rgba(16,185,129,0.12);color:#10b981;">📷 Görsel: ${counts.image}</span>` : ""}
+            ${counts.todo  ? `<span class="step-badge todo">⚠ Manuel: ${counts.todo}</span>` : ""}
         </div>`;
 
         const rows = report.map(r => {
-            const cls = r.method === "rule" ? "rule" : r.method === "llm" ? "llm" : "todo";
-            const icons = { rule: "✓", llm: "AI", todo: "⚠" };
+            const cls   = r.method === "rule" ? "rule" : r.method === "llm" ? "llm" : r.method === "image" ? "" : "todo";
+            const icons = { rule: "✓", llm: "AI", image: "📷", todo: "⚠" };
+            const badgeStyle = r.method === "image" ? 'style="background:rgba(16,185,129,0.12);color:#10b981;"' : "";
             return `<div style="display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:4px; background:var(--bg-primary); font-size:0.75rem;">
-                <span class="step-badge ${cls}" style="flex-shrink:0;">${icons[r.method]}</span>
+                <span class="step-badge ${cls}" ${badgeStyle} style="flex-shrink:0;">${icons[r.method] || "?"}</span>
                 <span style="color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.step}">${r.step}</span>
             </div>`;
         }).join("");
@@ -1172,9 +1650,155 @@ Adım 6: 'Hoş geldiniz' yazısını doğrula"
         wrap.style.display = "block";
     }
 
-    // ── Init ──────────────────────────────────────────────────────────────────
+    // ── Senaryo Kaydet ───────────────────────────────────────────────────────
+    window.openSaveModal = function () {
+        const nameEl = document.getElementById("saveScenarioName");
+        nameEl.value = "";
+        document.getElementById("saveModal").style.display = "flex";
+        setTimeout(() => nameEl.focus(), 80);
+    };
+
+    window.closeSaveModal = function () {
+        document.getElementById("saveModal").style.display = "none";
+    };
+
+    window.doSaveScenario = async function () {
+        const name = document.getElementById("saveScenarioName").value.trim();
+        if (!name) { Toast.error("Senaryo adı boş olamaz"); return; }
+
+        const currentScript = scriptEditMode
+            ? document.getElementById("scriptEditArea").value
+            : generatedScript;
+        if (!currentScript) { Toast.error("Script henüz üretilmedi"); return; }
+
+        const spinner  = document.getElementById("saveSpinner");
+        const btnText  = document.getElementById("saveBtnText");
+        const btnConf  = document.getElementById("btnSaveConfirm");
+        spinner.style.display = "block";
+        btnText.textContent   = "Kaydediliyor...";
+        btnConf.disabled      = true;
+
+        try {
+            const resp = await fetch(`${API_BASE}/ai-gen/scenarios`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${Auth.getToken()}`
+                },
+                body: JSON.stringify({
+                    name,
+                    steps: steps.map(s => ({ type: s.type, content: s.content, b64: s.b64 || "", action: s.action || "click" })),
+                    script: currentScript
+                })
+            });
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || "Kayıt başarısız");
+            }
+            const data = await resp.json();
+            closeSaveModal();
+            Toast.success(`"${name}" Git workspace'e kaydedildi ✓`);
+            if (!data.committed) Toast.info("Git commit yapılmadı (değişiklik yok veya repo sorunu)");
+        } catch (e) {
+            Toast.error("Kayıt hatası: " + e.message);
+        } finally {
+            spinner.style.display = "none";
+            btnText.textContent   = "Kaydet";
+            btnConf.disabled      = false;
+        }
+    };
+
+    document.getElementById("saveScenarioName").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") doSaveScenario();
+        if (e.key === "Escape") closeSaveModal();
+    });
+
+    // ── Senaryo Listesi ───────────────────────────────────────────────────────
+    window.openScenarios = async function () {
+        document.getElementById("scenariosModal").style.display = "flex";
+        await refreshScenariosList();
+    };
+
+    window.closeScenariosModal = function () {
+        document.getElementById("scenariosModal").style.display = "none";
+    };
+
+    async function refreshScenariosList() {
+        const body = document.getElementById("scenariosListBody");
+        body.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:24px;">Yükleniyor...</div>';
+        try {
+            const resp = await fetch(`${API_BASE}/ai-gen/scenarios`, {
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            if (!resp.ok) throw new Error("Liste alınamadı");
+            const data = await resp.json();
+            if (!data.scenarios || data.scenarios.length === 0) {
+                body.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:32px;">Kaydedilmiş senaryo yok.<br><span style="opacity:0.6;">Script ürettikten sonra 💾 Kaydet ile kayıt edebilirsiniz.</span></div>';
+                return;
+            }
+            body.innerHTML = data.scenarios.map(s => `
+                <div class="scenario-item">
+                    <span class="scenario-item-name">📄 ${escHtml(s.name)}</span>
+                    <button class="btn-scenario-load" onclick="loadScenario('${escHtml(s.folder)}')">Yükle</button>
+                    <button class="btn-scenario-del"  onclick="deleteScenario('${escHtml(s.folder)}', '${escHtml(s.name)}')">Sil</button>
+                </div>`).join("");
+        } catch (e) {
+            body.innerHTML = `<div style="text-align:center; color:var(--danger); font-size:0.85rem; padding:24px;">${e.message}</div>`;
+        }
+    }
+
+    window.loadScenario = async function (folder) {
+        try {
+            const resp = await fetch(`${API_BASE}/ai-gen/scenarios/${encodeURIComponent(folder)}`, {
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Yükleme hatası"); }
+            const data = await resp.json();
+
+            // Adımları yükle
+            steps = (data.steps || []).map(s => ({
+                type:    s.type    || "text",
+                content: s.content || "",
+                b64:     s.b64     || "",
+                action:  s.action  || "click",
+                status:  null
+            }));
+            renderStepList();
+            updateGenerateBtn();
+
+            // Script'i yükle
+            generatedScript = data.script || "";
+            if (generatedScript) {
+                renderScript(generatedScript, selectedPlatform || "desktop");
+                document.getElementById("btnExecute").disabled = false;
+                document.getElementById("btnSave").disabled    = false;
+            }
+
+            closeScenariosModal();
+            Toast.success(`"${data.name}" yüklendi ✓`);
+        } catch (e) {
+            Toast.error("Yükleme hatası: " + e.message);
+        }
+    };
+
+    window.deleteScenario = async function (folder, name) {
+        if (!confirm(`"${name}" senaryosunu silmek istediğinizden emin misiniz?`)) return;
+        try {
+            const resp = await fetch(`${API_BASE}/ai-gen/scenarios/${encodeURIComponent(folder)}`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Silme hatası"); }
+            Toast.success(`"${name}" silindi`);
+            await refreshScenariosList();
+        } catch (e) {
+            Toast.error("Silme hatası: " + e.message);
+        }
+    };
+
+    // ── Init ─────────────────────────────────────────────────────────────────
     checkOllamaStatus();
-    setInterval(checkOllamaStatus, 30000); // 30 sn'de bir kontrol
+    setInterval(checkOllamaStatus, 30000);
 
 })();
 </script>

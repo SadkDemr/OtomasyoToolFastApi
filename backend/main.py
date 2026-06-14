@@ -1,7 +1,5 @@
 """
 Test Otomasyon Platformu - FastAPI Backend v2.1
-FIXED: Device Monitor Loop Added
-✅ UPDATED: Advanced Editor Router eklendi (Desktop/Web-Desktop image-based automation)
 """
 import sys
 import os
@@ -17,18 +15,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from database import init_db, SessionLocal
-from models.db_models import Device, DeviceStatus
-from services.device_service import device_service
+from database import init_db
 
 # Router Importları
 from routers.auth import router as auth_router
-from routers.scenarios import router as scenarios_router
-from routers.devices import router as devices_router
 from routers.web import router as web_router
 from routers.mobile import router as mobile_router
 from routers.emulator import router as emulator_router
-from routers.jobs import router as jobs_router
 from routers.desktop_router import router as desktop_router
 
 # Git Integration
@@ -54,12 +47,9 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-app.include_router(scenarios_router)
-app.include_router(devices_router)
 app.include_router(web_router)
 app.include_router(mobile_router)
 app.include_router(emulator_router)
-app.include_router(jobs_router)
 # Git Integration
 app.include_router(admin_repos_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
@@ -117,43 +107,14 @@ async def set_ai_config_endpoint(body: AIConfigBody, current_user=Depends(_get_u
     save_ai_config(cfg)
     return {"success": True, "message": "AI yapılandırması kaydedildi"}
 
-# --- ARKA PLAN GÖREVİ: CİHAZ TAKİP ---
-async def device_monitor_loop():
-    """Her 5 saniyede bir cihazları kontrol eder"""
-    print("👀 Cihaz Takip Servisi Başlatıldı...")
-    while True:
-        try:
-            db = SessionLocal()
-            device_service.sync_adb_devices(db)
-        except Exception as e:
-            print(f"Monitor Hatası: {e}")
-        finally:
-            db.close()
-        await asyncio.sleep(5)
-
 @app.on_event("startup")
 async def startup_event():
     print("="*50)
     print("--- 🔄 SİSTEM BAŞLATILIYOR ---")
     init_db()
-    
-    # Kilitli cihazları temizle
-    db = SessionLocal()
-    try:
-        busy = db.query(Device).filter(Device.status == "busy").all()
-        for d in busy:
-            d.status = "available"
-            print(f"   -> 🔓 Cihaz serbest bırakıldı: {d.name}")
-        db.commit()
-    except Exception as e: print(f"DB Hatası: {e}")
-    finally: db.close()
-
     print("Swagger: http://localhost:8000/docs")
     print("Web UI: http://localhost:8000/ui")
     print("="*50)
-    
-    # Takip döngüsünü başlat
-    asyncio.create_task(device_monitor_loop())
 
 if __name__ == "__main__":
     import uvicorn

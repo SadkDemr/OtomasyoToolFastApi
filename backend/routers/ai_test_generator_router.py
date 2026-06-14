@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import uuid
 from typing import Optional
 
 import httpx
@@ -20,10 +21,17 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from pathlib import Path
+from database import get_db
+from sqlalchemy.orm import Session
 from routers.auth import get_current_user
-from models.db_models import User
+from models.db_models import User, UserWorkspace
+from services import git_service
+import json as _json
 
 router = APIRouter(prefix="/api/ai-gen", tags=["ai-generator"])
+
+_running_processes: dict[str, subprocess.Popen] = {}
 
 OLLAMA_URL   = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "gemma3:4b"
@@ -34,8 +42,15 @@ _ROUTER_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ─── Pydantic ─────────────────────────────────────────────────────────────────
 
+class StepItem(BaseModel):
+    type:      str            # "text" | "image"
+    content:   str  = ""     # metin adımı içeriği veya görsel açıklaması
+    image_b64: str  = ""     # görsel adımı için base64 PNG (diske yazılmaz)
+    action:    str  = "click" # görsel adımı eylemi: "click" | "assert"
+
 class GenerateRequest(BaseModel):
-    test_case:    str
+    test_case:    str         = ""   # geriye dönük uyumluluk
+    steps_list:   list[StepItem] = []   # yeni yapılandırılmış adım listesi
     platform:     str
     browser:      Optional[str] = "chrome"
     target_url:   Optional[str] = ""
@@ -371,9 +386,11 @@ def _rule_desktop(step: str) -> list[str] | None:
     sl     = s.lower()
     quoted = _extract_quoted(s)
 
-    CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap|se[çc]|dokun)'
-    INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b)'
-    ASSERT_WORDS = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|görünmeli|bekleniyor)'
+    CLICK_WORDS        = r'(?:t[iı]kla|tikla|bas|click|tap|se[çc]|dokun)'
+    DOUBLE_CLICK_WORDS = r'(?:çift\s*t[iı]kla|double[\s_]click)'
+    RIGHT_CLICK_WORDS  = r'(?:sağ\s*t[iı]kla|right[\s_]click)'
+    INPUT_WORDS        = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b)'
+    ASSERT_WORDS       = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|görünmeli|bekleniyor)'
 
     # ── Kısayol tuşu: "Ctrl+S" bas ───────────────────────────────────────────
     hk = re.match(r'^["\']([^"\']+)["\']\s*(?:bas|kısayol|hotkey|tu[sş])$', s, re.IGNORECASE)
@@ -389,6 +406,28 @@ def _rule_desktop(step: str) -> list[str] | None:
     if re.search(r'\bescape|esc\b', sl):
         return [f'# {s}', '_pag.press("esc")',   'time.sleep(0.2)']
 
+    # ── Kopyala / Yapıştır ────────────────────────────────────────────────────
+    if re.search(r'(?:kopyala|copy)', sl) and quoted:
+        text = quoted[0]
+        return [f'# {s}', f"_safe_click_desktop('{text}', _WINDOW_TITLE)", '_pag.hotkey("ctrl", "c")', 'time.sleep(0.3)']
+    if re.search(r'(?:yapıştır|paste)', sl):
+        return [f'# {s}', '_pag.hotkey("ctrl", "v")', 'time.sleep(0.3)']
+
+    # ── Çift tıklama (CLICK_WORDS'ten önce kontrol edilmeli) ──────────────────
+    if re.search(DOUBLE_CLICK_WORDS, sl) and quoted:
+        text = quoted[0]
+        return [f'# {s}', f"_safe_double_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
+
+    # ── Sağ tıklama ───────────────────────────────────────────────────────────
+    if re.search(RIGHT_CLICK_WORDS, sl) and quoted:
+        text = quoted[0]
+        return [f'# {s}', f"_safe_right_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
+
+    # ── Menü navigasyonu: "Dosya > Yeni" tıkla ───────────────────────────────
+    if re.search(CLICK_WORDS, sl) and quoted and '>' in quoted[0]:
+        items = [i.strip() for i in quoted[0].split('>')]
+        return [f'# {s}', f"_safe_menu_click_desktop({items!r}, _WINDOW_TITLE)", 'time.sleep(0.5)']
+
     # ── Tıklama ───────────────────────────────────────────────────────────────
     if re.search(CLICK_WORDS, sl) and quoted:
         text = quoted[0]
@@ -403,6 +442,13 @@ def _rule_desktop(step: str) -> list[str] | None:
     if re.search(INPUT_WORDS, sl) and quoted:
         value = quoted[-1]
         return [f'# {s}', f"_safe_type_desktop('{value}')", 'time.sleep(0.3)']
+
+    # ── Element görünene kadar bekle (genel bekle'den önce) ───────────────────
+    if re.search(r'g[oö]r[uü]n[eu]ne\s*kadar\s*bekle|wait.*(?:appear|visible)', sl) and quoted:
+        text = quoted[0]
+        m = re.search(r'(\d+)', s)
+        timeout = m.group(1) if m else '10'
+        return [f'# {s}', f"_safe_wait_for_desktop('{text}', timeout={timeout})"]
 
     # ── Bekleme ───────────────────────────────────────────────────────────────
     if re.search(r'(?:bekle|wait|sleep)', sl):
@@ -1005,6 +1051,75 @@ def _safe_assert_web(driver, text):
 '''
 
 
+IMAGE_HELPER = '''
+import base64 as _ib64, tempfile as _itmp, os as _ios, time as _itime
+
+def _find_b64_on_screen(b64_data, threshold=0.80, timeout=10):
+    """Base64 görseli ekranda OpenCV ile ara. (x,y) veya None döner."""
+    _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_find_{id(b64_data)}.png")
+    try:
+        with open(_tmp_path, "wb") as _f:
+            _f.write(_ib64.b64decode(b64_data))
+        _start = _itime.time()
+        while _itime.time() - _start < timeout:
+            _elapsed = _itime.time() - _start
+            _conf = max(0.65, threshold - (_elapsed / timeout) * 0.20)
+            _coords = _find_image_on_screen(_tmp_path, threshold=_conf)
+            if _coords:
+                return _coords
+            _itime.sleep(0.3)
+        return None
+    finally:
+        try: _ios.unlink(_tmp_path)
+        except Exception: pass
+
+def _find_image_on_screen(target_path, threshold=0.80):
+    """OpenCV multi-scale template matching. (x,y) veya None döner."""
+    try:
+        import cv2 as _cv2, numpy as _np
+        from PIL import Image as _PILImg2
+        _screen = _np.array(__import__("pyautogui").screenshot())
+        _screen_bgr  = _cv2.cvtColor(_screen, _cv2.COLOR_RGB2BGR)
+        _screen_gray = _cv2.cvtColor(_screen_bgr, _cv2.COLOR_BGR2GRAY)
+        _screen_gray = _cv2.GaussianBlur(_screen_gray, (3,3), 0)
+        _tmpl_bgr  = _cv2.imread(target_path)
+        if _tmpl_bgr is None: return None
+        _tmpl_gray = _cv2.cvtColor(_tmpl_bgr, _cv2.COLOR_BGR2GRAY)
+        _tmpl_gray = _cv2.GaussianBlur(_tmpl_gray, (3,3), 0)
+        _h, _w = _tmpl_gray.shape[:2]
+        _best = None; _best_val = -1
+        for _sc in _np.linspace(0.7, 1.3, 13):
+            _rw, _rh = int(_w*_sc), int(_h*_sc)
+            if _rw < 10 or _rh < 10: continue
+            _res = _cv2.matchTemplate(_screen_gray, _cv2.resize(_tmpl_gray,(_rw,_rh)), _cv2.TM_CCOEFF_NORMED)
+            _, _val, _, _loc = _cv2.minMaxLoc(_res)
+            if _val > _best_val: _best_val = _val; _best = (_loc, _rw, _rh)
+        if _best_val >= threshold and _best:
+            _loc, _rw, _rh = _best
+            return (_loc[0] + _rw//2, _loc[1] + _rh//2)
+    except ImportError:
+        try:
+            import pyautogui as _pag2
+            _loc2 = _pag2.locateOnScreen(target_path, grayscale=True, confidence=min(0.8, threshold))
+            if _loc2: return (_pag2.center(_loc2).x, _pag2.center(_loc2).y)
+        except Exception: pass
+    except Exception: pass
+    return None
+
+def _do_robust_click(x, y, button="left"):
+    import pyautogui as _pag3
+    _pag3.moveTo(x, y, duration=0.2)
+    _itime.sleep(0.3)
+    _pag3.mouseDown(button=button)
+    _itime.sleep(0.05)
+    _pag3.mouseUp(button=button)
+
+def _find_b64_on_screen_web(b64_data, threshold=0.80, timeout=10):
+    """Web için: görseli ekranda (tarayıcı penceresinde) ara."""
+    return _find_b64_on_screen(b64_data, threshold=threshold, timeout=timeout)
+'''
+
+
 DESKTOP_HELPER = '''
 import pyautogui as _pag
 import subprocess as _dsproc
@@ -1018,17 +1133,17 @@ try:
     import pytesseract as _tess
     from PIL import Image as _PILImg
     _TESS_OK = True
-except ImportError:
+except Exception:
     _TESS_OK = False
-    print("[DESKTOP] pytesseract yüklü değil — OCR devre dışı")
+    print("[DESKTOP] pytesseract kullanılamıyor — OCR devre dışı")
 
 try:
     from pywinauto import Application as _PwApp
     from pywinauto.findwindows import ElementNotFoundError as _PwNotFound
     _PW_OK = True
-except ImportError:
+except Exception:
     _PW_OK = False
-    print("[DESKTOP] pywinauto yüklü değil — pencere kontrolü devre dışı")
+    print("[DESKTOP] pywinauto kullanılamıyor — pencere kontrolü devre dışı")
 
 
 def _screenshot_b64():
@@ -1069,7 +1184,7 @@ def _vision_find_desktop(search_text):
             resp = _req.post("http://localhost:11434/api/generate", json={
                 "model": "gemma3:4b", "prompt": _prompt,
                 "images": [shot_b64], "stream": False
-            }, timeout=30)
+            }, timeout=60)
             answer = resp.json().get("response", "")
 
         mx = _re3.search(r"x[=:\s]*(\d+)", answer, _re3.IGNORECASE)
@@ -1110,7 +1225,7 @@ def _safe_click_desktop(target, window_title=""):
     if _PW_OK:
         try:
             if window_title:
-                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=5).top_window()
+                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=3).top_window()
             else:
                 _win = _get_active_window()
 
@@ -1118,11 +1233,10 @@ def _safe_click_desktop(target, window_title=""):
                 for _ctrl in [
                     lambda: _win.child_window(title=target, found_index=0),
                     lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
-                    lambda: _win.child_window(auto_id=target, found_index=0),
                 ]:
                     try:
                         _el = _ctrl()
-                        if _el.exists(timeout=2):
+                        if _el.exists(timeout=1):
                             _el.set_focus()
                             _el.click_input()
                             print(f"[OK] pywinauto: \'{target}\'")
@@ -1172,10 +1286,154 @@ def _safe_click_desktop(target, window_title=""):
 
 
 def _safe_type_desktop(text):
-    """Aktif alana metin yaz (pyautogui write)."""
+    """Aktif alana metin yaz — clipboard ile (Türkçe karakter desteği), fallback pyautogui."""
     print(f"[TYPE] \'{text}\'")
-    _pag.write(str(text), interval=0.04)
+    try:
+        import pyperclip as _clip
+        _clip.copy(str(text))
+        _pag.hotkey("ctrl", "v")
+        print(f"[OK] Clipboard paste: \'{text}\'")
+    except Exception:
+        _pag.write(str(text), interval=0.04)
     time.sleep(0.2)
+
+
+def _safe_double_click_desktop(target, window_title=""):
+    """Desktop çift tıklama — pywinauto → OCR → vision."""
+    print(f"[DBLCLICK] \'{target}\' aranıyor...")
+
+    if _PW_OK:
+        try:
+            if window_title:
+                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=3).top_window()
+            else:
+                _win = _get_active_window()
+            if _win:
+                for _ctrl in [
+                    lambda: _win.child_window(title=target, found_index=0),
+                    lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
+                ]:
+                    try:
+                        _el = _ctrl()
+                        if _el.exists(timeout=1):
+                            _el.set_focus()
+                            _el.double_click_input()
+                            print(f"[OK] pywinauto çift tıkla: \'{target}\'")
+                            return True
+                    except Exception:
+                        continue
+        except Exception as _e:
+            print(f"[DBLCLICK] pywinauto başarısız: {_e}")
+
+    if _TESS_OK:
+        try:
+            shot = _pag.screenshot()
+            data = _tess.image_to_data(shot, lang="tur+eng", output_type=_tess.Output.DICT)
+            for _i, _w in enumerate(data["text"]):
+                if _w and target.lower() in _w.lower() and data["conf"][_i] > 30:
+                    _cx = data["left"][_i] + data["width"][_i] // 2
+                    _cy = data["top"][_i]  + data["height"][_i] // 2
+                    _pag.doubleClick(_cx, _cy)
+                    print(f"[OK] OCR çift tıkla: \'{_w}\' @ ({_cx},{_cy})")
+                    return True
+        except Exception as _e:
+            print(f"[DBLCLICK] OCR başarısız: {_e}")
+
+    _vx, _vy = _vision_find_desktop(target)
+    if _vx and _vy:
+        _pag.doubleClick(_vx, _vy)
+        print(f"[OK] Vision çift tıkla: \'{target}\' @ ({_vx},{_vy})")
+        return True
+
+    raise Exception(f"Element bulunamadı (çift tıkla): \'{target}\'")
+
+
+def _safe_right_click_desktop(target, window_title=""):
+    """Desktop sağ tıklama — pywinauto → OCR → vision."""
+    print(f"[RCLICK] \'{target}\' aranıyor...")
+
+    if _PW_OK:
+        try:
+            if window_title:
+                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=3).top_window()
+            else:
+                _win = _get_active_window()
+            if _win:
+                for _ctrl in [
+                    lambda: _win.child_window(title=target, found_index=0),
+                    lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
+                ]:
+                    try:
+                        _el = _ctrl()
+                        if _el.exists(timeout=1):
+                            _el.set_focus()
+                            _el.right_click_input()
+                            print(f"[OK] pywinauto sağ tıkla: \'{target}\'")
+                            return True
+                    except Exception:
+                        continue
+        except Exception as _e:
+            print(f"[RCLICK] pywinauto başarısız: {_e}")
+
+    if _TESS_OK:
+        try:
+            shot = _pag.screenshot()
+            data = _tess.image_to_data(shot, lang="tur+eng", output_type=_tess.Output.DICT)
+            for _i, _w in enumerate(data["text"]):
+                if _w and target.lower() in _w.lower() and data["conf"][_i] > 30:
+                    _cx = data["left"][_i] + data["width"][_i] // 2
+                    _cy = data["top"][_i]  + data["height"][_i] // 2
+                    _pag.rightClick(_cx, _cy)
+                    print(f"[OK] OCR sağ tıkla: \'{_w}\' @ ({_cx},{_cy})")
+                    return True
+        except Exception as _e:
+            print(f"[RCLICK] OCR başarısız: {_e}")
+
+    _vx, _vy = _vision_find_desktop(target)
+    if _vx and _vy:
+        _pag.rightClick(_vx, _vy)
+        print(f"[OK] Vision sağ tıkla: \'{target}\' @ ({_vx},{_vy})")
+        return True
+
+    raise Exception(f"Element bulunamadı (sağ tıkla): \'{target}\'")
+
+
+def _safe_menu_click_desktop(items, window_title=""):
+    """Menü zinciri tıkla: [\'Dosya\', \'Yeni\'] sırayla tıklar."""
+    print(f"[MENU] {' > '.join(items)}")
+    for _item in items:
+        _safe_click_desktop(_item, window_title)
+        time.sleep(0.4)
+    print(f"[OK] Menü tamamlandı: {' > '.join(items)}")
+
+
+def _safe_wait_for_desktop(target, timeout=10):
+    """Element ekranda görünene kadar bekle (polling)."""
+    import time as _tw
+    print(f"[WAIT] \'{target}\' bekleniyor (max {timeout}s)...")
+    _start = _tw.time()
+    while _tw.time() - _start < timeout:
+        if _PW_OK:
+            try:
+                _win = _get_active_window()
+                if _win:
+                    _el = _win.child_window(title_re=f".*{target}.*", found_index=0)
+                    if _el.exists(timeout=1):
+                        print(f"[OK] pywinauto görüldü: \'{target}\'")
+                        return True
+            except Exception:
+                pass
+        if _TESS_OK:
+            try:
+                _txt = _tess.image_to_string(_pag.screenshot(), lang="tur+eng")
+                if target.lower() in _txt.lower():
+                    print(f"[OK] OCR görüldü: \'{target}\'")
+                    return True
+            except Exception:
+                pass
+        _tw.sleep(1)
+    print(f"[WARN] \'{target}\' {timeout}s içinde görünmedi")
+    return False
 
 
 def _safe_assert_desktop(target):
@@ -1188,7 +1446,7 @@ def _safe_assert_desktop(target):
             _win = _get_active_window()
             if _win:
                 _el = _win.child_window(title_re=f".*{target}.*", found_index=0)
-                if _el.exists(timeout=3):
+                if _el.exists(timeout=1):
                     print(f"[OK] pywinauto: \'{target}\'"); return
         except Exception:
             pass
@@ -1377,6 +1635,7 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
         '    print("[HATA] Tarayıcı sürücüsü başlatılamadı. Chrome/Firefox kurulu mu?")',
         "    raise SystemExit(1)",
         "",
+        IMAGE_HELPER,
         VISION_HELPER_WEB,
         "",
         "driver.maximize_window()",
@@ -1423,6 +1682,7 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
         f'_WINDOW_TITLE   = "{window_title_esc}"',
         "",
+        IMAGE_HELPER,
         DESKTOP_HELPER,
         "",
     ]
@@ -1468,11 +1728,82 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
 # BÖLÜM 4: ANA DÖNÜŞÜM MOTORU
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
+    """Görsel adımı için Python kodu üretir. base64 scripte gömülür."""
+    b64  = item.image_b64
+    desc = item.content or f"Görsel adım {idx+1}"
+    if platform == "desktop":
+        if item.action == "assert":
+            return (
+                f"# [GÖRSEL DOĞRULA] {desc}\n"
+                f"print('STEP_START:{idx}')\n"
+                f"try:\n"
+                f"    _img_b64_{idx} = '{b64}'\n"
+                f"    _res_{idx} = _find_b64_on_screen(_img_b64_{idx}, timeout=8)\n"
+                f"    if not _res_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
+                f"    print('[OK] Gorsel dogrulandi: {desc}')\n"
+                f"    print('STEP_DONE:{idx}')\n"
+                f"except Exception as _e_{idx}:\n"
+                f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+                f"    print('STEP_FAIL:{idx}')\n"
+                f"    raise"
+            )
+        else:
+            return (
+                f"# [GÖRSEL TIKLAMA] {desc}\n"
+                f"print('STEP_START:{idx}')\n"
+                f"try:\n"
+                f"    _img_b64_{idx} = '{b64}'\n"
+                f"    _coords_{idx} = _find_b64_on_screen(_img_b64_{idx}, timeout=10)\n"
+                f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
+                f"    _do_robust_click(_coords_{idx}[0], _coords_{idx}[1])\n"
+                f"    print('[OK] Gorsel tiklandi: {desc}')\n"
+                f"    time.sleep(0.5)\n"
+                f"    print('STEP_DONE:{idx}')\n"
+                f"except Exception as _e_{idx}:\n"
+                f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+                f"    print('STEP_FAIL:{idx}')\n"
+                f"    raise"
+            )
+    else:  # web
+        if item.action == "assert":
+            return (
+                f"# [GÖRSEL DOĞRULA] {desc}\n"
+                f"print('STEP_START:{idx}')\n"
+                f"try:\n"
+                f"    _img_b64_{idx} = '{b64}'\n"
+                f"    _res_{idx} = _find_b64_on_screen_web(_img_b64_{idx}, timeout=8)\n"
+                f"    if not _res_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
+                f"    print('[OK] Gorsel dogrulandi: {desc}')\n"
+                f"    print('STEP_DONE:{idx}')\n"
+                f"except Exception as _e_{idx}:\n"
+                f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+                f"    print('STEP_FAIL:{idx}')\n"
+                f"    raise"
+            )
+        else:
+            return (
+                f"# [GÖRSEL TIKLAMA] {desc}\n"
+                f"print('STEP_START:{idx}')\n"
+                f"try:\n"
+                f"    _img_b64_{idx} = '{b64}'\n"
+                f"    _coords_{idx} = _find_b64_on_screen_web(_img_b64_{idx}, timeout=10)\n"
+                f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
+                f"    import pyautogui as _pag_web; _pag_web.click(_coords_{idx}[0], _coords_{idx}[1])\n"
+                f"    print('[OK] Gorsel tiklandi: {desc}')\n"
+                f"    time.sleep(0.5)\n"
+                f"    print('STEP_DONE:{idx}')\n"
+                f"except Exception as _e_{idx}:\n"
+                f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+                f"    print('STEP_FAIL:{idx}')\n"
+                f"    raise"
+            )
+
+
 async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
     """
-    Test case'i adım adım işler.
+    Test case'i adım adım işler (metin + görsel karma destekli).
     Döndürür: (kod_str, adım_raporu)
-    adım_raporu: [{"step": "...", "method": "rule|llm|todo", "code": "..."}]
     """
     rule_fn = (
         _rule_mobile  if req.platform == "mobile"  else
@@ -1480,19 +1811,32 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
         _rule_web
     )
 
+    # steps_list varsa onu kullan, yoksa test_case textarea'dan oku (geriye dönük)
+    if req.steps_list:
+        structured = req.steps_list
+    else:
+        structured = [
+            StepItem(type="text", content=l.strip())
+            for l in req.test_case.splitlines() if l.strip()
+        ]
+
     code_lines   = []
     unrecognized = []
     report       = []
 
-    raw_steps = [l.strip() for l in req.test_case.splitlines() if l.strip()]
-
-    for step in raw_steps:
-        parsed = rule_fn(step)
-        if parsed:
-            code_lines.append(("rule", step, "\n".join(parsed)))
+    for idx, item in enumerate(structured):
+        if item.type == "image":
+            code = _image_step_code(item, req.platform, idx)
+            code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
         else:
-            code_lines.append(("llm", step, ""))
-            unrecognized.append(step)
+            step = item.content
+            parsed = rule_fn(step)
+            if parsed:
+                wrapped = f"print('STEP_START:{idx}')\n" + "\n".join(parsed) + f"\nprint('STEP_DONE:{idx}')"
+                code_lines.append(("rule", step, wrapped))
+            else:
+                code_lines.append(("llm", step, ""))
+                unrecognized.append(step)
 
     # LLM'e toplu sor
     llm_results = {}
@@ -1501,18 +1845,16 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
 
     # Birleştir + rapor oluştur
     final_lines = []
-    for kind, step, rule_code in code_lines:
-        if kind == "rule":
+    for idx, (kind, step, rule_code) in enumerate(code_lines):
+        if kind in ("rule", "image"):
             final_lines.append(rule_code)
-            report.append({"step": step, "method": "rule", "code": rule_code})
+            report.append({"step": step, "method": kind, "code": rule_code, "index": idx})
         else:
             llm_code = llm_results.get(step, "")
-            # LLM çıktısını temizle
             llm_code = "\n".join(
                 l for l in llm_code.splitlines()
                 if l.strip().startswith("#") or re.match(r'^\s*[a-z_].*[\(\.]', l)
             ).strip()
-            # Tutarsız girinti düzelt (try/except bloklarından kaynaklanan IndentationError'ı önler)
             if llm_code:
                 llm_code = textwrap.dedent(llm_code)
             if not llm_code:
@@ -1520,9 +1862,9 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                 method = "todo"
             else:
                 method = "llm"
-                llm_code = f"# {step}\n" + llm_code
+                llm_code = f"print('STEP_START:{idx}')\n# {step}\n" + llm_code + f"\nprint('STEP_DONE:{idx}')"
             final_lines.append(llm_code)
-            report.append({"step": step, "method": method, "code": llm_code})
+            report.append({"step": step, "method": method, "code": llm_code, "index": idx})
         final_lines.append("")
 
     return "\n".join(final_lines), report
@@ -1747,6 +2089,8 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
     if not req.script or len(req.script.strip()) < 10:
         raise HTTPException(400, "Geçersiz script")
 
+    run_id = str(uuid.uuid4())[:8]
+
     async def stream():
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False, encoding="utf-8", prefix="ai_test_"
@@ -1754,6 +2098,7 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
             f.write(req.script)
             tmp = f.name
 
+        yield _sse("run_id", run_id)
         yield _sse("info", f"Script: {os.path.basename(tmp)}")
         yield _sse("info", f"Platform: {req.platform}")
         yield _sse("info", "Kosum baslatiliyor...\n")
@@ -1766,12 +2111,21 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
                 stderr=subprocess.STDOUT,
                 env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
             )
+            _running_processes[run_id] = proc
             loop = asyncio.get_event_loop()
             while True:
                 line = await loop.run_in_executor(None, proc.stdout.readline)
                 if not line:
                     break
-                yield _sse("log", line.decode("utf-8", errors="replace").rstrip())
+                text = line.decode("utf-8", errors="replace").rstrip()
+                if text.startswith("STEP_START:"):
+                    yield _sse("step_start", text.split(":", 1)[1])
+                elif text.startswith("STEP_DONE:"):
+                    yield _sse("step_done", text.split(":", 1)[1])
+                elif text.startswith("STEP_FAIL:"):
+                    yield _sse("step_fail", text.split(":", 1)[1])
+                else:
+                    yield _sse("log", text)
 
             await loop.run_in_executor(None, proc.wait)
             rc = proc.returncode
@@ -1782,6 +2136,7 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
         except Exception as e:
             yield _sse("error", str(e))
         finally:
+            _running_processes.pop(run_id, None)
             if proc and proc.poll() is None:
                 proc.terminate()
             try:
@@ -1794,8 +2149,182 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@router.post("/stop/{run_id}")
+async def stop_execution(run_id: str, current_user: User = Depends(get_current_user)):
+    proc = _running_processes.get(run_id)
+    if not proc:
+        raise HTTPException(404, "Koşum bulunamadı veya zaten bitti")
+    if proc.poll() is None:
+        proc.terminate()
+    return {"ok": True, "run_id": run_id}
+
+
 def _sse(event: str, data: str) -> str:
     result = f"event: {event}\n"
     for line in data.split("\n"):
         result += f"data: {line}\n"
     return result + "\n"
+
+
+# ─── Senaryo Kaydetme (Git Workspace) ─────────────────────────────────────────
+
+class SaveScenarioRequest(BaseModel):
+    name:       str          # Senaryo adı (klasör adına dönüştürülür)
+    steps:      list[dict]   # [{type, content, b64, action, status}]
+    script:     str          # Üretilen Python scripti
+
+
+def _sanitize_folder_name(name: str) -> str:
+    """Senaryo adını güvenli klasör adına çevirir."""
+    clean = re.sub(r'[^\w\s-]', '', name, flags=re.UNICODE)
+    clean = re.sub(r'[\s]+', '_', clean.strip())
+    return clean[:64] or "senaryo"
+
+
+def _get_user_workspace(user_id: int, db: Session):
+    """Kullanıcının en son clone'lanmış workspace'ini döndürür."""
+    ws = (
+        db.query(UserWorkspace)
+        .filter(UserWorkspace.user_id == user_id, UserWorkspace.is_cloned == True)
+        .order_by(UserWorkspace.id.desc())
+        .first()
+    )
+    return ws
+
+
+@router.post("/scenarios")
+async def save_scenario(
+    req: SaveScenarioRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ws = _get_user_workspace(current_user.id, db)
+    if not ws:
+        raise HTTPException(400, "Git workspace bulunamadı. Önce Workspace sayfasından bir repo clone edin.")
+
+    folder_name = _sanitize_folder_name(req.name)
+    scenario_dir = Path(ws.local_path) / "ai_scenarios" / folder_name
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+
+    # steps.json — b64 alanını koru (büyük veri)
+    (scenario_dir / "steps.json").write_text(
+        _json.dumps({"name": req.name, "steps": req.steps}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (scenario_dir / "script.py").write_text(req.script, encoding="utf-8")
+
+    # Git commit + push
+    committed = git_service.commit_changes(
+        Path(ws.local_path),
+        f"ai-gen: senaryo kaydet '{req.name}'",
+    )
+    push_ok = False
+    if committed:
+        repo = ws.repository
+        try:
+            git_service.push_branch(
+                Path(ws.local_path),
+                ws.branch_name,
+                username=repo.git_username if repo else None,
+                token=repo.git_token if repo else None,
+            )
+            push_ok = True
+        except Exception:
+            pass  # push opsiyonel — local kayıt yeterli
+
+    return {"ok": True, "folder": folder_name, "committed": committed, "pushed": push_ok}
+
+
+@router.get("/scenarios")
+async def list_scenarios(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ws = _get_user_workspace(current_user.id, db)
+    if not ws:
+        return {"scenarios": []}
+
+    base = Path(ws.local_path) / "ai_scenarios"
+    if not base.exists():
+        return {"scenarios": []}
+
+    result = []
+    for folder in sorted(base.iterdir()):
+        if not folder.is_dir():
+            continue
+        meta_file = folder / "steps.json"
+        name = folder.name
+        if meta_file.exists():
+            try:
+                meta = _json.loads(meta_file.read_text(encoding="utf-8"))
+                name = meta.get("name", folder.name)
+            except Exception:
+                pass
+        result.append({"folder": folder.name, "name": name})
+
+    return {"scenarios": result}
+
+
+@router.get("/scenarios/{folder_name}")
+async def load_scenario(
+    folder_name: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ws = _get_user_workspace(current_user.id, db)
+    if not ws:
+        raise HTTPException(400, "Git workspace bulunamadı.")
+
+    scenario_dir = Path(ws.local_path) / "ai_scenarios" / folder_name
+    if not scenario_dir.exists():
+        raise HTTPException(404, "Senaryo bulunamadı.")
+
+    steps_file  = scenario_dir / "steps.json"
+    script_file = scenario_dir / "script.py"
+
+    steps_data = _json.loads(steps_file.read_text(encoding="utf-8")) if steps_file.exists() else {}
+    script     = script_file.read_text(encoding="utf-8") if script_file.exists() else ""
+
+    return {
+        "name":   steps_data.get("name", folder_name),
+        "steps":  steps_data.get("steps", []),
+        "script": script,
+    }
+
+
+@router.delete("/scenarios/{folder_name}")
+async def delete_scenario(
+    folder_name: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ws = _get_user_workspace(current_user.id, db)
+    if not ws:
+        raise HTTPException(400, "Git workspace bulunamadı.")
+
+    scenario_dir = Path(ws.local_path) / "ai_scenarios" / folder_name
+    if not scenario_dir.exists():
+        raise HTTPException(404, "Senaryo bulunamadı.")
+
+    import shutil
+    shutil.rmtree(scenario_dir)
+
+    committed = git_service.commit_changes(
+        Path(ws.local_path),
+        f"ai-gen: senaryo sil '{folder_name}'",
+    )
+    push_ok = False
+    if committed:
+        repo = ws.repository
+        try:
+            git_service.push_branch(
+                Path(ws.local_path),
+                ws.branch_name,
+                username=repo.git_username if repo else None,
+                token=repo.git_token if repo else None,
+            )
+            push_ok = True
+        except Exception:
+            pass
+
+    return {"ok": True, "committed": committed, "pushed": push_ok}

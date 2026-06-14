@@ -72,11 +72,6 @@
                     + item("java-generator","&#9749;",  "Java Generator")
                     + item("bdd-generator","&#129405;", "BDD Generator")
                   )
-            +     section("Yönetim",
-                    item("devices",   "&#128241;", "Cihazlar")
-                    + item("scenarios","&#128221;", "Senaryolar")
-                    + item("jobs",     "&#128640;", "İş Paketleri")
-                  )
             +     adminBlock
             +   '</nav>'
             +   '<div class="sidebar-footer">'
