@@ -311,6 +311,29 @@
         }
         .btn-reset:hover { border-color: var(--danger); color: var(--danger); }
 
+        /* Yeni Senaryo butonu */
+        .btn-new-scenario {
+            padding: 10px 16px;
+            background: rgba(16,185,129,0.08);
+            border: 1px solid rgba(16,185,129,0.35);
+            border-radius: var(--radius-md);
+            color: #10b981;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-new-scenario:hover { border-color: #10b981; background: rgba(16,185,129,0.15); }
+
+        /* Senaryo listesinde platform badge */
+        .scenario-plat-badge {
+            font-size: 1rem;
+            flex-shrink: 0;
+            width: 24px;
+            text-align: center;
+        }
+
         /* Çalışma süresi */
         .exec-timer {
             font-family: 'JetBrains Mono', monospace;
@@ -421,6 +444,8 @@
         }
         .step-type-badge.text  { background: rgba(79,70,229,0.12); color: var(--accent-primary); }
         .step-type-badge.image { background: rgba(16,185,129,0.12); color: #10b981; }
+        .step-type-badge.sql   { background: rgba(234,179,8,0.14);  color: #ca8a04; }
+        .step-type-badge.api   { background: rgba(6,182,212,0.14);  color: #0891b2; }
         .step-content-input {
             flex: 1;
             padding: 4px 6px;
@@ -443,6 +468,80 @@
             flex-shrink: 0;
         }
         .step-img-thumb:hover { border-color: #10b981; }
+        /* SQL / API genişletilmiş adım */
+        .step-item.extended { align-items: flex-start; padding: 10px; }
+        .step-ext-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+        }
+        .step-ext-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .step-ext-input {
+            flex: 1;
+            padding: 4px 6px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            font-family: 'JetBrains Mono', monospace;
+            outline: none;
+            min-width: 0;
+        }
+        .step-ext-input:focus { border-bottom-color: var(--accent-primary); }
+        .step-drag-handle {
+            color: var(--text-muted);
+            cursor: grab;
+            font-size: 1rem;
+            flex-shrink: 0;
+            user-select: none;
+            opacity: 0.45;
+            padding: 0 1px;
+            line-height: 1;
+        }
+        .step-drag-handle:hover { opacity: 1; color: var(--accent-primary); }
+        .step-item.dragging  { opacity: 0.35; border-style: dashed; }
+        .step-item.drag-over { border-color: var(--accent-primary) !important; background: rgba(79,70,229,0.07) !important; }
+        /* Input/textarea içinde istem dışı drag başlamasın */
+        .step-item input, .step-item textarea, .step-item select { -webkit-user-drag: none; }
+        .step-ext-textarea {
+            width: 100%;
+            min-height: 52px;
+            max-height: 110px;
+            padding: 5px 8px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 0.78rem;
+            font-family: 'JetBrains Mono', monospace;
+            resize: vertical;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .step-ext-textarea:focus { border-color: var(--accent-primary); }
+        .btn-add-step.sql-btn { border-color: rgba(234,179,8,0.4);  color: #ca8a04; }
+        .btn-add-step.sql-btn:hover { border-color: #ca8a04; background: rgba(234,179,8,0.08); }
+        .btn-add-step.api-btn { border-color: rgba(6,182,212,0.4);  color: #0891b2; }
+        .btn-add-step.api-btn:hover { border-color: #0891b2; background: rgba(6,182,212,0.08); }
+        .step-action-select {
+            padding: 3px 6px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .step-action-select:focus { outline: none; border-color: var(--accent-primary); }
         .step-img-placeholder {
             font-size: 0.78rem;
             color: #10b981;
@@ -615,12 +714,16 @@
 
                     <!-- Step Araç Çubuğu -->
                     <div class="step-toolbar">
-                        <button class="btn-add-step" onclick="addTextStep()">＋ Metin Adımı</button>
-                        <button class="btn-add-step img-btn" id="btnAddImage" onclick="addImageStep()" style="display:none;">📷 Görsel Adım</button>
+                        <button class="btn-add-step" onclick="addTextStep()">＋ Metin</button>
+                        <button class="btn-add-step img-btn" id="btnAddImage" onclick="addImageStep()" style="display:none;">📷 Görsel</button>
+                        <button class="btn-add-step sql-btn" onclick="addSqlStep()">🗄️ SQL</button>
+                        <button class="btn-add-step api-btn" onclick="addApiStep()">🔌 API</button>
                     </div>
 
                     <!-- Step Listesi -->
-                    <div class="step-list" id="stepList">
+                    <div class="step-list" id="stepList"
+                         ondragover="stepListDragOver(event)"
+                         ondrop="stepListDrop(event)">
                         <div class="step-empty">Henüz adım yok.<br>Yukarıdaki butonlarla <strong>Metin</strong> veya <strong>Görsel</strong> adım ekleyin.</div>
                     </div>
 
@@ -721,6 +824,42 @@
                         Adım 4: "Hesabım" yazısının göründüğünü doğrula
                     </div>
 
+                    <!-- Web İpucu -->
+                    <div id="web-hint-section" style="display:none; padding:12px; background:rgba(16,185,129,0.06); border-radius:var(--radius-md); border:1px solid rgba(16,185,129,0.2); font-size:0.8rem; color:var(--text-secondary); line-height:1.8;">
+                        <strong style="color:#10b981;">💡 Web Kural Seti</strong>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-top:8px;">
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Navigasyon</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"https://ornek.com" aç</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">geri</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">ileri</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">sayfayı yenile</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">aşağı kaydır</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">yukarı kaydır</code></div>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Tıklama / Yazma</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Giriş Yap" tıkla</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">kullanıcı adı alanına "admin" yaz</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">şifre alanına "1234" gir</code></div>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Doğrulama / Bekleme</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Hoşgeldiniz" görünmeli</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Yüklendi" görünene kadar bekle</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">3 saniye bekle</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">ekran görüntüsü al</code></div>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Klavye</div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Ctrl+A" bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Ctrl+C" bas</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Delete" bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Backspace" bas</code></div>
+                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">enter bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">tab bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">esc bas</code></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(16,185,129,0.15); opacity:0.7;">
+                            Selenium WebDriver kullanır. Tırnak içi metin: element metni veya alan adı olarak aranır.
+                        </div>
+                    </div>
+
                     <!-- Desktop İpucu -->
                     <div id="desk-hint-section" style="display:none; padding:12px; background:rgba(79,70,229,0.06); border-radius:var(--radius-md); border:1px solid rgba(79,70,229,0.2); font-size:0.8rem; color:var(--text-secondary); line-height:1.8;">
                         <strong style="color:var(--accent-primary);">💡 Desktop Kural Seti</strong>
@@ -759,7 +898,8 @@
 
                     <!-- Generate Butonu -->
                     <div class="action-row">
-                        <button class="btn-reset" onclick="resetAll()" title="Her şeyi sıfırla">↺ Sıfırla</button>
+                        <button class="btn-reset" onclick="resetAll()" title="Platformu da dahil her şeyi sıfırla">↺ Sıfırla</button>
+                        <button class="btn-new-scenario" onclick="newScenario()" title="Adımları ve scripti temizle, platform seçimi kalır">✚ Yeni Senaryo</button>
                         <button class="btn-generate" id="btnGenerate" onclick="generateScript()" disabled>
                             <div class="spinner" id="genSpinner"></div>
                             <span id="genBtnText">✨ Script Üret</span>
@@ -812,6 +952,8 @@
                             </button>
                             <button id="btnStop" onclick="stopExecution()" style="display:none; padding:12px 18px; background:#dc2626; color:#fff; border:none; border-radius:var(--radius-md); cursor:pointer; font-size:0.9rem; font-weight:600; white-space:nowrap;">⏹ Durdur</button>
                             <button class="btn-save" id="btnSave" onclick="openSaveModal()" disabled title="Senaryoyu Git workspace'e kaydet">💾 Kaydet</button>
+                            <button onclick="gitPull()" title="Remote'dan son degisiklikleri cek" style="padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color); background:var(--bg-tertiary); color:var(--text-primary); cursor:pointer; font-size:0.85rem; white-space:nowrap;">⬇ Pull</button>
+                            <button onclick="gitPush()" title="Degisiklikleri remote branch'e push et" style="padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color); background:var(--bg-tertiary); color:var(--text-primary); cursor:pointer; font-size:0.85rem; white-space:nowrap;">⬆ Push</button>
                             <span class="exec-timer" id="execTimer" style="display:none;">0:00</span>
                         </div>
                     </div>
@@ -877,6 +1019,9 @@
     <div class="modal-box" style="max-width:420px; width:100%;">
         <div style="font-weight:600; font-size:1rem;">💾 Senaryoyu Kaydet</div>
         <div style="font-size:0.85rem; color:var(--text-muted);">Senaryo adımları ve üretilen script Git workspace'e kaydedilecek.</div>
+        <div id="saveModalHint" style="display:none; font-size:0.8rem; color:#f59e0b; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:6px; padding:8px 12px;">
+            ✏️ Yüklenen senaryo düzenleniyor. Adı <strong>aynı tutarsanız</strong> üzerine yazılır; değiştirirseniz yeni senaryo oluşturulur.
+        </div>
         <div class="form-group">
             <label class="form-label">Senaryo Adı</label>
             <input type="text" class="form-input" id="saveScenarioName" placeholder="Örn: Giriş Yap Testi" maxlength="64">
@@ -895,7 +1040,10 @@
 <div id="scenariosModal" class="ai-modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:540px; width:100%;">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-            <div style="font-weight:600; font-size:1rem;">📂 Kaydedilmiş Senaryolar</div>
+            <div style="font-weight:600; font-size:1rem;">
+                📂 Kaydedilmiş Senaryolar
+                <span id="scenarioModalPlatLabel" style="margin-left:8px; font-size:0.78rem; font-weight:400; opacity:0.65;"></span>
+            </div>
             <button class="step-del-btn" onclick="closeScenariosModal()" style="font-size:1.2rem; opacity:0.7;">✕</button>
         </div>
         <div id="scenariosListBody" class="scenario-list-body">
@@ -922,6 +1070,14 @@
 
     // Step list: [{type, content, b64, action, status}]
     let steps = [];
+
+    // Düzenleme modu: yüklenen senaryo bilgisi
+    let _editingFolder = null;
+    let _editingName   = "";
+
+    // Sürükle-bırak state
+    let _dragSrcIdx    = -1;
+    let _dragTargetIdx = -1;
 
     // Screenshot / crop state
     let _captureTargetStepIdx = -1;
@@ -962,7 +1118,8 @@
         document.querySelector(`[data-platform="${platform}"]`).classList.add("selected");
         document.querySelectorAll(".platform-params").forEach(p => p.classList.remove("visible"));
         document.getElementById(`params-${platform}`).classList.add("visible");
-        document.getElementById("scan-section").style.display      = platform === "mobile"  ? "block" : "none";
+        document.getElementById("scan-section").style.display       = platform === "mobile"  ? "block" : "none";
+        document.getElementById("web-hint-section").style.display  = platform === "web"     ? "block" : "none";
         document.getElementById("desk-hint-section").style.display = platform === "desktop" ? "block" : "none";
         // Görsel adım butonu mobilde gizlenir
         document.getElementById("btnAddImage").style.display = platform === "mobile" ? "none" : "inline-flex";
@@ -972,7 +1129,9 @@
     function updateGenerateBtn() {
         const hasValidStep = steps.some(s =>
             (s.type === "text"  && s.content.trim().length > 0) ||
-            (s.type === "image" && s.b64.length > 0)
+            (s.type === "image" && s.b64.length > 0) ||
+            (s.type === "sql"   && (s.sql_query  || "").trim().length > 0) ||
+            (s.type === "api"   && (s.api_url    || "").trim().length > 0)
         );
         document.getElementById("btnGenerate").disabled = !(hasValidStep && selectedPlatform) || isGenerating;
     }
@@ -1001,8 +1160,86 @@
         updateGenerateBtn();
     };
 
+    // ── Sürükle-Bırak ────────────────────────────────────────────────────────
+    window.stepDragStart = function(e, idx) {
+        _dragSrcIdx = idx;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(idx));
+        setTimeout(() => {
+            const row = document.getElementById(`step-row-${idx}`);
+            if (row) row.classList.add("dragging");
+        }, 0);
+    };
+
+    window.stepDragEnd = function() {
+        _dragSrcIdx    = -1;
+        _dragTargetIdx = -1;
+        document.querySelectorAll(".step-item").forEach(el =>
+            el.classList.remove("dragging", "drag-over"));
+    };
+
+    window.stepListDragOver = function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        // Fare hangi adımın üzerinde? Y pozisyonuna göre belirle
+        const items = document.querySelectorAll("#stepList .step-item[id^='step-row-']");
+        let targetIdx = -1;
+        for (const item of items) {
+            const rect = item.getBoundingClientRect();
+            if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                targetIdx = parseInt(item.id.replace("step-row-", ""), 10);
+                break;
+            }
+        }
+        if (targetIdx !== _dragTargetIdx) {
+            _dragTargetIdx = targetIdx;
+            document.querySelectorAll(".step-item").forEach(el => el.classList.remove("drag-over"));
+            if (targetIdx >= 0 && targetIdx !== _dragSrcIdx) {
+                const row = document.getElementById(`step-row-${targetIdx}`);
+                if (row) row.classList.add("drag-over");
+            }
+        }
+    };
+
+    window.stepListDrop = function(e) {
+        e.preventDefault();
+        if (_dragSrcIdx < 0 || _dragTargetIdx < 0 || _dragSrcIdx === _dragTargetIdx) {
+            stepDragEnd();
+            return;
+        }
+        const moved = steps.splice(_dragSrcIdx, 1)[0];
+        steps.splice(_dragTargetIdx, 0, moved);
+        stepDragEnd();
+        renderStepList();
+        updateGenerateBtn();
+    };
+
     window.updateStepContent = function(idx, value) {
         if (steps[idx]) steps[idx].content = value;
+        updateGenerateBtn();
+    };
+
+    window.updateStepAction = function(idx, value) {
+        if (steps[idx]) steps[idx].action = value;
+    };
+
+    window.updateStepField = function(idx, field, value) {
+        if (steps[idx]) steps[idx][field] = value;
+        updateGenerateBtn();
+    };
+
+    window.addSqlStep = function() {
+        steps.push({ type: "sql", content: "", b64: "", action: "query_print",
+            db_connection: "", sql_query: "", var_name: "", status: null });
+        renderStepList();
+        updateGenerateBtn();
+    };
+
+    window.addApiStep = function() {
+        steps.push({ type: "api", content: "", b64: "", action: "print",
+            api_url: "", api_method: "GET", api_headers: "", api_body: "",
+            json_field: "", var_name: "", status: null });
+        renderStepList();
         updateGenerateBtn();
     };
 
@@ -1043,32 +1280,120 @@
     function renderStepRow(s, i) {
         const statusClass = s.status || "";
         const statusIcon  = s.status === "running" ? "⟳" : s.status === "done" ? "✓" : s.status === "fail" ? "✕" : "·";
-        const typeLabel   = s.type === "text" ? "Metin" : "Görsel";
-        const typeCls     = s.type === "text" ? "text" : "image";
 
+        const TYPE_META = {
+            text:  { label: "Metin",  cls: "text" },
+            image: { label: "Görsel", cls: "image" },
+            sql:   { label: "SQL",    cls: "sql" },
+            api:   { label: "API",    cls: "api" },
+        };
+        const meta    = TYPE_META[s.type] || TYPE_META.text;
+        let extraClass = "";
         let contentHtml;
+
         if (s.type === "text") {
             contentHtml = `<input class="step-content-input" type="text" value="${escHtml(s.content)}"
-                placeholder="Adım açıklaması..." oninput="updateStepContent(${i}, this.value)">`;
-        } else {
+                placeholder='Adım açıklaması...  (değişken için: {{değişkenAdı}} yaz)' oninput="updateStepContent(${i}, this.value)">`;
+
+        } else if (s.type === "image") {
+            const imgActionOpts = [
+                { v: "click",        l: "Sol Tık" },
+                { v: "double_click", l: "Çift Tık" },
+                { v: "right_click",  l: "Sağ Tık" },
+                { v: "assert",       l: "Görünmeli" },
+            ];
+            const imgSel = `<select class="step-action-select" onchange="updateStepAction(${i}, this.value)">
+                ${imgActionOpts.map(o => `<option value="${o.v}"${(s.action||"click") === o.v ? " selected" : ""}>${o.l}</option>`).join("")}
+            </select>`;
             if (s.b64) {
-                contentHtml = `<img class="step-img-thumb" src="data:image/png;base64,${s.b64}"
-                    onclick="retakeImage(${i})" title="Tıkla → Yeniden ekran görüntüsü al">
+                contentHtml = `
+                    <img class="step-img-thumb" src="data:image/png;base64,${s.b64}"
+                        onclick="retakeImage(${i})" title="Tıkla → Yeniden ekran görüntüsü al">
+                    ${imgSel}
                     <input class="step-content-input" type="text" value="${escHtml(s.content)}"
                         placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${i}, this.value)"
-                        style="max-width:160px;">`;
+                        style="flex:1; min-width:80px;">`;
             } else {
                 contentHtml = `<span class="step-img-placeholder" onclick="retakeImage(${i})">📷 Tıkla → Ekran Al</span>`;
             }
+
+        } else if (s.type === "sql") {
+            extraClass = " extended";
+            const sqlActSel = `<select class="step-action-select" onchange="updateStepAction(${i}, this.value)">
+                <option value="query_print"${(s.action||"query_print") === "query_print" ? " selected" : ""}>Sonuç Yazdır</option>
+                <option value="execute"${s.action === "execute" ? " selected" : ""}>Sadece Çalıştır</option>
+            </select>`;
+            contentHtml = `<div class="step-ext-body">
+                <div class="step-ext-row">
+                    <input class="step-content-input" type="text" value="${escHtml(s.content)}" placeholder="Açıklama" oninput="updateStepContent(${i}, this.value)" style="flex:1">
+                    ${sqlActSel}
+                    <input class="step-ext-input" type="text" value="${escHtml(s.var_name||'')}"
+                        placeholder="Değişken adı (ör: agirlik)" oninput="updateStepField(${i}, 'var_name', this.value)"
+                        style="max-width:140px;" title="Dolu ise 1. satır 1. sütun → _VARS['ad'] kaydedilir. Metin adımında: {{ad}} yaz">
+                </div>
+                <input class="step-ext-input" type="text" value="${escHtml(s.db_connection||'')}"
+                    placeholder="Bağlantı: sqlite:///dosya.db  veya  DRIVER={ODBC Driver 17 for SQL Server};SERVER=...;DATABASE=...;Trusted_Connection=yes"
+                    oninput="updateStepField(${i}, 'db_connection', this.value)">
+                <textarea class="step-ext-textarea" placeholder="SQL sorgusu..."
+                    oninput="updateStepField(${i}, 'sql_query', this.value)">${escText(s.sql_query||'')}</textarea>
+            </div>`;
+
+        } else if (s.type === "api") {
+            extraClass = " extended";
+            const methods = ["GET","POST","PUT","DELETE","PATCH"];
+            const methodSel = `<select class="step-action-select" onchange="updateStepField(${i}, 'api_method', this.value)" style="font-weight:600; color:var(--accent-primary);">
+                ${methods.map(m => `<option value="${m}"${(s.api_method||"GET") === m ? " selected" : ""}>${m}</option>`).join("")}
+            </select>`;
+            const apiActSel = `<select class="step-action-select" onchange="updateStepAction(${i}, this.value)">
+                <option value="print"${(s.action||"print") === "print" ? " selected" : ""}>Yanıt Yazdır</option>
+                <option value="execute"${s.action === "execute" ? " selected" : ""}>Sadece Çalıştır</option>
+                <option value="store"${s.action === "store" ? " selected" : ""}>Değişkene Kaydet</option>
+            </select>`;
+            contentHtml = `<div class="step-ext-body">
+                <div class="step-ext-row">
+                    ${methodSel}
+                    <input class="step-content-input" type="text" value="${escHtml(s.api_url||'')}"
+                        placeholder="https://api.example.com/endpoint"
+                        oninput="updateStepField(${i}, 'api_url', this.value)"
+                        style="flex:1; font-family:'JetBrains Mono',monospace; font-size:0.8rem">
+                    ${apiActSel}
+                </div>
+                <div class="step-ext-row">
+                    <input class="step-ext-input" type="text" value="${escHtml(s.json_field||'')}"
+                        placeholder="JSON alanı (ör: id  veya  user.name)"
+                        oninput="updateStepField(${i}, 'json_field', this.value)"
+                        style="flex:1;" title="Yanıttan çekilecek alan (nokta ile iç içe: user.address.city)">
+                    <input class="step-ext-input" type="text" value="${escHtml(s.var_name||'')}"
+                        placeholder="Değişken adı (ör: postBasligi)"
+                        oninput="updateStepField(${i}, 'var_name', this.value)"
+                        style="flex:1;" title="Dolu ise çekilen değer _VARS['ad']'a kaydedilir. Metin adımında: {{ad}} yaz">
+                </div>
+                <input class="step-ext-input" type="text" value="${escHtml(s.content||'')}"
+                    placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${i}, this.value)">
+                <textarea class="step-ext-textarea"
+                    placeholder='Headers: {"Authorization": "Bearer token"} — opsiyonel'
+                    oninput="updateStepField(${i}, 'api_headers', this.value)">${escText(s.api_headers||'')}</textarea>
+                <textarea class="step-ext-textarea"
+                    placeholder='Body: {"key": "value"} — POST / PUT / PATCH için'
+                    oninput="updateStepField(${i}, 'api_body', this.value)">${escText(s.api_body||'')}</textarea>
+            </div>`;
         }
 
-        return `<div class="step-item${statusClass ? " " + statusClass : ""}" id="step-row-${i}">
+        return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}" id="step-row-${i}"
+            draggable="true"
+            ondragstart="stepDragStart(event, ${i})"
+            ondragend="stepDragEnd()">
+            <span class="step-drag-handle" title="Sürükle">⠿</span>
             <span class="step-num">${i + 1}</span>
-            <span class="step-type-badge ${typeCls}">${typeLabel}</span>
+            <span class="step-type-badge ${meta.cls}">${meta.label}</span>
             ${contentHtml}
             <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
             <button class="step-del-btn" onclick="deleteStep(${i})" title="Sil">✕</button>
         </div>`;
+    }
+
+    function escText(s) {
+        return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     function escHtml(s) {
@@ -1322,10 +1647,18 @@
 
     function buildPayload() {
         const stepsList = steps.map(s => ({
-            type:      s.type,
-            content:   s.content,
-            image_b64: s.b64 || "",
-            action:    s.action || "click"
+            type:          s.type,
+            content:       s.content,
+            image_b64:     s.b64          || "",
+            action:        s.action       || "click",
+            db_connection: s.db_connection || "",
+            sql_query:     s.sql_query    || "",
+            api_url:       s.api_url      || "",
+            api_method:    s.api_method   || "GET",
+            api_headers:   s.api_headers  || "",
+            api_body:      s.api_body     || "",
+            var_name:      s.var_name     || "",
+            json_field:    s.json_field   || "",
         }));
         // test_case geriye uyumluluk için (mobile fallback)
         const testCase = steps.filter(s => s.type === "text").map(s => s.content).join("\n");
@@ -1465,7 +1798,13 @@
                     "Content-Type":  "application/json",
                     "Authorization": `Bearer ${Auth.getToken()}`
                 },
-                body: JSON.stringify({ script: generatedScript, platform: selectedPlatform })
+                body: JSON.stringify({
+                    script:          generatedScript,
+                    platform:        selectedPlatform,
+                    scenario_name:   _editingName   || "Adsız Senaryo",
+                    scenario_folder: _editingFolder || "",
+                    step_labels:     steps.map(s => s.content || s.type || "Adım"),
+                })
             });
 
             if (!response.ok) {
@@ -1534,18 +1873,35 @@
         }
     }
 
-    window.resetAll = function() {
-        steps = [];
+    // Senaryo içeriğini temizler (adımlar + script + editing state).
+    // silent=true ise toast göstermez (platform değişimi sırasında kullanılır).
+    function _clearScenarioContent(silent) {
+        steps          = [];
+        _editingFolder = null;
+        _editingName   = "";
+        generatedScript = "";
         renderStepList();
+        resetOutput();
+        document.getElementById("btnExecute").disabled = true;
+        document.getElementById("btnSave").disabled    = true;
+        updateGenerateBtn();
+        if (!silent) Toast.info("Yeni senaryo — platform seçimi korundu");
+    }
+
+    // Sadece senaryo içeriğini sıfırla, platform+parametreler kalır
+    window.newScenario = function() {
+        _clearScenarioContent(false);
+    };
+
+    window.resetAll = function() {
+        _clearScenarioContent(true);
         document.querySelectorAll(".platform-btn").forEach(b => b.classList.remove("selected"));
         document.querySelectorAll(".platform-params").forEach(p => p.classList.remove("visible"));
         document.getElementById("scan-section").style.display       = "none";
+        document.getElementById("web-hint-section").style.display   = "none";
         document.getElementById("desk-hint-section").style.display  = "none";
         document.getElementById("btnAddImage").style.display        = "none";
         selectedPlatform = null;
-        generatedScript  = "";
-        resetOutput();
-        updateGenerateBtn();
         Toast.info("Sıfırlandı");
     };
 
@@ -1653,7 +2009,10 @@
     // ── Senaryo Kaydet ───────────────────────────────────────────────────────
     window.openSaveModal = function () {
         const nameEl = document.getElementById("saveScenarioName");
-        nameEl.value = "";
+        // Yüklü senaryo varsa adını doldur (üzerine yazma modu)
+        nameEl.value = _editingName || "";
+        const hint = document.getElementById("saveModalHint");
+        if (hint) hint.style.display = _editingFolder ? "block" : "none";
         document.getElementById("saveModal").style.display = "flex";
         setTimeout(() => nameEl.focus(), 80);
     };
@@ -1679,23 +2038,59 @@
         btnConf.disabled      = true;
 
         try {
+            // Aynı ad → mevcut klasör üzerine yaz; isim değiştiyse yeni klasör
+            const overwriteFolder = (_editingFolder && name === _editingName) ? _editingFolder : null;
+            // Platform parametrelerini topla
+            const params = {};
+            if (selectedPlatform === "web") {
+                params.browser    = document.getElementById("web-browser").value;
+                params.target_url = document.getElementById("web-url").value;
+            } else if (selectedPlatform === "mobile") {
+                params.device_id    = document.getElementById("mob-device").value;
+                params.app_package  = document.getElementById("mob-package").value;
+                params.app_activity = document.getElementById("mob-activity").value;
+                params.appium_url   = document.getElementById("mob-appium").value;
+            } else if (selectedPlatform === "desktop") {
+                params.app_path     = document.getElementById("desk-app").value;
+                params.window_title = document.getElementById("desk-window").value;
+            }
+            const body = {
+                name,
+                steps: steps.map(s => ({
+                    type:          s.type,
+                    content:       s.content,
+                    b64:           s.b64           || "",
+                    action:        s.action        || "click",
+                    db_connection: s.db_connection || "",
+                    sql_query:     s.sql_query     || "",
+                    api_url:       s.api_url       || "",
+                    api_method:    s.api_method    || "GET",
+                    api_headers:   s.api_headers   || "",
+                    api_body:      s.api_body      || "",
+                    var_name:      s.var_name      || "",
+                    json_field:    s.json_field    || "",
+                })),
+                script:   currentScript,
+                folder:   overwriteFolder,
+                platform: selectedPlatform,
+                params,
+            };
             const resp = await fetch(`${API_BASE}/ai-gen/scenarios`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${Auth.getToken()}`
                 },
-                body: JSON.stringify({
-                    name,
-                    steps: steps.map(s => ({ type: s.type, content: s.content, b64: s.b64 || "", action: s.action || "click" })),
-                    script: currentScript
-                })
+                body: JSON.stringify(body)
             });
             if (!resp.ok) {
                 const err = await resp.json();
                 throw new Error(err.detail || "Kayıt başarısız");
             }
             const data = await resp.json();
+            // Kayıt sonrası editing state'i güncelle (yeni kayıtta folder döner)
+            _editingFolder = data.folder || _editingFolder;
+            _editingName   = name;
             closeSaveModal();
             Toast.success(`"${name}" Git workspace'e kaydedildi ✓`);
             if (!data.committed) Toast.info("Git commit yapılmadı (değişiklik yok veya repo sorunu)");
@@ -1714,7 +2109,17 @@
     });
 
     // ── Senaryo Listesi ───────────────────────────────────────────────────────
+    function _platformLabel(p) {
+        return {web: "Web", mobile: "Mobil", desktop: "Desktop"}[p] || p || "";
+    }
+    function _platformIcon(p) {
+        return {web: "🌐", mobile: "📱", desktop: "🖥️"}[p] || "❓";
+    }
+
     window.openScenarios = async function () {
+        // Modal başlığına aktif platform filtresini yaz
+        const lbl = document.getElementById("scenarioModalPlatLabel");
+        if (lbl) lbl.textContent = selectedPlatform ? `— yalnızca ${_platformLabel(selectedPlatform)}` : "— tümü";
         document.getElementById("scenariosModal").style.display = "flex";
         await refreshScenariosList();
     };
@@ -1732,12 +2137,26 @@
             });
             if (!resp.ok) throw new Error("Liste alınamadı");
             const data = await resp.json();
-            if (!data.scenarios || data.scenarios.length === 0) {
-                body.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:32px;">Kaydedilmiş senaryo yok.<br><span style="opacity:0.6;">Script ürettikten sonra 💾 Kaydet ile kayıt edebilirsiniz.</span></div>';
+            let scenarios = data.scenarios || [];
+
+            // Platform filtresi: seçili platform varsa sadece onu göster
+            // (platform alanı boş kayıtlar herkese gösterilir — eski uyumluluk)
+            if (selectedPlatform) {
+                scenarios = scenarios.filter(s => !s.platform || s.platform === selectedPlatform);
+            }
+
+            if (scenarios.length === 0) {
+                const hint = selectedPlatform
+                    ? `<b>${_platformLabel(selectedPlatform)}</b> platformuna ait kayıtlı senaryo bulunamadı.`
+                    : "Kaydedilmiş senaryo yok.";
+                body.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:32px;">
+                    ${hint}<br><span style="opacity:0.6;">Script ürettikten sonra 💾 Kaydet ile kayıt edebilirsiniz.</span>
+                </div>`;
                 return;
             }
-            body.innerHTML = data.scenarios.map(s => `
+            body.innerHTML = scenarios.map(s => `
                 <div class="scenario-item">
+                    <span class="scenario-plat-badge" title="${escHtml(_platformLabel(s.platform))}">${_platformIcon(s.platform)}</span>
                     <span class="scenario-item-name">📄 ${escHtml(s.name)}</span>
                     <button class="btn-scenario-load" onclick="loadScenario('${escHtml(s.folder)}')">Yükle</button>
                     <button class="btn-scenario-del"  onclick="deleteScenario('${escHtml(s.folder)}', '${escHtml(s.name)}')">Sil</button>
@@ -1755,16 +2174,46 @@
             if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Yükleme hatası"); }
             const data = await resp.json();
 
-            // Adımları yükle
+            // Düzenleme modunu işaretle
+            _editingFolder = folder;
+            _editingName   = data.name || folder;
+
+            // Adımları yükle (tüm tip alanlarıyla)
             steps = (data.steps || []).map(s => ({
-                type:    s.type    || "text",
-                content: s.content || "",
-                b64:     s.b64     || "",
-                action:  s.action  || "click",
-                status:  null
+                type:          s.type          || "text",
+                content:       s.content       || "",
+                b64:           s.b64           || "",
+                action:        s.action        || "click",
+                status:        null,
+                db_connection: s.db_connection || "",
+                sql_query:     s.sql_query     || "",
+                api_url:       s.api_url       || "",
+                api_method:    s.api_method    || "GET",
+                api_headers:   s.api_headers   || "",
+                api_body:      s.api_body      || "",
+                var_name:      s.var_name      || "",
+                json_field:    s.json_field    || "",
             }));
             renderStepList();
             updateGenerateBtn();
+
+            // Platform ve parametreleri geri yükle
+            if (data.platform) {
+                selectPlatform(data.platform);
+                const p = data.params || {};
+                if (data.platform === "web") {
+                    if (p.browser)    document.getElementById("web-browser").value = p.browser;
+                    if (p.target_url) document.getElementById("web-url").value     = p.target_url;
+                } else if (data.platform === "mobile") {
+                    if (p.device_id)    document.getElementById("mob-device").value   = p.device_id;
+                    if (p.app_package)  document.getElementById("mob-package").value  = p.app_package;
+                    if (p.app_activity) document.getElementById("mob-activity").value = p.app_activity;
+                    if (p.appium_url)   document.getElementById("mob-appium").value   = p.appium_url;
+                } else if (data.platform === "desktop") {
+                    if (p.app_path)     document.getElementById("desk-app").value    = p.app_path;
+                    if (p.window_title) document.getElementById("desk-window").value = p.window_title;
+                }
+            }
 
             // Script'i yükle
             generatedScript = data.script || "";
@@ -1799,6 +2248,52 @@
     // ── Init ─────────────────────────────────────────────────────────────────
     checkOllamaStatus();
     setInterval(checkOllamaStatus, 30000);
+
+    // ── Git Pull / Push ───────────────────────────────────────────────────────
+    window.gitPull = async function () {
+        try {
+            const r = await fetch(`${API_BASE}/ai-gen/git-pull`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            const d = await r.json();
+            if (d.ok) {
+                showToast(d.message || "Pull basarili");
+                refreshScenariosList();
+            } else {
+                showToast(d.message || "Pull basarisiz", true);
+            }
+        } catch (e) {
+            showToast("Pull hatasi: " + e.message, true);
+        }
+    };
+
+    window.gitPush = async function () {
+        try {
+            const r = await fetch(`${API_BASE}/ai-gen/git-push`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            const d = await r.json();
+            showToast(d.message || (d.ok ? "Push basarili" : "Push basarisiz"), !d.ok);
+        } catch (e) {
+            showToast("Push hatasi: " + e.message, true);
+        }
+    };
+
+    function showToast(msg, isError) {
+        let el = document.getElementById("_aiGenToast");
+        if (!el) {
+            el = document.createElement("div");
+            el.id = "_aiGenToast";
+            el.style.cssText = "position:fixed;bottom:24px;right:24px;background:var(--bg-primary);border:1px solid var(--border-color);padding:10px 18px;border-radius:10px;font-size:0.87rem;box-shadow:0 4px 20px rgba(0,0,0,.2);z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;";
+            document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.style.borderColor = isError ? "#ef4444" : "var(--border-color)";
+        el.style.opacity = "1";
+        setTimeout(() => { el.style.opacity = "0"; }, 3000);
+    }
 
 })();
 </script>

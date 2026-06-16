@@ -42,3 +42,23 @@ def get_db():
 def init_db():
     import models.db_models
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
+
+
+def _run_migrations():
+    """Mevcut DB'ye yeni kolonlar ekle (SQLite ALTER TABLE)."""
+    migrations = [
+        "ALTER TABLE repositories ADD COLUMN provider TEXT NOT NULL DEFAULT 'generic'",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(_text(sql))
+                conn.commit()
+            except Exception:
+                pass  # Kolon zaten varsa hata verir, geç
+
+
+def _text(sql: str):
+    from sqlalchemy import text
+    return text(sql)

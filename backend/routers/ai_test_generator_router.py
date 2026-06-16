@@ -28,10 +28,23 @@ from routers.auth import get_current_user
 from models.db_models import User, UserWorkspace
 from services import git_service
 import json as _json
+import datetime as _datetime
 
 router = APIRouter(prefix="/api/ai-gen", tags=["ai-generator"])
 
 _running_processes: dict[str, subprocess.Popen] = {}
+_stop_files:        dict[str, str]               = {}   # run_id → stop flag dosyası
+
+# ── Stop flag helper (her platforma gömülür) ─────────────────────────────────
+STOP_HELPER = '''\
+import os as _os_s, sys as _sys_s
+_STOP_FILE = _os_s.environ.get("_AI_STOP_FILE", "")
+def _check_stop():
+    if _STOP_FILE and _os_s.path.exists(_STOP_FILE):
+        try: _os_s.unlink(_STOP_FILE)
+        except: pass
+        raise SystemExit(0)
+'''
 
 OLLAMA_URL   = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "gemma3:4b"
@@ -43,10 +56,21 @@ _ROUTER_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ─── Pydantic ─────────────────────────────────────────────────────────────────
 
 class StepItem(BaseModel):
-    type:      str            # "text" | "image"
-    content:   str  = ""     # metin adımı içeriği veya görsel açıklaması
-    image_b64: str  = ""     # görsel adımı için base64 PNG (diske yazılmaz)
-    action:    str  = "click" # görsel adımı eylemi: "click" | "assert"
+    type:          str = "text"   # "text" | "image" | "sql" | "api"
+    content:       str = ""
+    image_b64:     str = ""
+    action:        str = "click"  # image: click/double_click/right_click/assert | sql: query_print/execute | api: print/execute/store
+    # SQL adımı
+    db_connection: str = ""       # sqlite:///path.db  veya  mysql+pymysql://user:pass@host/db
+    sql_query:     str = ""
+    # API adımı
+    api_url:       str = ""
+    api_method:    str = "GET"
+    api_headers:   str = ""       # JSON string
+    api_body:      str = ""       # JSON string
+    # Değişken sistemi
+    var_name:      str = ""       # dolu ise sonuç _VARS["var_name"]'e kaydedilir
+    json_field:    str = ""       # API yanıtından çekilecek alan yolu: "id" veya "user.name"
 
 class GenerateRequest(BaseModel):
     test_case:    str         = ""   # geriye dönük uyumluluk
@@ -62,8 +86,11 @@ class GenerateRequest(BaseModel):
     window_title: Optional[str] = ""
 
 class ExecuteRequest(BaseModel):
-    script:   str
-    platform: str
+    script:          str
+    platform:        str
+    scenario_name:   str       = "Adsız Senaryo"
+    scenario_folder: str       = ""
+    step_labels:     list[str] = []   # adım etiketleri (log için)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -188,6 +215,12 @@ def _rule_mobile(step: str) -> list[str] | None:
     quoted = _extract_quoted(s)
     sl = s.lower()
 
+    # ── {{varname}} "//xpath" yaz ─────────────────────────────────────────────
+    _vm = re.match(r'^\{\{(\w+)\}\}(?:\s+"([^"]+)")?\s*(?:yaz|gir|doldur|type\b)?\.?\s*$', s, re.IGNORECASE)
+    if _vm:
+        vn, xpath = _vm.group(1), (_vm.group(2) or '//android.widget.EditText[1]')
+        return [f'# {{{{ {vn} }}}} yaz', f"_safe_input(driver, {repr(xpath)}, str(_VARS.get({repr(vn)}, '')))"]
+
     # ── Pasif Türkçe: "X [suffix] tıklanır" (tırnaksız) ─────────────────────
     _PC = re.search(
         r'^(.+?)\s+(?:seçene[ğg]ine|componentine|butonu?na|simgesine|ikonuna'
@@ -199,8 +232,8 @@ def _rule_mobile(step: str) -> list[str] | None:
         full_t = _PC.group(1).strip()
         key_t  = _extract_key_target(full_t)
         if key_t:
-            return [f'# {s}', f"_safe_click(driver, '{full_t}', '{key_t}')", 'time.sleep(0.8)']
-        return [f'# {s}', f"_safe_click(driver, '{full_t}')", 'time.sleep(0.8)']
+            return [f'# {s}', f"_safe_click(driver, {repr(full_t)}, {repr(key_t)})", 'time.sleep(0.8)']
+        return [f'# {s}', f"_safe_click(driver, {repr(full_t)})", 'time.sleep(0.8)']
 
     # ── "X açılır" - bileşen/ekran açılır (click to open) ────────────────────
     _AC = re.search(r'^(.+?)\s+a[çc][ıi]l[ıi]r\.?\s*$', s, re.IGNORECASE)
@@ -208,8 +241,8 @@ def _rule_mobile(step: str) -> list[str] | None:
         full_t = _AC.group(1).strip()
         key_t  = _extract_key_target(full_t)
         if key_t:
-            return [f'# {s}', f"_safe_click(driver, '{full_t}', '{key_t}')", 'time.sleep(1.0)']
-        return [f'# {s}', f"_safe_click(driver, '{full_t}')", 'time.sleep(1.0)']
+            return [f'# {s}', f"_safe_click(driver, {repr(full_t)}, {repr(key_t)})", 'time.sleep(1.0)']
+        return [f'# {s}', f"_safe_click(driver, {repr(full_t)})", 'time.sleep(1.0)']
 
     # ── Compound: "seçim yapılır, bir X girilir" — hem seç hem yaz ──────────────
     if re.search(r'se[çc]im\s+yapıl[ıi]r', sl) and re.search(r'bir\s+\w+\s+girilir', sl):
@@ -252,7 +285,7 @@ def _rule_mobile(step: str) -> list[str] | None:
         text = quoted[0]
         return [
             f'# {s}',
-            f'_safe_click(driver, \'{text}\')',
+            f'_safe_click(driver, {repr(text)})',
             'time.sleep(0.8)',
         ]
 
@@ -301,6 +334,17 @@ def _rule_mobile(step: str) -> list[str] | None:
     if re.search(r'(?:geri\s*d[oö]n|geri\s*git|back\b)', sl):
         return [f'# {s}', 'driver.back()', 'time.sleep(0.5)']
 
+    # ── Klavye kapat ──────────────────────────────────────────────────────────
+    if re.search(r'(?:klavye\s*kapat|klavyeyi\s*kapat|kapat\s*klavye|hide\s*keyboard|dismiss\s*keyboard)', sl):
+        return [
+            f'# {s}',
+            'try:',
+            '    driver.hide_keyboard()',
+            'except Exception:',
+            '    driver.back()',
+            'time.sleep(0.5)',
+        ]
+
     # ── Bekleme ───────────────────────────────────────────────────────────────
     if re.search(r'(?:bekle|wait|sleep)', sl):
         m = re.search(r'(\d+)', s)
@@ -317,8 +361,71 @@ def _rule_web(step: str) -> list[str] | None:
     sl     = s.lower()
     quoted = _extract_quoted(s)
 
-    CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap)'
-    INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b|enter\b)'
+    # ── {{varname}} "alanHint" yaz ────────────────────────────────────────────
+    _vm = re.match(r'^\{\{(\w+)\}\}(?:\s+"([^"]+)")?\s*(?:yaz|gir|doldur|type\b)?\.?\s*$', s, re.IGNORECASE)
+    if _vm:
+        vn, hint = _vm.group(1), (_vm.group(2) or "")
+        if hint:
+            return [f'# {{{{ {vn} }}}} yaz', f"_safe_input_web(driver, {repr(hint)}, str(_VARS.get({repr(vn)}, '')))"]
+        return [f'# {{{{ {vn} }}}} yaz', f"import pyperclip as _pc; _pc.copy(str(_VARS.get({repr(vn)}, ''))); import pyautogui as _pa; _pa.hotkey('ctrl','v')"]
+
+    _WEB_KEY_MAP = {
+        'ctrl': 'Keys.CONTROL', 'control': 'Keys.CONTROL',
+        'alt': 'Keys.ALT', 'shift': 'Keys.SHIFT',
+        'delete': 'Keys.DELETE', 'del': 'Keys.DELETE',
+        'backspace': 'Keys.BACK_SPACE', 'bs': 'Keys.BACK_SPACE',
+        'enter': 'Keys.ENTER', 'return': 'Keys.RETURN',
+        'tab': 'Keys.TAB',
+        'escape': 'Keys.ESCAPE', 'esc': 'Keys.ESCAPE',
+        'home': 'Keys.HOME', 'end': 'Keys.END',
+        'pageup': 'Keys.PAGE_UP', 'pagedown': 'Keys.PAGE_DOWN',
+        'f1': 'Keys.F1', 'f2': 'Keys.F2', 'f3': 'Keys.F3', 'f4': 'Keys.F4',
+        'f5': 'Keys.F5', 'f6': 'Keys.F6', 'f7': 'Keys.F7', 'f8': 'Keys.F8',
+        'f9': 'Keys.F9', 'f10': 'Keys.F10', 'f11': 'Keys.F11', 'f12': 'Keys.F12',
+        'space': 'Keys.SPACE',
+        'up': 'Keys.ARROW_UP', 'down': 'Keys.ARROW_DOWN',
+        'left': 'Keys.ARROW_LEFT', 'right': 'Keys.ARROW_RIGHT',
+    }
+    _WEB_MODS = {'ctrl', 'control', 'alt', 'shift'}
+
+    def _web_key_lines(key_str):
+        parts = [p.strip().lower().replace(' ', '') for p in key_str.split('+')]
+        mods  = [p for p in parts if p in _WEB_MODS]
+        keys  = [p for p in parts if p not in _WEB_MODS]
+        ln = [
+            'from selenium.webdriver.common.keys import Keys',
+            'from selenium.webdriver.common.action_chains import ActionChains',
+            '_ac_web = ActionChains(driver)',
+        ]
+        for m in mods:
+            ln.append(f'_ac_web.key_down({_WEB_KEY_MAP[m]})')
+        for k in keys:
+            mapped = _WEB_KEY_MAP.get(k)
+            ln.append(f'_ac_web.send_keys({mapped})' if mapped else f'_ac_web.send_keys({repr(k)})')
+        for m in reversed(mods):
+            ln.append(f'_ac_web.key_up({_WEB_KEY_MAP[m]})')
+        ln.append('_ac_web.perform()')
+        return ln
+
+    # ── Kısayol tuşu: "Ctrl+A" bas / "Delete" bas ────────────────────────
+    hk = re.match(r'^["\']([^"\']+)["\']\s*(?:bas|kısayol|hotkey|tu[sş])$', s, re.IGNORECASE)
+    if hk:
+        return [f'# {s}'] + _web_key_lines(hk.group(1).strip()) + ['time.sleep(0.2)']
+
+    # ── Tekil tuş (tırnaksız) ─────────────────────────────────────────────
+    if re.search(r'\benter\s*bas\b', sl):
+        return [f'# {s}'] + _web_key_lines('enter') + ['time.sleep(0.3)']
+    if re.search(r'\btab\s*bas\b', sl):
+        return [f'# {s}'] + _web_key_lines('tab')   + ['time.sleep(0.2)']
+    if re.search(r'(?:escape|esc)\s*bas\b', sl):
+        return [f'# {s}'] + _web_key_lines('escape') + ['time.sleep(0.2)']
+    if re.search(r'(?:delete|sil)\s*bas\b', sl):
+        return [f'# {s}'] + _web_key_lines('delete') + ['time.sleep(0.2)']
+    if re.search(r'backspace\s*bas\b', sl):
+        return [f'# {s}'] + _web_key_lines('backspace') + ['time.sleep(0.2)']
+
+    CLICK_WORDS  = r'(?:t[iı]kla|tikla|click|tap)'
+    INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b)'
     ASSERT_WORDS = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
     NAV_WORDS    = r'(?:git\b|navigate|a[cç]\b|open\b|ziyaret|url|adres)'
 
@@ -338,6 +445,15 @@ def _rule_web(step: str) -> list[str] | None:
     if re.search(ASSERT_WORDS, sl) and quoted:
         text = quoted[0]
         return [f'# {s}', f'_safe_assert_web(driver, \'{text}\')']
+
+    # ── Element görünene kadar bekle ──────────────────────────────────────
+    if re.search(r'g[oö]r[uü]n[eien]+.*kadar\s*bekle|appear.*wait', sl) and quoted:
+        text = quoted[0]
+        return [
+            f'# {s}',
+            f"WebDriverWait(driver, 15).until(lambda d: len(d.find_elements(By.XPATH, '//*[contains(.,\"{text}\")]')) > 0)",
+            'time.sleep(0.3)',
+        ]
 
     # ── Metin girişi ─────────────────────────────────────────────────────
     if re.search(INPUT_WORDS, sl) and quoted:
@@ -365,9 +481,15 @@ def _rule_web(step: str) -> list[str] | None:
     if re.search(r'(?:yukar[iı]|scroll\s*up)', sl):
         return [f'# {s}', 'driver.execute_script("window.scrollBy(0, -400);")', 'time.sleep(0.4)']
 
-    # ── Geri ─────────────────────────────────────────────────────────────
+    # ── Sayfa işlemleri ───────────────────────────────────────────────────
+    if re.search(r'(?:yenile|refresh|f5)', sl):
+        return [f'# {s}', 'driver.refresh()', 'time.sleep(1.5)']
     if re.search(r'(?:geri|back\b)', sl):
         return [f'# {s}', 'driver.back()', 'time.sleep(0.5)']
+    if re.search(r'(?:ileri|forward\b)', sl):
+        return [f'# {s}', 'driver.forward()', 'time.sleep(0.5)']
+    if re.search(r'(?:ekran\s*g[oö]r[uü]nt[uü]s[uü]|screenshot)', sl):
+        return [f'# {s}', 'driver.save_screenshot(f"screenshot_{int(time.time())}.png")', 'time.sleep(0.3)']
 
     # ── Bekleme ───────────────────────────────────────────────────────────
     if re.search(r'(?:bekle|wait|sleep)', sl):
@@ -385,6 +507,12 @@ def _rule_desktop(step: str) -> list[str] | None:
         return None
     sl     = s.lower()
     quoted = _extract_quoted(s)
+
+    # ── {{varname}} yaz — değişkenden değer yaz ──────────────────────────────
+    _vm = re.match(r'^\{\{(\w+)\}\}\s*(?:yaz|gir|doldur|type\b)?\.?\s*$', s, re.IGNORECASE)
+    if _vm:
+        vn = _vm.group(1)
+        return [f'# {{{{ {vn} }}}} yaz', f"_safe_type_desktop(str(_VARS.get({repr(vn)}, '')))"]
 
     CLICK_WORDS        = r'(?:t[iı]kla|tikla|bas|click|tap|se[çc]|dokun)'
     DOUBLE_CLICK_WORDS = r'(?:çift\s*t[iı]kla|double[\s_]click)'
@@ -590,6 +718,23 @@ def _safe_click(driver, text, key_text=None):
     5. Vision fallback (ekran görüntüsü → AI → koordinat)
     key_text: "Toplam Varlıklarım kartında yer alan favori fonlarım" → "favori fonlarım"
     """
+    # Ham XPath/resource-id ise direkt kullan, scroll/vision'a gerek yok
+    if text.startswith("//") or text.startswith("//*"):
+        try:
+            driver.find_element(AppiumBy.XPATH, text).click()
+            print(f"[OK] XPath tıklandı: {text}")
+            return
+        except Exception as _xe:
+            raise Exception(f"XPath bulunamadı: {text} → {_xe}")
+    if text.startswith("id/") or text.startswith("@id/"):
+        _rid = text.lstrip("@")
+        try:
+            driver.find_element(AppiumBy.ID, _rid).click()
+            print(f"[OK] resource-id tıklandı: {_rid}")
+            return
+        except Exception as _xe:
+            raise Exception(f"resource-id bulunamadı: {_rid} → {_xe}")
+
     _all_texts = [t for t in [text, key_text] if t]
 
     def _try(t):
@@ -989,44 +1134,84 @@ def _safe_click_web(driver, text):
 
 
 def _safe_input_web(driver, field_hint, value, is_password=False):
-    """Input alanını placeholder/label/name/id ile bul ve değer gir"""
+    """Input alanini placeholder/label/name/id ile bul ve deger gir"""
     from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.action_chains import ActionChains
     import time
     hint = (field_hint or "").strip().lower()
     val  = str(value)
 
-    strategies = []
-    if is_password:
-        strategies += [
-            (By.XPATH,       '//input[@type="password"]'),
-            (By.CSS_SELECTOR,'input[type="password"]'),
-        ]
-    if hint:
-        strategies += [
-            (By.XPATH, f'//input[contains(translate(@placeholder,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"{hint}")]'),
-            (By.XPATH, f'//textarea[contains(translate(@placeholder,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"{hint}")]'),
-            (By.XPATH, f'//input[@id=//label[contains(translate(.,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"{hint}")]/@for]'),
-            (By.XPATH, f'//input[contains(translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"{hint}")]'),
-            (By.XPATH, f'//input[contains(translate(@id,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"{hint}")]'),
-            (By.XPATH, f'//input[contains(translate(@aria-label,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"{hint}")]'),
-        ]
-    strategies += [
-        (By.XPATH,        '//input[@type="text" or not(@type)]'),
-        (By.CSS_SELECTOR, 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])'),
-    ]
+    def _type_into(el):
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+        time.sleep(0.15)
+        el.clear()
+        el.send_keys(val)
 
-    for by, sel in strategies:
+    # 1) Her durumda once aktif (odaktaki) elemana yaz
+    #    Gorsel tiklamadan sonra oraya gelir, hint olmasa da calisir
+    try:
+        _ae = driver.switch_to.active_element
+        if _ae and _ae.tag_name.lower() in ("input", "textarea"):
+            _type_into(_ae)
+            print(f"[OK] Aktif elemana girildi: '{val}'")
+            return
+    except Exception:
+        pass
+
+    # 2) Password
+    if is_password:
+        for _by, _sel in [
+            (By.XPATH,        '//input[@type="password"]'),
+            (By.CSS_SELECTOR, 'input[type="password"]'),
+        ]:
+            try:
+                _e = _wdwait(driver, 4).until(_EC_WEB.visibility_of_element_located((_by, _sel)))
+                _type_into(_e)
+                print(f"[OK] Sifre girildi")
+                return
+            except Exception:
+                continue
+
+    # 3) Hint ile ara
+    if hint:
+        _UC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        _LC = "abcdefghijklmnopqrstuvwxyz"
+        for _by, _sel in [
+            (By.XPATH, f'//input[contains(translate(@placeholder,"{_UC}","{_LC}"),"{hint}")]'),
+            (By.XPATH, f'//textarea[contains(translate(@placeholder,"{_UC}","{_LC}"),"{hint}")]'),
+            (By.XPATH, f'//input[contains(translate(@name,"{_UC}","{_LC}"),"{hint}")]'),
+            (By.XPATH, f'//input[contains(translate(@id,"{_UC}","{_LC}"),"{hint}")]'),
+            (By.XPATH, f'//input[contains(translate(@aria-label,"{_UC}","{_LC}"),"{hint}")]'),
+            (By.XPATH, f'//*[contains(translate(.,"{_UC}","{_LC}"),"{hint}")]//following-sibling::input[1]'),
+            (By.XPATH, f'//*[contains(translate(.,"{_UC}","{_LC}"),"{hint}")]/..//input[1]'),
+        ]:
+            try:
+                _e = _wdwait(driver, 3).until(_EC_WEB.visibility_of_element_located((_by, _sel)))
+                _type_into(_e)
+                print(f"[OK] Girildi: '{val}' (hint: {hint})")
+                return
+            except Exception:
+                continue
+
+    # 4) Sayfadaki ilk gorunur input/textarea
+    for _by, _sel in [
+        (By.CSS_SELECTOR, 'input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]):not([type=file])'),
+        (By.TAG_NAME,     'textarea'),
+    ]:
         try:
-            el = _wdwait(driver, 5).until(_EC_WEB.visibility_of_element_located((by, sel)))
-            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
-            time.sleep(0.2)
-            el.clear()
-            el.send_keys(val)
-            print(f"[OK] Girildi: \'{val}\' (hint: {hint or 'generic'})")
+            _e = _wdwait(driver, 3).until(_EC_WEB.visibility_of_element_located((_by, _sel)))
+            _type_into(_e)
+            print(f"[OK] Girildi: '{val}' (ilk input)")
             return
         except Exception:
             continue
-    raise Exception(f"Input alanı bulunamadı: {field_hint}")
+
+    # 5) Son care: ActionChains ile mevcut odaga gonder
+    try:
+        ActionChains(driver).send_keys(val).perform()
+        print(f"[OK] ActionChains ile girildi: '{val}'")
+    except Exception as _ex:
+        raise Exception(f"Input girilemiyor: {_ex}")
 
 
 def _safe_assert_web(driver, text):
@@ -1054,17 +1239,53 @@ def _safe_assert_web(driver, text):
 IMAGE_HELPER = '''
 import base64 as _ib64, tempfile as _itmp, os as _ios, time as _itime
 
+def _get_window_region():
+    """_WINDOW_TITLE penceresinin ekran bölgesini (x,y,w,h) döndürür. Bulamazsa None."""
+    try:
+        _wt = _WINDOW_TITLE  # generated script globals'ta tanımlı
+    except NameError:
+        return None
+    if not _wt:
+        return None
+    # pywinauto ile pencere dikdörtgeni al
+    try:
+        import pywinauto as _pwr
+        _app = _pwr.Application(backend="uia").connect(title_re=f".*{_wt}.*", timeout=2)
+        _rect = _app.top_window().rectangle()
+        _x, _y = max(0, _rect.left), max(0, _rect.top)
+        _w, _h = _rect.width(), _rect.height()
+        if _w > 10 and _h > 10:
+            return (_x, _y, _w, _h)
+    except Exception:
+        pass
+    # win32gui fallback
+    try:
+        import win32gui as _wg
+        def _cb(h, acc):
+            if _wt.lower() in _wg.GetWindowText(h).lower():
+                acc.append(h)
+        _hs = []; _wg.EnumWindows(_cb, _hs)
+        if _hs:
+            _x1,_y1,_x2,_y2 = _wg.GetWindowRect(_hs[0])
+            _w, _h = _x2-_x1, _y2-_y1
+            if _w > 10 and _h > 10:
+                return (max(0,_x1), max(0,_y1), _w, _h)
+    except Exception:
+        pass
+    return None
+
 def _find_b64_on_screen(b64_data, threshold=0.80, timeout=10):
-    """Base64 görseli ekranda OpenCV ile ara. (x,y) veya None döner."""
+    """Base64 görseli pencere bölgesinde (yoksa tüm ekranda) OpenCV ile ara."""
     _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_find_{id(b64_data)}.png")
     try:
         with open(_tmp_path, "wb") as _f:
             _f.write(_ib64.b64decode(b64_data))
+        _region = _get_window_region()
         _start = _itime.time()
         while _itime.time() - _start < timeout:
             _elapsed = _itime.time() - _start
             _conf = max(0.65, threshold - (_elapsed / timeout) * 0.20)
-            _coords = _find_image_on_screen(_tmp_path, threshold=_conf)
+            _coords = _find_image_on_screen(_tmp_path, threshold=_conf, region=_region)
             if _coords:
                 return _coords
             _itime.sleep(0.3)
@@ -1073,12 +1294,14 @@ def _find_b64_on_screen(b64_data, threshold=0.80, timeout=10):
         try: _ios.unlink(_tmp_path)
         except Exception: pass
 
-def _find_image_on_screen(target_path, threshold=0.80):
-    """OpenCV multi-scale template matching. (x,y) veya None döner."""
+def _find_image_on_screen(target_path, threshold=0.80, region=None):
+    """OpenCV multi-scale template matching. region=(x,y,w,h) ile kısıtlı arama yapar."""
     try:
         import cv2 as _cv2, numpy as _np
-        from PIL import Image as _PILImg2
-        _screen = _np.array(__import__("pyautogui").screenshot())
+        import pyautogui as _pag_sc
+        _screenshot = _pag_sc.screenshot(region=region) if region else _pag_sc.screenshot()
+        _screen      = _np.array(_screenshot)
+        _ox, _oy     = (region[0], region[1]) if region else (0, 0)
         _screen_bgr  = _cv2.cvtColor(_screen, _cv2.COLOR_RGB2BGR)
         _screen_gray = _cv2.cvtColor(_screen_bgr, _cv2.COLOR_BGR2GRAY)
         _screen_gray = _cv2.GaussianBlur(_screen_gray, (3,3), 0)
@@ -1091,16 +1314,18 @@ def _find_image_on_screen(target_path, threshold=0.80):
         for _sc in _np.linspace(0.7, 1.3, 13):
             _rw, _rh = int(_w*_sc), int(_h*_sc)
             if _rw < 10 or _rh < 10: continue
+            if _rw > _screen_gray.shape[1] or _rh > _screen_gray.shape[0]: continue
             _res = _cv2.matchTemplate(_screen_gray, _cv2.resize(_tmpl_gray,(_rw,_rh)), _cv2.TM_CCOEFF_NORMED)
             _, _val, _, _loc = _cv2.minMaxLoc(_res)
             if _val > _best_val: _best_val = _val; _best = (_loc, _rw, _rh)
         if _best_val >= threshold and _best:
             _loc, _rw, _rh = _best
-            return (_loc[0] + _rw//2, _loc[1] + _rh//2)
+            return (_loc[0] + _rw//2 + _ox, _loc[1] + _rh//2 + _oy)
     except ImportError:
         try:
             import pyautogui as _pag2
-            _loc2 = _pag2.locateOnScreen(target_path, grayscale=True, confidence=min(0.8, threshold))
+            _loc2 = _pag2.locateOnScreen(target_path, grayscale=True,
+                                          confidence=min(0.8, threshold), region=region)
             if _loc2: return (_pag2.center(_loc2).x, _pag2.center(_loc2).y)
         except Exception: pass
     except Exception: pass
@@ -1115,7 +1340,7 @@ def _do_robust_click(x, y, button="left"):
     _pag3.mouseUp(button=button)
 
 def _find_b64_on_screen_web(b64_data, threshold=0.80, timeout=10):
-    """Web için: görseli ekranda (tarayıcı penceresinde) ara."""
+    """Web için: görseli ekranda ara (pencere kısıtlaması olmadan)."""
     return _find_b64_on_screen(b64_data, threshold=threshold, timeout=timeout)
 '''
 
@@ -1437,7 +1662,7 @@ def _safe_wait_for_desktop(target, timeout=10):
 
 
 def _safe_assert_desktop(target):
-    """Ekranda element / metin doğrula."""
+    """Ekranda element / metin doğrula. Bulamazsa AssertionError fırlatır."""
     print(f"[ASSERT] \'{target}\' kontrol ediliyor...")
 
     # pywinauto
@@ -1451,10 +1676,11 @@ def _safe_assert_desktop(target):
         except Exception:
             pass
 
-    # OCR
+    # OCR — sadece uygulama penceresiyle sınırlı
     if _TESS_OK:
         try:
-            shot = _pag.screenshot()
+            _region = _get_window_region()
+            shot = _pag.screenshot(region=_region) if _region else _pag.screenshot()
             _txt = _tess.image_to_string(shot, lang="tur+eng")
             if target.lower() in _txt.lower():
                 print(f"[OK] OCR: \'{target}\'"); return
@@ -1466,7 +1692,7 @@ def _safe_assert_desktop(target):
     if _vx and _vy:
         print(f"[OK] Vision: \'{target}\'"); return
 
-    print(f"[WARN] \'{target}\' ekranda bulunamadı — adım geçiliyor")
+    raise AssertionError(f"[FAIL] \'{target}\' ekranda bulunamadi")
 '''
 
 
@@ -1511,7 +1737,9 @@ time.sleep(3)
         "from selenium.webdriver.support.ui import WebDriverWait",
         "from selenium.webdriver.support import expected_conditions as EC",
         "import time, socket",
+        "_VARS = {}  # adımlar arası değişken havuzu",
         "",
+        STOP_HELPER,
         f'_DEVICE_ID = "{device}"  # ADB komutları için cihaz ID',
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
         "",
@@ -1538,8 +1766,6 @@ time.sleep(3)
         f'options.platform_name = "Android"',
         f'options.device_name   = "{device}"',
     ] + caps.splitlines() + [
-        "options.set_capability('skipServerInstallation', True)   # UiAutomator2 APK zaten kuruluysa yeniden yükleme",
-        "options.set_capability('skipDeviceInitialization', True) # Cihaz init adımlarını atla",
         "",
         f'print("Appium baglaniyor: {appium}")',
         f'driver = webdriver.Remote("{appium}", options=options)',
@@ -1627,6 +1853,7 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
         "from selenium.webdriver.support.ui import WebDriverWait",
         "from selenium.webdriver.support import expected_conditions as EC",
         "import time",
+        "_VARS = {}  # adımlar arası değişken havuzu",
         "",
         driver_setup,
         "",
@@ -1635,6 +1862,7 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
         '    print("[HATA] Tarayıcı sürücüsü başlatılamadı. Chrome/Firefox kurulu mu?")',
         "    raise SystemExit(1)",
         "",
+        STOP_HELPER,
         IMAGE_HELPER,
         VISION_HELPER_WEB,
         "",
@@ -1681,7 +1909,9 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         "",
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
         f'_WINDOW_TITLE   = "{window_title_esc}"',
+        "_VARS = {}  # adımlar arası değişken havuzu",
         "",
+        STOP_HELPER,
         IMAGE_HELPER,
         DESKTOP_HELPER,
         "",
@@ -1749,6 +1979,10 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
                 f"    raise"
             )
         else:
+            click_line = {
+                "double_click": f"    import pyautogui as _pag_d; _pag_d.doubleClick(_coords_{idx}[0], _coords_{idx}[1])",
+                "right_click":  f"    import pyautogui as _pag_d; _pag_d.rightClick(_coords_{idx}[0], _coords_{idx}[1])",
+            }.get(item.action, f"    _do_robust_click(_coords_{idx}[0], _coords_{idx}[1])")
             return (
                 f"# [GÖRSEL TIKLAMA] {desc}\n"
                 f"print('STEP_START:{idx}')\n"
@@ -1756,7 +1990,7 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
                 f"    _img_b64_{idx} = '{b64}'\n"
                 f"    _coords_{idx} = _find_b64_on_screen(_img_b64_{idx}, timeout=10)\n"
                 f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
-                f"    _do_robust_click(_coords_{idx}[0], _coords_{idx}[1])\n"
+                f"{click_line}\n"
                 f"    print('[OK] Gorsel tiklandi: {desc}')\n"
                 f"    time.sleep(0.5)\n"
                 f"    print('STEP_DONE:{idx}')\n"
@@ -1782,6 +2016,10 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
                 f"    raise"
             )
         else:
+            click_line = {
+                "double_click": f"    import pyautogui as _pag_web; _pag_web.doubleClick(_coords_{idx}[0], _coords_{idx}[1])",
+                "right_click":  f"    import pyautogui as _pag_web; _pag_web.rightClick(_coords_{idx}[0], _coords_{idx}[1])",
+            }.get(item.action, f"    import pyautogui as _pag_web; _pag_web.click(_coords_{idx}[0], _coords_{idx}[1])")
             return (
                 f"# [GÖRSEL TIKLAMA] {desc}\n"
                 f"print('STEP_START:{idx}')\n"
@@ -1789,7 +2027,7 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
                 f"    _img_b64_{idx} = '{b64}'\n"
                 f"    _coords_{idx} = _find_b64_on_screen_web(_img_b64_{idx}, timeout=10)\n"
                 f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
-                f"    import pyautogui as _pag_web; _pag_web.click(_coords_{idx}[0], _coords_{idx}[1])\n"
+                f"{click_line}\n"
                 f"    print('[OK] Gorsel tiklandi: {desc}')\n"
                 f"    time.sleep(0.5)\n"
                 f"    print('STEP_DONE:{idx}')\n"
@@ -1798,6 +2036,220 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
                 f"    print('STEP_FAIL:{idx}')\n"
                 f"    raise"
             )
+
+
+def _sql_step_code(item: "StepItem", idx: int) -> str:
+    """SQL adımı için Python kodu üretir."""
+    desc  = item.content or f"SQL {idx+1}"
+    conn  = item.db_connection or "sqlite:///test.db"
+    query = item.sql_query or "SELECT 1"
+    is_print  = item.action != "execute"
+    is_sqlite = conn.strip().lower().startswith("sqlite:///")
+    # DRIVER= içeriyorsa doğrudan pyodbc — SQLAlchemy URL parsing sorununu önler
+    is_odbc   = "DRIVER=" in conn.upper()
+
+    conn_r  = repr(conn)
+    query_r = repr(query)
+
+    if is_sqlite:
+        db_path = conn.strip()[len("sqlite:///"):]
+        var_store = ""
+        if item.var_name:
+            var_store = (
+                f"\n    _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
+                f"\n    print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+            )
+        if is_print:
+            result_code = (
+                f"    _rows_{idx} = _cur_{idx}.fetchall()\n"
+                f"    print(f'[SQL] {{len(_rows_{idx})}} kayit:')\n"
+                f"    for _r in _rows_{idx}: print('  ', _r)"
+                f"{var_store}"
+            )
+        else:
+            result_code = (
+                f"    _db_{idx}.commit()\n"
+                f"    print(f'[SQL] {{_cur_{idx}.rowcount}} satir etkilendi')"
+                f"{var_store}"
+            )
+        return (
+            f"# [SQL] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"try:\n"
+            f"    import sqlite3 as _sq_{idx}\n"
+            f"    _db_{idx} = _sq_{idx}.connect({repr(db_path)})\n"
+            f"    _cur_{idx} = _db_{idx}.cursor()\n"
+            f"    _cur_{idx}.execute({query_r})\n"
+            f"{result_code}\n"
+            f"    _db_{idx}.close()\n"
+            f"    print('STEP_DONE:{idx}')\n"
+            f"except Exception as _e_{idx}:\n"
+            f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise"
+        )
+    elif is_odbc:
+        # pyodbc doğrudan bağlantı (ODBC connection string — {DRIVER} parantezleri güvenli)
+        var_store = ""
+        if item.var_name:
+            var_store = (
+                f"\n    _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
+                f"\n    print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+            )
+        if is_print:
+            result_code = (
+                f"    _rows_{idx} = _cur_{idx}.fetchall()\n"
+                f"    print(f'[SQL] {{len(_rows_{idx})}} kayit:')\n"
+                f"    for _r in _rows_{idx}: print('  ', list(_r))"
+                f"{var_store}"
+            )
+        else:
+            result_code = (
+                f"    _db_{idx}.commit()\n"
+                f"    print(f'[SQL] {{_cur_{idx}.rowcount}} satir etkilendi')"
+                f"{var_store}"
+            )
+        return (
+            f"# [SQL] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"try:\n"
+            f"    import pyodbc as _pyodbc_{idx}\n"
+            f"    _db_{idx} = _pyodbc_{idx}.connect({conn_r})\n"
+            f"    _cur_{idx} = _db_{idx}.cursor()\n"
+            f"    _cur_{idx}.execute({query_r})\n"
+            f"{result_code}\n"
+            f"    _db_{idx}.close()\n"
+            f"    print('STEP_DONE:{idx}')\n"
+            f"except Exception as _e_{idx}:\n"
+            f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise"
+        )
+    else:
+        var_store = ""
+        if item.var_name:
+            var_store = (
+                f"\n        _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
+                f"\n        print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+            )
+        if is_print:
+            result_code = (
+                f"        _rows_{idx} = list(_res_{idx})\n"
+                f"        print(f'[SQL] {{len(_rows_{idx})}} kayit:')\n"
+                f"        for _r in _rows_{idx}: print('  ', dict(_r._mapping))"
+                f"{var_store}"
+            )
+        else:
+            result_code = (
+                f"        _conn_{idx}.commit()\n"
+                f"        print(f'[SQL] {{_res_{idx}.rowcount}} satir etkilendi')"
+                f"{var_store}"
+            )
+        return (
+            f"# [SQL] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"try:\n"
+            f"    from sqlalchemy import create_engine as _ce_{idx}, text as _st_{idx}\n"
+            f"    _eng_{idx} = _ce_{idx}({conn_r})\n"
+            f"    with _eng_{idx}.connect() as _conn_{idx}:\n"
+            f"        _res_{idx} = _conn_{idx}.execute(_st_{idx}({query_r}))\n"
+            f"{result_code}\n"
+            f"    print('STEP_DONE:{idx}')\n"
+            f"except ImportError:\n"
+            f"    print('[FAIL] sqlalchemy kurulu degil: pip install sqlalchemy pymysql')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise\n"
+            f"except Exception as _e_{idx}:\n"
+            f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise"
+        )
+
+
+def _api_step_code(item: "StepItem", idx: int) -> str:
+    """API adımı için Python kodu üretir."""
+    desc    = item.content or f"API {idx+1}"
+    url     = item.api_url or ""
+    method  = (item.api_method or "GET").lower()
+    headers = item.api_headers.strip() if item.api_headers else ""
+    body    = item.api_body.strip()    if item.api_body    else ""
+    action  = item.action or "print"
+
+    headers_line = f"    _hdrs_{idx} = {headers}" if headers and headers.startswith("{") else f"    _hdrs_{idx} = {{}}"
+    body_arg = ""
+    if method in ("post", "put", "patch") and body and body.startswith("{"):
+        body_line = f"    _body_{idx} = {body}\n"
+        body_arg  = f", json=_body_{idx}"
+    else:
+        body_line = ""
+
+    # json_field ve var_name için yardımcı kod
+    json_field  = item.json_field.strip() if item.json_field else ""
+    var_name    = item.var_name.strip()   if item.var_name   else ""
+
+    extract_code = ""
+    if json_field or var_name:
+        extract_code = (
+            f"    _api_json_{idx} = _resp_{idx}.json()\n"
+        )
+        if json_field:
+            extract_code += (
+                f"    def _jpath_{idx}(d, p):\n"
+                f"        for k in p.split('.'):\n"
+                f"            if isinstance(d, dict): d = d.get(k)\n"
+                f"            elif isinstance(d, list):\n"
+                f"                try: d = d[int(k)]\n"
+                f"                except: return None\n"
+                f"            else: return None\n"
+                f"        return d\n"
+                f"    _extracted_{idx} = _jpath_{idx}(_api_json_{idx}, {repr(json_field)})\n"
+                f"    print(f'[API.{json_field}] {{_extracted_{idx}}}')\n"
+            )
+            if var_name:
+                extract_code += (
+                    f"    _VARS[{repr(var_name)}] = str(_extracted_{idx} if _extracted_{idx} is not None else '')\n"
+                    f"    print(f'[API→_VARS] {var_name} = {{_VARS[{repr(var_name)}]}}')\n"
+                )
+        elif var_name:
+            extract_code += (
+                f"    _VARS[{repr(var_name)}] = str(_api_json_{idx})[:500]\n"
+                f"    print(f'[API→_VARS] {var_name} = {{_VARS[{repr(var_name)}][:100]}}')\n"
+            )
+
+    if action == "print":
+        resp_code = (
+            f"    _resp_{idx}.raise_for_status()\n"
+            f"    print(f'[API] Status: {{_resp_{idx}.status_code}}')\n"
+            f"    print(f'[API] Yanit: {{_resp_{idx}.text[:500]}}')\n"
+            f"{extract_code}"
+        )
+    elif action == "store":
+        resp_code = (
+            f"    _resp_{idx}.raise_for_status()\n"
+            f"{extract_code}"
+            f"    print(f'[API] Degisken: _api_result = {{str(_resp_{idx}.json())[:300]}}')"
+        )
+    else:
+        resp_code = (
+            f"    print(f'[API] Status: {{_resp_{idx}.status_code}}')  \n"
+            f"{extract_code}"
+        )
+
+    return (
+        f"# [API] {method.upper()} {url} — {desc}\n"
+        f"print('STEP_START:{idx}')\n"
+        f"try:\n"
+        f"    import requests as _rm\n"
+        f"{headers_line}\n"
+        f"{body_line}"
+        f"    _resp_{idx} = _rm.{method}({repr(url)}, headers=_hdrs_{idx}{body_arg}, timeout=30)\n"
+        f"{resp_code}"
+        f"    print('STEP_DONE:{idx}')\n"
+        f"except Exception as _e_{idx}:\n"
+        f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+        f"    print('STEP_FAIL:{idx}')\n"
+        f"    raise"
+    )
 
 
 async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
@@ -1826,13 +2278,30 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
 
     for idx, item in enumerate(structured):
         if item.type == "image":
-            code = _image_step_code(item, req.platform, idx)
+            code = "_check_stop()\n" + _image_step_code(item, req.platform, idx)
             code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
+        elif item.type == "sql":
+            code = "_check_stop()\n" + _sql_step_code(item, idx)
+            code_lines.append(("rule", item.content or f"SQL {idx+1}", code))
+        elif item.type == "api":
+            code = "_check_stop()\n" + _api_step_code(item, idx)
+            code_lines.append(("rule", item.content or f"API {idx+1}", code))
         else:
             step = item.content
             parsed = rule_fn(step)
             if parsed:
-                wrapped = f"print('STEP_START:{idx}')\n" + "\n".join(parsed) + f"\nprint('STEP_DONE:{idx}')"
+                _inner = "\n    ".join(parsed)
+                wrapped = (
+                    f"_check_stop()\n"
+                    f"print('STEP_START:{idx}')\n"
+                    f"try:\n"
+                    f"    {_inner}\n"
+                    f"    print('STEP_DONE:{idx}')\n"
+                    f"except Exception as _e_{idx}:\n"
+                    f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+                    f"    print('STEP_FAIL:{idx}')\n"
+                    f"    raise"
+                )
                 code_lines.append(("rule", step, wrapped))
             else:
                 code_lines.append(("llm", step, ""))
@@ -1862,7 +2331,19 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                 method = "todo"
             else:
                 method = "llm"
-                llm_code = f"print('STEP_START:{idx}')\n# {step}\n" + llm_code + f"\nprint('STEP_DONE:{idx}')"
+                _llm_inner = "\n    ".join(llm_code.splitlines())
+                llm_code = (
+                    f"_check_stop()\n"
+                    f"print('STEP_START:{idx}')\n"
+                    f"# {step}\n"
+                    f"try:\n"
+                    f"    {_llm_inner}\n"
+                    f"    print('STEP_DONE:{idx}')\n"
+                    f"except Exception as _e_{idx}:\n"
+                    f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+                    f"    print('STEP_FAIL:{idx}')\n"
+                    f"    raise"
+                )
             final_lines.append(llm_code)
             report.append({"step": step, "method": method, "code": llm_code, "index": idx})
         final_lines.append("")
@@ -2084,14 +2565,42 @@ async def generate_script(req: GenerateRequest, current_user: User = Depends(get
     }
 
 
+def _run_log_dir(user_id: int, db) -> Path:
+    """Kullanıcının run log klasörünü döndürür (workspace > local fallback)."""
+    try:
+        ws = _get_user_workspace(user_id, db)
+        if ws:
+            d = Path(ws.local_path) / "ai_run_logs"
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+    except Exception:
+        pass
+    d = Path(__file__).parent.parent / "local_run_logs" / str(user_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 @router.post("/execute")
-async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_current_user)):
+async def execute_script(
+    req: ExecuteRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if not req.script or len(req.script.strip()) < 10:
         raise HTTPException(400, "Geçersiz script")
 
-    run_id = str(uuid.uuid4())[:8]
+    run_id     = str(uuid.uuid4())[:8]
+    log_dir    = _run_log_dir(current_user.id, db)
+    started_at = _datetime.datetime.utcnow().isoformat()
+    step_outcomes: dict[int, str] = {}   # idx -> "pass" | "fail"
+    stop_file  = tempfile.mktemp(suffix=".stop", prefix=f"ai_stop_{run_id}_")
+    _stop_files[run_id] = stop_file
 
     async def stream():
+        nonlocal step_outcomes
+        exit_code = -1
+        ended_at  = None
+
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False, encoding="utf-8", prefix="ai_test_"
         ) as f:
@@ -2105,12 +2614,15 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
 
         proc = None
         try:
-            proc = subprocess.Popen(
-                [sys.executable, tmp],
+            _popen_kw: dict = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+                env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8",
+                     "_AI_STOP_FILE": stop_file},
             )
+            if sys.platform == "win32":
+                _popen_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            proc = subprocess.Popen([sys.executable, tmp], **_popen_kw)
             _running_processes[run_id] = proc
             loop = asyncio.get_event_loop()
             while True:
@@ -2121,18 +2633,25 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
                 if text.startswith("STEP_START:"):
                     yield _sse("step_start", text.split(":", 1)[1])
                 elif text.startswith("STEP_DONE:"):
-                    yield _sse("step_done", text.split(":", 1)[1])
+                    idx_s = text.split(":", 1)[1].strip()
+                    try: step_outcomes[int(idx_s)] = "pass"
+                    except ValueError: pass
+                    yield _sse("step_done", idx_s)
                 elif text.startswith("STEP_FAIL:"):
-                    yield _sse("step_fail", text.split(":", 1)[1])
+                    idx_s = text.split(":", 1)[1].strip()
+                    try: step_outcomes[int(idx_s)] = "fail"
+                    except ValueError: pass
+                    yield _sse("step_fail", idx_s)
                 else:
                     yield _sse("log", text)
 
             await loop.run_in_executor(None, proc.wait)
-            rc = proc.returncode
-            if rc == 0:
-                yield _sse("success", f"\nKosum tamamlandi. (exit: {rc})")
+            exit_code = proc.returncode
+            ended_at  = _datetime.datetime.utcnow().isoformat()
+            if exit_code == 0:
+                yield _sse("success", f"\nKosum tamamlandi. (exit: {exit_code})")
             else:
-                yield _sse("error", f"\nKosum hata ile bitti. (exit: {rc})")
+                yield _sse("error", f"\nKosum hata ile bitti. (exit: {exit_code})")
         except Exception as e:
             yield _sse("error", str(e))
         finally:
@@ -2143,19 +2662,169 @@ async def execute_script(req: ExecuteRequest, current_user: User = Depends(get_c
                 os.unlink(tmp)
             except Exception:
                 pass
+
+            # Stop dosyasını temizle
+            _stop_files.pop(run_id, None)
+            try:
+                if os.path.exists(stop_file):
+                    os.unlink(stop_file)
+            except Exception:
+                pass
+
+            # ── Run log kaydet ───────────────────────────────────────────────
+            try:
+                n = len(req.step_labels)
+                log_entry = {
+                    "run_id":          run_id,
+                    "scenario_name":   req.scenario_name,
+                    "scenario_folder": req.scenario_folder,
+                    "platform":        req.platform,
+                    "started_at":      started_at,
+                    "ended_at":        ended_at or _datetime.datetime.utcnow().isoformat(),
+                    "exit_code":       exit_code,
+                    "total_steps":     n,
+                    "passed":          sum(1 for v in step_outcomes.values() if v == "pass"),
+                    "failed":          sum(1 for v in step_outcomes.values() if v == "fail"),
+                    "steps": [
+                        {
+                            "index":  i,
+                            "label":  req.step_labels[i] if i < n else f"Adım {i+1}",
+                            "status": step_outcomes.get(i, "unknown"),
+                        }
+                        for i in range(n)
+                    ],
+                }
+                (log_dir / f"{run_id}.json").write_text(
+                    _json.dumps(log_entry, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+            except Exception:
+                pass
+
             yield _sse("done", "")
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@router.get("/run-logs")
+async def list_run_logs(
+    platform: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kullanıcının tüm koşum loglarını listeler (platform filtresi opsiyonel)."""
+    log_dir = _run_log_dir(current_user.id, db)
+    logs = []
+    if log_dir.exists():
+        for f in sorted(log_dir.glob("*.json"), reverse=True):
+            try:
+                data = _json.loads(f.read_text(encoding="utf-8"))
+                if platform and data.get("platform") != platform:
+                    continue
+                # Hesaplanan süre
+                try:
+                    s = _datetime.datetime.fromisoformat(data.get("started_at", ""))
+                    e = _datetime.datetime.fromisoformat(data.get("ended_at", ""))
+                    dur = round((e - s).total_seconds())
+                except Exception:
+                    dur = None
+                logs.append({
+                    "run_id":        data.get("run_id", f.stem),
+                    "scenario_name": data.get("scenario_name", "?"),
+                    "platform":      data.get("platform", ""),
+                    "started_at":    data.get("started_at", ""),
+                    "duration_sec":  dur,
+                    "total_steps":   data.get("total_steps", 0),
+                    "passed":        data.get("passed", 0),
+                    "failed":        data.get("failed", 0),
+                    "exit_code":     data.get("exit_code", -1),
+                })
+            except Exception:
+                pass
+    return {"logs": logs}
+
+
+@router.get("/run-logs/{run_id}")
+async def get_run_log(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tek bir koşumun detaylı logunu döndürür."""
+    log_dir  = _run_log_dir(current_user.id, db)
+    log_file = log_dir / f"{run_id}.json"
+    if not log_file.exists():
+        raise HTTPException(404, "Log bulunamadı")
+    return _json.loads(log_file.read_text(encoding="utf-8"))
+
+
+@router.post("/run-logs/push")
+async def push_run_logs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """ai_run_logs/ klasörünü Git'e commit edip push eder."""
+    ws = _get_user_workspace(current_user.id, db)
+    if not ws:
+        raise HTTPException(400, "Git workspace bulunamadı. Önce bir repo clone edin.")
+    repo = Path(ws.local_path)
+    subprocess.run(["git", "add", "ai_run_logs/"], cwd=repo, capture_output=True)
+    commit = subprocess.run(
+        ["git", "commit", "-m", "chore: AI test run logları güncellendi"],
+        cwd=repo, capture_output=True, text=True, encoding="utf-8"
+    )
+    if "nothing to commit" in commit.stdout or "nothing to commit" in commit.stderr:
+        return {"ok": True, "message": "Yeni log yok, push yapılmadı"}
+    push = subprocess.run(
+        ["git", "push"], cwd=repo, capture_output=True, text=True, encoding="utf-8"
+    )
+    if push.returncode != 0:
+        raise HTTPException(500, f"Push hatası: {push.stderr.strip()}")
+    return {"ok": True, "message": "Loglar başarıyla push edildi ✓"}
+
+
 @router.post("/stop/{run_id}")
 async def stop_execution(run_id: str, current_user: User = Depends(get_current_user)):
+    import signal as _sig
     proc = _running_processes.get(run_id)
     if not proc:
         raise HTTPException(404, "Koşum bulunamadı veya zaten bitti")
+
+    # 1. Stop flag dosyası yaz — adımlar arası _check_stop() yakalar, hızlı çıkar
+    sf = _stop_files.get(run_id)
+    if sf:
+        try:
+            open(sf, "w").close()
+        except Exception:
+            pass
+
+    # 2. Kısa bekle — adımlar arasındaysa graceful çıkış yeterli
+    for _ in range(6):          # 3 saniye, 0.5s aralıklarla
+        if proc.poll() is not None:
+            return {"ok": True, "run_id": run_id}
+        await asyncio.sleep(0.5)
+
+    # 3. Hâlâ çalışıyor → CTRL_C_EVENT / SIGINT ile KeyboardInterrupt gönder
+    #    Bu, script içindeki `finally: driver.quit()` bloğunu tetikler
+    if proc.poll() is None:
+        try:
+            if sys.platform == "win32":
+                proc.send_signal(_sig.CTRL_C_EVENT)
+            else:
+                proc.send_signal(_sig.SIGINT)
+        except Exception:
+            pass
+
+    # 4. finally bloğunun çalışması için 3 saniye daha bekle
+    for _ in range(6):
+        if proc.poll() is not None:
+            return {"ok": True, "run_id": run_id}
+        await asyncio.sleep(0.5)
+
+    # 5. Son çare: zorla öldür
     if proc.poll() is None:
         proc.terminate()
+
     return {"ok": True, "run_id": run_id}
 
 
@@ -2169,9 +2838,12 @@ def _sse(event: str, data: str) -> str:
 # ─── Senaryo Kaydetme (Git Workspace) ─────────────────────────────────────────
 
 class SaveScenarioRequest(BaseModel):
-    name:       str          # Senaryo adı (klasör adına dönüştürülür)
-    steps:      list[dict]   # [{type, content, b64, action, status}]
-    script:     str          # Üretilen Python scripti
+    name:       str
+    steps:      list[dict]
+    script:     str
+    folder:     str | None  = None   # dolu → mevcut üzerine yaz
+    platform:   str | None  = None   # "web" | "mobile" | "desktop"
+    params:     dict | None = None   # platform-spesifik ayarlar
 
 
 def _sanitize_folder_name(name: str) -> str:
@@ -2202,13 +2874,18 @@ async def save_scenario(
     if not ws:
         raise HTTPException(400, "Git workspace bulunamadı. Önce Workspace sayfasından bir repo clone edin.")
 
-    folder_name = _sanitize_folder_name(req.name)
+    folder_name = req.folder if req.folder else _sanitize_folder_name(req.name)
     scenario_dir = Path(ws.local_path) / "ai_scenarios" / folder_name
     scenario_dir.mkdir(parents=True, exist_ok=True)
 
     # steps.json — b64 alanını koru (büyük veri)
     (scenario_dir / "steps.json").write_text(
-        _json.dumps({"name": req.name, "steps": req.steps}, ensure_ascii=False, indent=2),
+        _json.dumps({
+            "name":     req.name,
+            "steps":    req.steps,
+            "platform": req.platform,
+            "params":   req.params or {},
+        }, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     (scenario_dir / "script.py").write_text(req.script, encoding="utf-8")
@@ -2253,14 +2930,16 @@ async def list_scenarios(
         if not folder.is_dir():
             continue
         meta_file = folder / "steps.json"
-        name = folder.name
+        name      = folder.name
+        platform  = ""
         if meta_file.exists():
             try:
-                meta = _json.loads(meta_file.read_text(encoding="utf-8"))
-                name = meta.get("name", folder.name)
+                meta     = _json.loads(meta_file.read_text(encoding="utf-8"))
+                name     = meta.get("name",     folder.name)
+                platform = meta.get("platform", "")
             except Exception:
                 pass
-        result.append({"folder": folder.name, "name": name})
+        result.append({"folder": folder.name, "name": name, "platform": platform})
 
     return {"scenarios": result}
 
@@ -2286,9 +2965,11 @@ async def load_scenario(
     script     = script_file.read_text(encoding="utf-8") if script_file.exists() else ""
 
     return {
-        "name":   steps_data.get("name", folder_name),
-        "steps":  steps_data.get("steps", []),
-        "script": script,
+        "name":     steps_data.get("name", folder_name),
+        "steps":    steps_data.get("steps", []),
+        "script":   script,
+        "platform": steps_data.get("platform"),
+        "params":   steps_data.get("params", {}),
     }
 
 
@@ -2328,3 +3009,101 @@ async def delete_scenario(
             pass
 
     return {"ok": True, "committed": committed, "pushed": push_ok}
+
+
+# ── Git Pull / Push ────────────────────────────────────────────────────────────
+
+@router.post("/git-pull")
+async def git_pull(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remote'tan en son degisiklikleri cek (fetch + merge origin/main)."""
+    ws = _get_user_workspace(current_user.id, db)
+    if not ws:
+        raise HTTPException(400, "Git workspace bulunamadi. Once workspace klonlayin.")
+
+    local_path = Path(ws.local_path)
+    if not local_path.exists():
+        raise HTTPException(400, "Workspace klasoru bulunamadi.")
+
+    # Once remote credential guncelle
+    repo = ws.repository
+    if repo and repo.git_username and repo.git_token:
+        try:
+            git_service.push_branch.__wrapped__ if False else None  # dummy
+            from services import git_service as _gs
+            _gs._run_git_command(
+                ["git", "remote", "set-url", "origin",
+                 repo.repo_url.replace("https://", f"https://{repo.git_username}:{repo.git_token}@")],
+                cwd=local_path
+            )
+        except Exception:
+            pass
+
+    result = git_service.pull_from_main(local_path)
+
+    from datetime import datetime, timezone
+    ws.last_pulled = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "ok":            result["success"],
+        "message":       result["message"],
+        "has_conflicts": result.get("has_conflicts", False),
+    }
+
+
+@router.post("/git-push")
+async def git_push(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """ai_scenarios klasorunu commit edip remote branch'e push et."""
+    ws = _get_user_workspace(current_user.id, db)
+    if not ws:
+        raise HTTPException(400, "Git workspace bulunamadi. Once workspace klonlayin.")
+
+    local_path = Path(ws.local_path)
+    if not local_path.exists():
+        raise HTTPException(400, "Workspace klasoru bulunamadi.")
+
+    repo = ws.repository
+
+    commit_msg = f"ai-gen: senaryo guncelleme {_datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+    try:
+        committed = git_service.commit_changes(
+            local_path,
+            commit_msg,
+            author=f"{current_user.full_name or current_user.username} <{current_user.email}>",
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Commit hatasi: {e}")
+
+    push_ok = False
+    push_msg = "Commit basarili, push atlanamadi"
+    if committed:
+        try:
+            git_service.push_branch(
+                local_path,
+                ws.branch_name,
+                username=repo.git_username if repo else None,
+                token=repo.git_token if repo else None,
+            )
+            push_ok = True
+            push_msg = f"'{ws.branch_name}' branch'ine push edildi"
+            from datetime import datetime, timezone
+            ws.last_pushed = datetime.now(timezone.utc)
+            ws.has_changes = False
+            db.commit()
+        except Exception as e:
+            push_msg = f"Push hatasi: {e}"
+    else:
+        push_msg = "Commit edilecek degisiklik yok"
+
+    return {
+        "ok":       push_ok or not committed,
+        "committed": committed,
+        "pushed":   push_ok,
+        "message":  push_msg,
+    }

@@ -26,6 +26,7 @@ class RepositoryCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Mobil iOS, Web, etc.")
     repo_url: str = Field(..., description="Azure Repos / GitHub URL")
     repo_type: str = Field(..., description="mobile-ios | mobile-android | web | desktop | web-desktop | api")
+    provider: str = Field(default="generic", description="azure | github | generic")
     description: Optional[str] = Field(default="", max_length=500)
     git_username: Optional[str] = None
     git_token: Optional[str] = None
@@ -34,7 +35,8 @@ class RepositoryCreate(BaseModel):
 class RepositoryUpdate(BaseModel):
     name: Optional[str] = None
     repo_url: Optional[str] = None
-    repo_type: Optional[str] = None  # ✅ YENİ: repo_type güncellenebilir
+    repo_type: Optional[str] = None
+    provider: Optional[str] = None
     description: Optional[str] = None
     git_username: Optional[str] = None
     git_token: Optional[str] = None
@@ -101,15 +103,20 @@ async def create_repository(
     # desktop ve web-desktop → advanced (image-based automation)
     # Diğerleri → normal (text-based automation)
     editor_type = "advanced" if body.repo_type in ["desktop", "web-desktop"] else "normal"
-    
+
+    valid_providers = ["azure", "github", "generic"]
+    if body.provider not in valid_providers:
+        raise HTTPException(400, detail=f"Gecersiz provider. Secenekler: {valid_providers}")
+
     repo = Repository(
         name=body.name,
         repo_url=body.repo_url,
         repo_type=body.repo_type,
         description=body.description,
-        editor_type=editor_type,  # ✅ YENİ SATIR
+        editor_type=editor_type,
+        provider=body.provider,
         git_username=body.git_username,
-        git_token=body.git_token,  # ⚠️ Production'da encrypt et!
+        git_token=body.git_token,
         created_by=current_user.id
     )
     
@@ -122,7 +129,8 @@ async def create_repository(
         "name": repo.name,
         "repo_url": repo.repo_url,
         "repo_type": repo.repo_type,
-        "editor_type": repo.editor_type,  # ✅ YENİ: response'a eklendi
+        "editor_type": repo.editor_type,
+        "provider": repo.provider,
         "created_at": repo.created_at.isoformat()
     }
 
@@ -221,6 +229,12 @@ async def update_repository(
         # editor_type'ı da güncelle
         repo.editor_type = "advanced" if body.repo_type in ["desktop", "web-desktop"] else "normal"
     
+    if body.provider is not None:
+        valid_providers = ["azure", "github", "generic"]
+        if body.provider not in valid_providers:
+            raise HTTPException(400, detail=f"Gecersiz provider. Secenekler: {valid_providers}")
+        repo.provider = body.provider
+
     if body.description is not None:
         repo.description = body.description
     if body.git_username is not None:

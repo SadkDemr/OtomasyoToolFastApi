@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Geçmişi - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .page-content { padding: 24px; width: 100%; max-width: 1200px; box-sizing: border-box; }
+
+        /* Platform filtre tabları */
+        .plat-tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .plat-tab {
+            padding: 8px 18px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .plat-tab:hover  { border-color: var(--accent-primary); color: var(--accent-primary); }
+        .plat-tab.active {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: #fff;
+        }
+
+        /* Araç çubuğu */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .toolbar-title { font-weight: 600; font-size: 1rem; flex: 1; }
+        .btn-push {
+            padding: 8px 16px;
+            background: rgba(79,70,229,0.1);
+            border: 1px solid var(--accent-primary);
+            border-radius: var(--radius-md);
+            color: var(--accent-primary);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-push:hover { background: rgba(79,70,229,0.2); }
+        .btn-refresh {
+            padding: 8px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-refresh:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+
+        /* Log tablosu */
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.86rem;
+        }
+        .log-table th {
+            text-align: left;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            color: var(--text-secondary);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .log-table td {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+        .log-table tr:hover td { background: var(--bg-secondary); cursor: pointer; }
+
+        /* Durum badge */
+        .badge-pass {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(16,185,129,0.15);
+            color: #10b981;
+        }
+        .badge-fail {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(239,68,68,0.15);
+            color: #ef4444;
+        }
+        .badge-partial {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(245,158,11,0.15);
+            color: #f59e0b;
+        }
+
+        /* Platform badge */
+        .plat-icon { font-size: 1rem; }
+
+        /* Step progress bar */
+        .step-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .step-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: var(--bg-tertiary);
+            width: 80px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .step-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: #10b981;
+            transition: width 0.3s;
+        }
+        .step-bar-fail { background: #ef4444; }
+        .step-count { font-size: 0.78rem; color: var(--text-secondary); }
+
+        /* Boş durum */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Detay Modalı */
+        .hist-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+        }
+        .hist-modal-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            width: 100%;
+            max-width: 600px;
+            max-height: 85vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .hist-modal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .hist-modal-title { font-weight: 600; font-size: 1rem; }
+        .hist-modal-meta { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
+        .btn-close-modal {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            opacity: 0.6;
+            color: var(--text-primary);
+            flex-shrink: 0;
+        }
+        .btn-close-modal:hover { opacity: 1; }
+
+        /* Adım listesi (detay) */
+        .step-detail-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: var(--radius-md);
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            font-size: 0.85rem;
+        }
+        .step-num {
+            min-width: 24px;
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .step-label { flex: 1; color: var(--text-primary); }
+        .step-status-icon { font-size: 1rem; flex-shrink: 0; }
+        .step-detail-item.pass { border-left: 3px solid #10b981; }
+        .step-detail-item.fail { border-left: 3px solid #ef4444; }
+        .step-detail-item.unknown { border-left: 3px solid var(--border-color); }
+
+        /* Özet satırı (detay modal) */
+        .run-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+        }
+        .run-summary-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 10px 14px;
+            text-align: center;
+        }
+        .run-summary-val { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); }
+        .run-summary-lbl { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    </style>
+</head>
+<body>
+<div id="app-root">
+    <div id="sidebar-container"></div>
+    <div class="main-content">
+        <header class="top-bar">
+            <span class="top-bar-title">📋 Test Geçmişi</span>
+        </header>
+
+        <div class="page-content">
+
+            <!-- Platform filtre tabları -->
+            <div class="plat-tabs">
+                <div class="plat-tab active" data-plat="" onclick="setFilter('')">Tümü</div>
+                <div class="plat-tab" data-plat="web"     onclick="setFilter('web')">🌐 Web</div>
+                <div class="plat-tab" data-plat="mobile"  onclick="setFilter('mobile')">📱 Mobil</div>
+                <div class="plat-tab" data-plat="desktop" onclick="setFilter('desktop')">🖥️ Desktop</div>
+            </div>
+
+            <!-- Araç çubuğu -->
+            <div class="toolbar">
+                <span class="toolbar-title">Koşum Kayıtları</span>
+                <button class="btn-refresh" onclick="loadLogs()">↺ Yenile</button>
+                <button class="btn-push"    onclick="pushLogs()">⬆ Git'e Push</button>
+            </div>
+
+            <!-- Tablo -->
+            <div id="logTableWrap">
+                <div class="empty-state">Yükleniyor...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detay Modalı -->
+<div id="detailModal" class="hist-modal-overlay">
+    <div class="hist-modal-box">
+        <div class="hist-modal-header">
+            <div>
+                <div class="hist-modal-title" id="detailTitle">—</div>
+                <div class="hist-modal-meta"  id="detailMeta">—</div>
+            </div>
+            <button class="btn-close-modal" onclick="closeDetail()">✕</button>
+        </div>
+        <div class="run-summary" id="detailSummary"></div>
+        <div id="detailSteps" style="display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    if (!Auth.checkAuth()) return;
+
+    const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+
+    let activePlatform = "";
+
+    // ── Platform filtresi ─────────────────────────────────────────────────────
+    window.setFilter = function (plat) {
+        activePlatform = plat;
+        document.querySelectorAll(".plat-tab").forEach(t =>
+            t.classList.toggle("active", t.dataset.plat === plat)
+        );
+        loadLogs();
+    };
+
+    // ── Log listesini yükle ───────────────────────────────────────────────────
+    window.loadLogs = async function () {
+        const wrap = document.getElementById("logTableWrap");
+        wrap.innerHTML = '<div class="empty-state">Yükleniyor...</div>';
+        try {
+            const qs   = activePlatform ? `?platform=${encodeURIComponent(activePlatform)}` : "";
+            const resp = await fetch(`${API_BASE}/ai-gen/run-logs${qs}`, {
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            if (!resp.ok) throw new Error("Liste alınamadı");
+            const data = await resp.json();
+            const logs = (data.logs || []).sort((a, b) =>
+                new Date(b.started_at || 0) - new Date(a.started_at || 0)
+            );
+
+            if (logs.length === 0) {
+                wrap.innerHTML = `<div class="empty-state">
+                    ${activePlatform ? platformLabel(activePlatform) + " için koşum kaydı yok." : "Henüz koşum kaydı yok."}
+                    <br><span style="opacity:0.6;font-size:0.82rem;">AI Test Generator'dan senaryo çalıştırınca buraya kaydedilir.</span>
+                </div>`;
+                return;
+            }
+
+            wrap.innerHTML = `
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Platform</th>
+                            <th>Senaryo Adı</th>
+                            <th>Tarih / Saat</th>
+                            <th>Süre</th>
+                            <th>Adımlar</th>
+                            <th>Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTbody"></tbody>
+                </table>`;
+
+            const tbody = document.getElementById("logTbody");
+            tbody.innerHTML = logs.map(l => {
+                const dt       = formatDate(l.started_at);
+                const dur      = l.duration_sec != null ? l.duration_sec + "s" : "—";
+                const passRate = l.total_steps > 0 ? Math.round((l.passed / l.total_steps) * 100) : 0;
+                const status   = l.failed === 0 && l.exit_code === 0
+                    ? '<span class="badge-pass">Başarılı</span>'
+                    : l.passed === 0
+                        ? '<span class="badge-fail">Başarısız</span>'
+                        : '<span class="badge-partial">Kısmi</span>';
+                return `<tr onclick="openDetail('${escHtml(l.run_id)}')">
+                    <td><span class="plat-icon" title="${escHtml(platformLabel(l.platform))}">${platformIcon(l.platform)}</span></td>
+                    <td>${escHtml(l.scenario_name)}</td>
+                    <td style="white-space:nowrap; font-size:0.8rem; color:var(--text-secondary);">${dt}</td>
+                    <td style="font-size:0.82rem; color:var(--text-secondary);">${dur}</td>
+                    <td>
+                        <div class="step-bar-wrap">
+                            <div class="step-bar">
+                                <div class="step-bar-fill ${l.failed > 0 ? 'step-bar-fail' : ''}" style="width:${passRate}%"></div>
+                            </div>
+                            <span class="step-count">${l.passed}/${l.total_steps}</span>
+                        </div>
+                    </td>
+                    <td>${status}</td>
+                </tr>`;
+            }).join("");
+
+        } catch (e) {
+            wrap.innerHTML = `<div class="empty-state" style="color:var(--danger);">Hata: ${e.message}</div>`;
+        }
+    };
+
+    // ── Detay modalı ─────────────────────────────────────────────────────────
+    window.openDetail = async function (runId) {
+        try {
+            const resp = await fetch(`${API_BASE}/ai-gen/run-logs/${encodeURIComponent(runId)}`, {
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            if (!resp.ok) throw new Error("Detay alınamadı");
+            const d = await resp.json();
+
+            document.getElementById("detailTitle").textContent =
+                `${platformIcon(d.platform)}  ${d.scenario_name || "Adsız Senaryo"}`;
+
+            const dt = formatDate(d.started_at);
+            let dur = "—";
+            if (d.started_at && d.ended_at) {
+                try {
+                    const s = new Date(d.started_at), e = new Date(d.ended_at);
+                    dur = Math.round((e - s) / 1000) + "s";
+                } catch {}
+            }
+            document.getElementById("detailMeta").textContent =
+                `${platformLabel(d.platform)} · ${dt} · ${dur}`;
+
+            const allPass = d.failed === 0 && d.exit_code === 0;
+            document.getElementById("detailSummary").innerHTML = `
+                <div class="run-summary-card">
+                    <div class="run-summary-val">${d.total_steps}</div>
+                    <div class="run-summary-lbl">Toplam Adım</div>
+                </div>
+                <div class="run-summary-card" style="border-color:rgba(16,185,129,0.3);">
+                    <div class="run-summary-val" style="color:#10b981;">${d.passed}</div>
+                    <div class="run-summary-lbl">Başarılı</div>
+                </div>
+                <div class="run-summary-card" style="border-color:rgba(239,68,68,0.3);">
+                    <div class="run-summary-val" style="color:#ef4444;">${d.failed}</div>
+                    <div class="run-summary-lbl">Başarısız</div>
+                </div>
+                <div class="run-summary-card" style="border-color:${allPass ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'};">
+                    <div class="run-summary-val" style="color:${allPass ? '#10b981' : '#ef4444'};">${allPass ? '✓' : '✗'}</div>
+                    <div class="run-summary-lbl">Sonuç</div>
+                </div>`;
+
+            const stepsEl = document.getElementById("detailSteps");
+            if (d.steps && d.steps.length > 0) {
+                stepsEl.innerHTML = d.steps.map(st => {
+                    const icon = st.status === "pass"    ? "✅"
+                               : st.status === "fail"    ? "❌"
+                               : "⬜";
+                    return `<div class="step-detail-item ${st.status}">
+                        <span class="step-num">${st.index + 1}</span>
+                        <span class="step-label">${escHtml(st.label)}</span>
+                        <span class="step-status-icon">${icon}</span>
+                    </div>`;
+                }).join("");
+            } else {
+                stepsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">Adım detayı yok.</div>';
+            }
+
+            document.getElementById("detailModal").style.display = "flex";
+        } catch (e) {
+            Toast.error("Detay yüklenemedi: " + e.message);
+        }
+    };
+
+    window.closeDetail = function () {
+        document.getElementById("detailModal").style.display = "none";
+    };
+
+    // ── Git Push ──────────────────────────────────────────────────────────────
+    window.pushLogs = async function () {
+        try {
+            const resp = await fetch(`${API_BASE}/ai-gen/run-logs/push`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` }
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || "Push hatası");
+            Toast.success(data.message);
+        } catch (e) {
+            Toast.error(e.message);
+        }
+    };
+
+    // ── Yardımcılar ──────────────────────────────────────────────────────────
+    function platformLabel(p) {
+        return {web: "Web", mobile: "Mobil", desktop: "Desktop"}[p] || p || "Bilinmiyor";
+    }
+    function platformIcon(p) {
+        return {web: "🌐", mobile: "📱", desktop: "🖥️"}[p] || "❓";
+    }
+    function formatDate(iso) {
+        if (!iso) return "—";
+        try {
+            const d = new Date(iso + (iso.endsWith("Z") ? "" : "Z"));
+            return d.toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" });
+        } catch { return iso; }
+    }
+    function escHtml(s) {
+        return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    // Klavye: Escape ile modal kapat
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape") closeDetail();
+    });
+
+    // Sayfa yüklenince
+    loadLogs();
+})();
+</script>
+</body>
+</html>

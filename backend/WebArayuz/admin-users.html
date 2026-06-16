@@ -3,332 +3,403 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kullanıcı Yönetimi - Admin</title>
+    <title>Kullanici Yonetimi - Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .admin-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
-        .admin-header h2 { font-size:1.3rem; display:flex; align-items:center; gap:10px; }
+        .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+        .toolbar h2 { font-size:1.2rem; margin:0; }
 
-        .users-table { width:100%; border-collapse:collapse; background:var(--bg-secondary); border-radius:12px; overflow:hidden; border:1px solid var(--border-color); }
-        .users-table thead { background:var(--bg-tertiary); }
-        .users-table th { padding:14px 16px; text-align:left; font-size:0.8rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; }
-        .users-table td { padding:14px 16px; border-top:1px solid var(--border-color); font-size:0.88rem; }
-        .users-table tr:hover td { background:var(--bg-tertiary); }
+        .users-table { width:100%; border-collapse:collapse; }
+        .users-table th { text-align:left; padding:10px 14px; font-size:0.78rem; color:var(--text-muted); border-bottom:1px solid var(--border-color); }
+        .users-table td { padding:12px 14px; border-bottom:1px solid var(--border-color); font-size:0.88rem; vertical-align:middle; }
+        .users-table tr:hover td { background:var(--bg-secondary); }
 
-        .user-avatar-sm { width:32px; height:32px; border-radius:50%; background:var(--accent-primary); color:white; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:0.85rem; }
-        .role-badge { padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:600; }
-        .role-admin { background:rgba(239,68,68,0.15); color:var(--danger); }
-        .role-user { background:rgba(59,130,246,0.15); color:var(--info); }
-        .status-active { color:var(--success); }
-        .status-inactive { color:var(--text-muted); }
+        .role-badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.75rem; font-weight:600; }
+        .role-admin { background:rgba(239,68,68,.15); color:#ef4444; }
+        .role-user  { background:rgba(59,130,246,.15); color:#3b82f6; }
 
-        /* Modal */
-        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
-        .modal-overlay.active { display:flex; }
-        .modal { background:var(--bg-secondary); border-radius:12px; width:450px; max-width:90%; padding:24px; border:1px solid var(--border-color); box-shadow:0 20px 40px rgba(0,0,0,0.3); }
-        .modal h3 { margin:0 0 20px; font-size:1.15rem; }
-        .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; padding-top:15px; border-top:1px solid var(--border-color); }
+        .ws-badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.74rem; background:rgba(16,185,129,.12); color:#10b981; }
 
+        .action-btns { display:flex; gap:6px; }
+        .btn-icon { padding:5px 10px; font-size:0.8rem; border-radius:6px; cursor:pointer; border:1px solid var(--border-color); background:var(--bg-tertiary); color:var(--text-primary); transition:.15s; }
+        .btn-icon:hover { background:var(--bg-secondary); }
+        .btn-icon.danger:hover { background:rgba(239,68,68,.15); border-color:#ef4444; color:#ef4444; }
+
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center; }
+        .modal-overlay.open { display:flex; }
+        .modal { background:var(--bg-primary); border-radius:12px; padding:28px; width:480px; max-width:95vw; max-height:90vh; overflow-y:auto; }
+        .modal h3 { margin:0 0 20px; font-size:1.1rem; }
         .form-group { margin-bottom:14px; }
-        .form-label { display:block; margin-bottom:5px; font-size:0.8rem; font-weight:600; color:var(--text-secondary); }
-        .form-input, .form-select { width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary); color:var(--text-primary); font-size:0.88rem; box-sizing:border-box; }
-        .form-input:focus, .form-select:focus { outline:none; border-color:var(--accent-primary); }
+        .form-group label { display:block; font-size:0.82rem; color:var(--text-muted); margin-bottom:5px; }
+        .form-group input, .form-group select { width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:0.9rem; box-sizing:border-box; }
+        .form-hint { font-size:0.75rem; color:var(--text-muted); margin-top:4px; }
+        .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border-color); }
 
-        .btn { padding:10px 20px; border-radius:8px; border:none; cursor:pointer; font-size:0.88rem; font-weight:500; display:inline-flex; align-items:center; gap:6px; transition:all 0.15s; }
-        .btn-sm { padding:6px 12px; font-size:0.8rem; }
-        .btn-primary { background:var(--accent-primary); color:white; }
-        .btn-primary:hover { background:var(--accent-hover); }
-        .btn-secondary { background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color); }
-        .btn-danger { background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); }
-        .btn-danger:hover { background:rgba(239,68,68,0.2); }
-        .icon-btn { background:none; border:none; cursor:pointer; padding:6px; border-radius:6px; color:var(--text-secondary); display:flex; align-items:center; }
-        .icon-btn:hover { background:var(--bg-tertiary); color:var(--text-primary); }
+        .perm-section { margin-top:18px; }
+        .perm-section h4 { font-size:0.9rem; margin:0 0 10px; color:var(--text-muted); }
+        .perm-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border-color); }
+        .perm-row:last-child { border-bottom:none; }
+        .perm-name { font-size:0.87rem; }
+        .perm-controls { display:flex; gap:6px; align-items:center; }
+        .perm-select { padding:4px 8px; border-radius:6px; font-size:0.8rem; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); }
+        .btn-revoke { padding:3px 8px; font-size:0.75rem; border-radius:5px; border:1px solid #ef4444; background:transparent; color:#ef4444; cursor:pointer; }
+        .btn-revoke:hover { background:rgba(239,68,68,.1); }
+        .btn-grant { padding:6px 14px; font-size:0.82rem; border-radius:7px; background:var(--accent-color); color:#fff; border:none; cursor:pointer; white-space:nowrap; }
+        .btn-grant:hover { opacity:.85; }
+        .add-perm-row { display:flex; gap:8px; margin-top:12px; align-items:center; }
+        .add-perm-row select { flex:1; padding:7px 10px; border-radius:7px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:0.85rem; }
 
-        .stats-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
-        .stat-card { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:16px 20px; }
-        .stat-card .stat-value { font-size:1.8rem; font-weight:700; }
-        .stat-card .stat-label { font-size:0.8rem; color:var(--text-muted); margin-top:4px; }
+        .toast { position:fixed; bottom:24px; right:24px; background:var(--bg-primary); border:1px solid var(--border-color); padding:10px 18px; border-radius:10px; font-size:0.87rem; box-shadow:0 4px 20px rgba(0,0,0,.2); z-index:9999; opacity:0; transition:opacity .25s; pointer-events:none; }
+        .toast.show { opacity:1; }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <div id="sidebar-container"></div>
+<div class="app-container">
+    <div id="sidebar-container"></div>
 
-        <main class="main-content">
-            <header class="header">
-                <div class="header-left"><h1 class="page-title">👥 Kullanıcı Yönetimi</h1></div>
-                <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">🌙</button></div>
-            </header>
+    <main class="main-content">
+        <header class="header">
+            <div class="header-left"><h1 class="page-title">&#128101; Kullanici Yonetimi</h1></div>
+            <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">&#127769;</button></div>
+        </header>
 
-            <div class="page-content">
-                <!-- Stats -->
-                <div class="stats-row" id="statsRow">
-                    <div class="stat-card"><div class="stat-value" id="totalUsers">-</div><div class="stat-label">Toplam Kullanıcı</div></div>
-                    <div class="stat-card"><div class="stat-value" id="adminCount">-</div><div class="stat-label">Admin</div></div>
-                    <div class="stat-card"><div class="stat-value" id="activeCount">-</div><div class="stat-label">Aktif Kullanıcı</div></div>
-                </div>
+        <div class="page-content">
+            <div class="toolbar">
+                <h2>Kullanicilar</h2>
+                <button class="btn btn-primary" onclick="openCreateModal()">+ Yeni Kullanici</button>
+            </div>
 
-                <div class="admin-header">
-                    <h2>Kullanıcılar</h2>
-                    <button class="btn btn-primary" onclick="openUserModal()">
-                        <span class="material-icons-round" style="font-size:1rem;">person_add</span> Yeni Kullanıcı
-                    </button>
-                </div>
-
-                <!-- AI Yapılandırması -->
-                <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-                        <span style="font-size:1.4rem;">🤖</span>
-                        <div>
-                            <div style="font-weight:700;font-size:1rem;">AI Yapılandırması</div>
-                            <div style="font-size:0.78rem;color:var(--text-muted);">Gemini API key ile görüntü analizi ve senaryo üretimi özelliklerini etkinleştirin</div>
-                        </div>
-                        <span id="aiStatusBadge" style="margin-left:auto;padding:4px 12px;border-radius:20px;font-size:0.75rem;font-weight:600;background:rgba(239,68,68,0.12);color:#ef4444;">Yapılandırılmamış</span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-end;">
-                        <div style="flex:1;">
-                            <label class="form-label">Gemini API Key</label>
-                            <input type="password" class="form-input" id="geminiKeyInput" placeholder="AIza... (Google AI Studio'dan alın)" autocomplete="off">
-                        </div>
-                        <button class="btn btn-primary" onclick="saveAIConfig()" style="white-space:nowrap;">💾 Kaydet</button>
-                    </div>
-                    <div style="margin-top:8px;font-size:0.75rem;color:var(--text-muted);">
-                        Mevcut key: <span id="maskedKey" style="font-family:monospace;">—</span>
-                        &nbsp;·&nbsp; <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-primary);">Google AI Studio'dan al →</a>
-                    </div>
-                </div>
-
+            <div class="card" style="overflow-x:auto;">
                 <table class="users-table">
                     <thead>
                         <tr>
-                            <th></th>
-                            <th>Kullanıcı Adı</th>
+                            <th>Kullanici Adi</th>
                             <th>Ad Soyad</th>
-                            <th>E-posta</th>
+                            <th>E-Posta</th>
                             <th>Rol</th>
-                            <th>Kayıt Tarihi</th>
-                            <th>İşlemler</th>
+                            <th>Workspace</th>
+                            <th>Son Giris</th>
+                            <th>Islemler</th>
                         </tr>
                     </thead>
-                    <tbody id="usersTableBody">
-                        <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">Yükleniyor...</td></tr>
+                    <tbody id="usersTbody">
+                        <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted);">Yukleniyor...</td></tr>
                     </tbody>
                 </table>
             </div>
-        </main>
-    </div>
+        </div>
+    </main>
+</div>
 
-    <!-- User Modal -->
-    <div class="modal-overlay" id="userModal">
-        <div class="modal">
-            <h3 id="modalTitle">Yeni Kullanıcı</h3>
-            <input type="hidden" id="editUserId">
-
-            <div class="form-group">
-                <label class="form-label">Kullanıcı Adı</label>
-                <input type="text" class="form-input" id="inputUsername" placeholder="kullaniciadi" required>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Ad Soyad</label>
-                <input type="text" class="form-input" id="inputFullName" placeholder="Ad Soyad">
-            </div>
-            <div class="form-group">
-                <label class="form-label">E-posta</label>
-                <input type="email" class="form-input" id="inputEmail" placeholder="ornek@email.com">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Şifre <span id="pwdHint" style="font-weight:400; color:var(--text-muted);">(min 6 karakter)</span></label>
-                <input type="password" class="form-input" id="inputPassword" placeholder="••••••••" minlength="6">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Rol</label>
-                <select class="form-select" id="inputRole">
-                    <option value="user">Kullanıcı</option>
-                    <option value="admin">Admin</option>
-                </select>
-            </div>
-
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeUserModal()">İptal</button>
-                <button class="btn btn-primary" onclick="saveUser()">Kaydet</button>
-            </div>
+<!-- Kullanici Olustur/Duzenle Modal -->
+<div class="modal-overlay" id="userModal">
+    <div class="modal">
+        <h3 id="modalTitle">Yeni Kullanici</h3>
+        <div class="form-group">
+            <label>Kullanici Adi *</label>
+            <input id="fUsername" placeholder="ahmet.yilmaz">
+            <div class="form-hint" id="fUsernameHint"></div>
+        </div>
+        <div class="form-group">
+            <label>E-Posta *</label>
+            <input id="fEmail" type="email" placeholder="ahmet@sirket.com">
+        </div>
+        <div class="form-group">
+            <label id="fPasswordLabel">Sifre *</label>
+            <input id="fPassword" type="password" placeholder="En az 4 karakter">
+            <div class="form-hint" id="fPasswordHint"></div>
+        </div>
+        <div class="form-group">
+            <label>Ad Soyad</label>
+            <input id="fFullName" placeholder="Ahmet Yilmaz">
+        </div>
+        <div class="form-group">
+            <label>Rol</label>
+            <select id="fRole">
+                <option value="user">Kullanici</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('userModal')">Iptal</button>
+            <button class="btn btn-primary" onclick="saveUser()">Kaydet</button>
         </div>
     </div>
+</div>
 
-    <script src="js/app.js"></script>
-    <script src="js/sidebar.js"></script>
-    <script>
-    (function() {
-        "use strict";
+<!-- Yetkilendirme Modal -->
+<div class="modal-overlay" id="permModal">
+    <div class="modal" style="width:540px;">
+        <h3>Proje Yetkileri &#8212; <span id="permUsername"></span></h3>
 
-        let allUsers = [];
+        <div class="perm-section">
+            <h4>Mevcut Yetkiler</h4>
+            <div id="permList"><em style="color:var(--text-muted);font-size:.85rem;">Yukleniyor...</em></div>
+        </div>
 
-        document.addEventListener("DOMContentLoaded", async () => {
-            if (!Auth.checkAuth()) return;
+        <div class="perm-section">
+            <h4>Yetki Ekle</h4>
+            <div class="add-perm-row">
+                <select id="newPermRepo"><option value="">-- Proje sec --</option></select>
+                <select id="newPermLevel">
+                    <option value="view">Goruntuleme</option>
+                    <option value="edit">Duzenleme</option>
+                </select>
+                <button class="btn-grant" onclick="grantPermission()">Ekle</button>
+            </div>
+        </div>
 
-            // Admin kontrolü
-            if (!Auth.isAdmin()) {
-                Toast.error("Bu sayfaya erişim yetkiniz yok");
-                location.href = "index.html";
-                return;
-            }
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('permModal')">Kapat</button>
+        </div>
+    </div>
+</div>
 
-            await loadUsers();
-            await loadAIConfig();
-        });
+<div class="toast" id="toast"></div>
 
-        async function loadUsers() {
-            try {
-                const data = await API.get("/admin/users");
-                allUsers = data.users || data || [];
-                renderUsers();
-                updateStats();
-            } catch (e) {
-                document.getElementById("usersTableBody").innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Yükleme hatası: ${e.message}</td></tr>`;
-            }
+<script src="js/auth.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    const API = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+
+    function hdrs() { return { "Content-Type":"application/json", "Authorization":`Bearer ${Auth.getToken()}` }; }
+
+    function toast(msg, ok) {
+        const el = document.getElementById("toast");
+        el.textContent = msg;
+        el.style.borderColor = ok === false ? "#ef4444" : "var(--border-color)";
+        el.classList.add("show");
+        setTimeout(() => el.classList.remove("show"), 2800);
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return "—";
+        try { return new Date(iso).toLocaleString("tr-TR", { dateStyle:"short", timeStyle:"short" }); }
+        catch { return iso; }
+    }
+
+    function esc(s) {
+        return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    let _users = [], _editUserId = null, _permUserId = null, _allRepos = [];
+
+    // ── Load ─────────────────────────────────────────────────────────────────
+    async function loadUsers() {
+        try {
+            const r = await fetch(`${API}/admin/users/`, { headers: hdrs() });
+            if (!r.ok) throw new Error();
+            const d = await r.json();
+            _users = d.users || [];
+            renderUsers();
+        } catch {
+            document.getElementById("usersTbody").innerHTML =
+                '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted);">Yuklenemedi</td></tr>';
         }
+    }
 
-        function renderUsers() {
-            const tbody = document.getElementById("usersTableBody");
+    function renderUsers() {
+        const tb = document.getElementById("usersTbody");
+        if (!_users.length) {
+            tb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted);">Kullanici yok</td></tr>';
+            return;
+        }
+        tb.innerHTML = _users.map(u => `
+            <tr>
+                <td><strong>${esc(u.username)}</strong></td>
+                <td>${esc(u.full_name || "—")}</td>
+                <td>${esc(u.email)}</td>
+                <td><span class="role-badge role-${u.role}">${u.role === "admin" ? "Admin" : "Kullanici"}</span></td>
+                <td><span class="ws-badge">&#128188; ${u.workspace_count}</span></td>
+                <td>${fmtDate(u.last_login)}</td>
+                <td>
+                    <div class="action-btns">
+                        <button class="btn-icon" onclick="openEditModal(${u.id})" title="Duzenle">&#9998;</button>
+                        <button class="btn-icon" onclick="openPermModal(${u.id})" title="Proje Yetkileri">&#128274;</button>
+                        <button class="btn-icon" onclick="setupWorkspace(${u.id})" title="Workspace Kur">&#128190;</button>
+                        <button class="btn-icon danger" onclick="deleteUser(${u.id})" title="Sil">&#128465;</button>
+                    </div>
+                </td>
+            </tr>
+        `).join("");
+    }
 
-            if (!allUsers.length) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">Kullanıcı yok</td></tr>';
-                return;
-            }
+    // ── Create/Edit Modal ─────────────────────────────────────────────────────
+    window.openCreateModal = function () {
+        _editUserId = null;
+        document.getElementById("modalTitle").textContent = "Yeni Kullanici";
+        document.getElementById("fUsername").value = "";
+        document.getElementById("fUsername").disabled = false;
+        document.getElementById("fUsernameHint").textContent = "";
+        document.getElementById("fEmail").value = "";
+        document.getElementById("fPassword").value = "";
+        document.getElementById("fPasswordLabel").textContent = "Sifre *";
+        document.getElementById("fPasswordHint").textContent = "";
+        document.getElementById("fFullName").value = "";
+        document.getElementById("fRole").value = "user";
+        document.getElementById("userModal").classList.add("open");
+    };
 
-            tbody.innerHTML = allUsers.map(u => `
-                <tr>
-                    <td><div class="user-avatar-sm">${(u.full_name || u.username || '?').charAt(0).toUpperCase()}</div></td>
-                    <td style="font-weight:600;">${escapeHtml(u.username)}</td>
-                    <td>${escapeHtml(u.full_name || '-')}</td>
-                    <td style="color:var(--text-muted);">${escapeHtml(u.email || '-')}</td>
-                    <td><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role}</span></td>
-                    <td style="font-size:0.8rem; color:var(--text-muted);">${u.created_at ? new Date(u.created_at).toLocaleDateString('tr-TR') : '-'}</td>
-                    <td>
-                        <div style="display:flex; gap:4px;">
-                            <button class="icon-btn" onclick="openUserModal(${u.id})" title="Düzenle">
-                                <span class="material-icons-round" style="font-size:1.1rem;">edit</span>
-                            </button>
-                            <button class="icon-btn" onclick="deleteUser(${u.id})" title="Sil">
-                                <span class="material-icons-round" style="font-size:1.1rem; color:#ef4444;">delete</span>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
+    window.openEditModal = function (userId) {
+        const u = _users.find(x => x.id === userId);
+        if (!u) return;
+        _editUserId = userId;
+        document.getElementById("modalTitle").textContent = "Kullanici Duzenle";
+        document.getElementById("fUsername").value = u.username;
+        document.getElementById("fUsername").disabled = true;
+        document.getElementById("fUsernameHint").textContent = "Kullanici adi degistirilemez";
+        document.getElementById("fEmail").value = u.email;
+        document.getElementById("fPassword").value = "";
+        document.getElementById("fPasswordLabel").textContent = "Yeni Sifre (bos = degismez)";
+        document.getElementById("fPasswordHint").textContent = "";
+        document.getElementById("fFullName").value = u.full_name || "";
+        document.getElementById("fRole").value = u.role;
+        document.getElementById("userModal").classList.add("open");
+    };
+
+    window.saveUser = async function () {
+        const email    = document.getElementById("fEmail").value.trim();
+        const password = document.getElementById("fPassword").value;
+        const fullName = document.getElementById("fFullName").value.trim();
+        const role     = document.getElementById("fRole").value;
+
+        if (_editUserId) {
+            const body = { email, full_name: fullName, role };
+            if (password) body.password = password;
+            const r = await fetch(`${API}/admin/users/${_editUserId}`, {
+                method:"PUT", headers:hdrs(), body:JSON.stringify(body)
+            });
+            const d = await r.json();
+            if (!r.ok) { toast(d.detail || "Hata", false); return; }
+            toast("Kullanici guncellendi");
+        } else {
+            const username = document.getElementById("fUsername").value.trim();
+            if (!username || !email || !password) { toast("Zorunlu alanlar bos", false); return; }
+            const body = { username, email, password, full_name: fullName, role };
+            const r = await fetch(`${API}/admin/users/`, {
+                method:"POST", headers:hdrs(), body:JSON.stringify(body)
+            });
+            const d = await r.json();
+            if (!r.ok) { toast(d.detail || "Hata", false); return; }
+            toast("Kullanici olusturuldu — workspace kuruluyor...");
+        }
+        closeModal("userModal");
+        loadUsers();
+    };
+
+    // ── Delete ────────────────────────────────────────────────────────────────
+    window.deleteUser = async function (userId) {
+        const u = _users.find(x => x.id === userId);
+        if (!confirm(`"${u ? u.username : userId}" silinsin mi?`)) return;
+        const r = await fetch(`${API}/admin/users/${userId}`, { method:"DELETE", headers:hdrs() });
+        const d = await r.json();
+        if (!r.ok) { toast(d.detail || "Silinemedi", false); return; }
+        toast("Kullanici silindi");
+        loadUsers();
+    };
+
+    // ── Workspace Setup ───────────────────────────────────────────────────────
+    window.setupWorkspace = async function (userId) {
+        const r = await fetch(`${API}/admin/users/${userId}/setup-workspace`, {
+            method:"POST", headers:hdrs()
+        });
+        const d = await r.json();
+        if (!r.ok) { toast(d.detail || "Hata", false); return; }
+        toast(d.message || "Workspace kurulumu baslatildi");
+        setTimeout(loadUsers, 3000);
+    };
+
+    // ── Permissions ───────────────────────────────────────────────────────────
+    window.openPermModal = async function (userId) {
+        _permUserId = userId;
+        const u = _users.find(x => x.id === userId);
+        document.getElementById("permUsername").textContent = u ? u.username : userId;
+        document.getElementById("permList").innerHTML = '<em style="color:var(--text-muted);font-size:.85rem;">Yukleniyor...</em>';
+        document.getElementById("permModal").classList.add("open");
+
+        try {
+            const r = await fetch(`${API}/admin/users/${userId}/permissions`, { headers:hdrs() });
+            const d = await r.json();
+            _allRepos = d.all_repositories || [];
+            renderPermissions(d.permissions || []);
+        } catch {
+            document.getElementById("permList").innerHTML = '<em style="color:#ef4444;">Yuklenemedi</em>';
+        }
+    };
+
+    function renderPermissions(perms) {
+        const el = document.getElementById("permList");
+        if (!perms.length) {
+            el.innerHTML = '<em style="color:var(--text-muted);font-size:.85rem;">Yetki atanmamis</em>';
+        } else {
+            el.innerHTML = perms.map(p => `
+                <div class="perm-row">
+                    <span class="perm-name">&#128188; ${esc(p.repository_name)}</span>
+                    <div class="perm-controls">
+                        <select class="perm-select" onchange="updatePerm(${p.repository_id}, this.value)">
+                            <option value="view"  ${p.permission==="view"  ?"selected":""}>Goruntuleme</option>
+                            <option value="edit"  ${p.permission==="edit"  ?"selected":""}>Duzenleme</option>
+                        </select>
+                        <button class="btn-revoke" onclick="revokePerm(${p.repository_id})">Kaldir</button>
+                    </div>
+                </div>
             `).join("");
         }
 
-        function updateStats() {
-            document.getElementById("totalUsers").textContent = allUsers.length;
-            document.getElementById("adminCount").textContent = allUsers.filter(u => u.role === "admin").length;
-            document.getElementById("activeCount").textContent = allUsers.length; // TODO: active tracking
-        }
+        // Dropdown: sadece henuz yetkisi olmayan repolar
+        const permRepoIds = new Set(perms.map(p => p.repository_id));
+        const sel = document.getElementById("newPermRepo");
+        sel.innerHTML = '<option value="">-- Proje sec --</option>' +
+            _allRepos.filter(r => !permRepoIds.has(r.id))
+                     .map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
+    }
 
-        // ========== MODAL ==========
-        window.openUserModal = function(userId = null) {
-            document.getElementById("editUserId").value = userId || "";
-            document.getElementById("modalTitle").textContent = userId ? "Kullanıcıyı Düzenle" : "Yeni Kullanıcı";
+    window.updatePerm = async function (repoId, level) {
+        const r = await fetch(`${API}/admin/users/${_permUserId}/permissions`, {
+            method:"POST", headers:hdrs(),
+            body:JSON.stringify({ repository_id:repoId, permission:level })
+        });
+        if (!r.ok) { toast("Guncellenemedi", false); return; }
+        toast("Yetki guncellendi");
+    };
 
-            if (userId) {
-                const u = allUsers.find(x => x.id === userId);
-                if (u) {
-                    document.getElementById("inputUsername").value = u.username || "";
-                    document.getElementById("inputFullName").value = u.full_name || "";
-                    document.getElementById("inputEmail").value = u.email || "";
-                    document.getElementById("inputPassword").value = "";
-                    document.getElementById("inputRole").value = u.role || "user";
-                    document.getElementById("pwdHint").textContent = "(boş bırakılırsa değişmez)";
-                }
-            } else {
-                document.getElementById("inputUsername").value = "";
-                document.getElementById("inputFullName").value = "";
-                document.getElementById("inputEmail").value = "";
-                document.getElementById("inputPassword").value = "";
-                document.getElementById("inputRole").value = "user";
-                document.getElementById("pwdHint").textContent = "(min 6 karakter)";
-            }
+    window.revokePerm = async function (repoId) {
+        const r = await fetch(`${API}/admin/users/${_permUserId}/permissions/${repoId}`, {
+            method:"DELETE", headers:hdrs()
+        });
+        if (!r.ok) { toast("Kaldirilmadi", false); return; }
+        toast("Yetki kaldirildi");
+        openPermModal(_permUserId);
+        loadUsers();
+    };
 
-            document.getElementById("userModal").classList.add("active");
-        };
+    window.grantPermission = async function () {
+        const repoId = parseInt(document.getElementById("newPermRepo").value);
+        const level  = document.getElementById("newPermLevel").value;
+        if (!repoId) { toast("Proje secin", false); return; }
+        const r = await fetch(`${API}/admin/users/${_permUserId}/permissions`, {
+            method:"POST", headers:hdrs(),
+            body:JSON.stringify({ repository_id:repoId, permission:level })
+        });
+        if (!r.ok) { toast("Eklenemedi", false); return; }
+        toast("Yetki eklendi");
+        openPermModal(_permUserId);
+        loadUsers();
+    };
 
-        window.closeUserModal = function() {
-            document.getElementById("userModal").classList.remove("active");
-        };
+    // ── Util ──────────────────────────────────────────────────────────────────
+    window.closeModal = function (id) { document.getElementById(id).classList.remove("open"); };
+    document.addEventListener("keydown", e => { if (e.key==="Escape") { closeModal("userModal"); closeModal("permModal"); } });
+    ["userModal","permModal"].forEach(id => {
+        document.getElementById(id).addEventListener("click", function(e) { if (e.target===this) closeModal(id); });
+    });
 
-        window.saveUser = async function() {
-            const userId = document.getElementById("editUserId").value;
-            const username = document.getElementById("inputUsername").value.trim();
-            const email = document.getElementById("inputEmail").value.trim();
-            const password = document.getElementById("inputPassword").value;
-            const fullName = document.getElementById("inputFullName").value.trim();
-            const role = document.getElementById("inputRole").value;
-
-            if (!username) { Toast.error("Kullanıcı adı gerekli"); return; }
-
-            const data = { username, email, full_name: fullName, role };
-
-            if (userId) {
-                // Güncelleme
-                if (password) data.password = password;
-                try {
-                    await API.put(`/admin/users/${userId}`, data);
-                    Toast.success("Kullanıcı güncellendi");
-                    closeUserModal();
-                    loadUsers();
-                } catch (e) { Toast.error(e.message); }
-            } else {
-                // Yeni oluşturma
-                if (!password || password.length < 6) { Toast.error("Şifre en az 6 karakter olmalı"); return; }
-                data.password = password;
-                try {
-                    await API.post("/admin/users", data);
-                    Toast.success("Kullanıcı oluşturuldu");
-                    closeUserModal();
-                    loadUsers();
-                } catch (e) { Toast.error(e.message); }
-            }
-        };
-
-        window.deleteUser = async function(userId) {
-            const u = allUsers.find(x => x.id === userId);
-            if (!confirm(`"${u?.username}" kullanıcısını silmek istediğinize emin misiniz?`)) return;
-            try {
-                await API.delete(`/admin/users/${userId}`);
-                Toast.success("Kullanıcı silindi");
-                loadUsers();
-            } catch (e) { Toast.error(e.message); }
-        };
-
-        async function loadAIConfig() {
-            try {
-                const d = await API.get("/admin/ai-config");
-                const badge = document.getElementById("aiStatusBadge");
-                const masked = document.getElementById("maskedKey");
-                if (d.configured) {
-                    badge.style.background = "rgba(16,185,129,0.12)"; badge.style.color = "#10b981";
-                    badge.textContent = "Yapılandırıldı";
-                    masked.textContent = d.masked_key || "****";
-                } else {
-                    badge.textContent = "Yapılandırılmamış";
-                }
-            } catch(e) { console.error("AI config:", e); }
-        }
-
-        window.saveAIConfig = async function() {
-            const key = document.getElementById("geminiKeyInput").value.trim();
-            if (!key) { Toast.error("API key boş olamaz"); return; }
-            try {
-                await API.post("/admin/ai-config", { gemini_api_key: key });
-                Toast.success("Gemini API key kaydedildi");
-                document.getElementById("geminiKeyInput").value = "";
-                await loadAIConfig();
-            } catch(e) { Toast.error(e.message); }
-        };
-
-        function escapeHtml(t) { if (!t) return ""; const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
-    })();
-    </script>
+    loadUsers();
+})();
+</script>
 </body>
 </html>

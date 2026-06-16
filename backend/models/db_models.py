@@ -195,29 +195,51 @@ class Repository(Base):
     Örn: Mobil iOS, Mobil Android, Web, Desktop, API
     """
     __tablename__ = "repositories"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False, unique=True)
     repo_url = Column(String(500), nullable=False)
     repo_type = Column(String(50), nullable=False)  # mobile-ios, mobile-android, web, desktop, web-desktop, api
     description = Column(Text, nullable=True)
-    
-    # ============ YENİ EKLENEN FIELD ============
+
     # Editor type: "normal" (web-only, text-based) veya "advanced" (desktop/web-desktop, image-based)
     editor_type = Column(String(20), nullable=False, default="normal")  # normal, advanced
-    # ============================================
-    
+
+    # Git provider: azure, github, generic
+    provider = Column(String(20), nullable=False, default="generic")
+
     # Git credentials (optional - admin sağlar)
     git_username = Column(String(100), nullable=True)
     git_token = Column(String(500), nullable=True)  # ⚠️ Production'da encrypt et!
-    
+
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # İlişkiler
     creator = relationship("User", back_populates="created_repositories")
     workspaces = relationship("UserWorkspace", back_populates="repository", cascade="all, delete-orphan")
+    user_permissions = relationship("UserProjectPermission", back_populates="repository", cascade="all, delete-orphan")
+
+
+class UserProjectPermission(Base):
+    """
+    Admin tarafından kullanıcılara verilen proje (repo) bazlı yetkiler.
+    view: Senaryoları görüntüleme + çalıştırma
+    edit: Görüntüleme + kendi workspace'ine kopyalayıp düzenleme
+    """
+    __tablename__ = "user_project_permissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    repository_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
+    permission = Column(String(20), nullable=False, default="view")  # view, edit
+    granted_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    granted_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", foreign_keys=[user_id], backref="project_permissions")
+    repository = relationship("Repository", back_populates="user_permissions")
+    grantor = relationship("User", foreign_keys=[granted_by])
 
 
 class UserWorkspace(Base):

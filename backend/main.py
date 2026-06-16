@@ -26,6 +26,7 @@ from routers.desktop_router import router as desktop_router
 
 # Git Integration
 from routers.admin_repositories_router import router as admin_repos_router
+from routers.admin_users_router import router as admin_users_router
 from routers.workspace_router import router as workspace_router
 # ✅ Advanced Editor (Desktop/Web-Desktop)
 from routers.advanced_editor_router import router as advanced_editor_router
@@ -52,6 +53,7 @@ app.include_router(mobile_router)
 app.include_router(emulator_router)
 # Git Integration
 app.include_router(admin_repos_router, prefix="/api")
+app.include_router(admin_users_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
 app.include_router(desktop_router, prefix="/api")
 # ✅ Advanced Editor

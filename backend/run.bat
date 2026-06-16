@@ -9,7 +9,12 @@ if not exist "venv" (
 
 echo.
 echo GitHub'dan guncelleme cekiliyor...
+REM SSH agent baslat ve key yukle
+start /b ssh-agent >nul 2>&1
+ssh-add "%USERPROFILE%\.ssh\id_ed25519" >nul 2>&1
+REM Remote'u SSH'a cevir (ilk calistirmada HTTPS ise degistir)
 cd /d "%~dp0.."
+git remote set-url origin git@github.com:SadkDemr/OtomasyoToolFastApi.git
 git pull
 cd /d "%~dp0"
 echo Guncelleme tamamlandi.

@@ -171,23 +171,25 @@
                 return;
             }
 
+            const PROVIDER_LABEL = { azure:"Azure DevOps", github:"GitHub", generic:"Generic Git" };
             grid.innerHTML = allRepos.map(r => {
-                const icon = TYPE_ICONS[r.repository_type || r.type] || "📦";
-                const editorLabel = r.editor_type === "advanced" ? "🎯 Advanced" : "📝 Normal";
+                const icon = TYPE_ICONS[r.repo_type || r.repository_type || r.type] || "📦";
+                const editorLabel  = r.editor_type === "advanced" ? "🎯 Advanced" : "📝 Normal";
+                const providerLabel = PROVIDER_LABEL[r.provider] || r.provider || "Git";
                 return `
                 <div class="card repo-card">
                     <div class="card-badge"><span class="badge badge-info">${editorLabel}</span></div>
                     <h3>${icon} ${escapeHtml(r.name)}</h3>
-                    <div class="repo-url">${escapeHtml(r.url || r.repo_url)}</div>
+                    <div class="repo-url">${escapeHtml(r.repo_url || r.url)}</div>
                     <div class="repo-meta">
-                        <span class="badge badge-info">${r.repository_type || r.type || '-'}</span>
-                        <span class="badge badge-success">${r.branch || 'main'}</span>
-                        <span class="badge" style="background:var(--bg-tertiary); color:var(--text-muted);">${r.git_type || r.platform || 'github'}</span>
+                        <span class="badge badge-info">${r.repo_type || r.repository_type || '-'}</span>
+                        <span class="badge" style="background:var(--bg-tertiary); color:var(--text-muted);">${providerLabel}</span>
+                        <span class="badge" style="background:rgba(99,102,241,.15); color:#6366f1;">${r.workspace_count || 0} kullanici</span>
                     </div>
                     ${r.description ? `<p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">${escapeHtml(r.description)}</p>` : ''}
                     <div class="repo-actions">
                         <button class="btn btn-secondary btn-sm" onclick="openRepoModal(${r.id})">
-                            <span class="material-icons-round" style="font-size:0.9rem;">edit</span> Düzenle
+                            <span class="material-icons-round" style="font-size:0.9rem;">edit</span> Duzenle
                         </button>
                         <button class="btn btn-ghost btn-sm" onclick="deleteRepo(${r.id})" style="color:var(--danger);">
                             <span class="material-icons-round" style="font-size:0.9rem;">delete</span> Sil
@@ -249,29 +251,36 @@
 
         window.saveRepo = async function() {
             const repoId = document.getElementById("editRepoId").value;
+            // inputType: github | azure | gitlab | bitbucket  →  provider: azure | github | generic
+            const gitPlatform = document.getElementById("inputType").value;
+            const providerMap = { azure: "azure", github: "github", gitlab: "generic", bitbucket: "generic" };
+            // inputRepoType: web-selenium | mobile-android | ... → repo_type: web | mobile-android | ...
+            const repoTypeRaw = document.getElementById("inputRepoType").value;
+            const repoTypeMap = { "web-selenium": "web" };
+            const repoType = repoTypeMap[repoTypeRaw] || repoTypeRaw;
+
             const data = {
-                name: document.getElementById("inputName").value.trim(),
-                url: document.getElementById("inputUrl").value.trim(),
+                name:        document.getElementById("inputName").value.trim(),
+                repo_url:    document.getElementById("inputUrl").value.trim(),
                 description: document.getElementById("inputDescription").value.trim(),
-                type: document.getElementById("inputType").value,
-                branch: document.getElementById("inputBranch").value.trim() || "main",
-                repository_type: document.getElementById("inputRepoType").value,
+                repo_type:   repoType,
+                provider:    providerMap[gitPlatform] || "generic",
                 editor_type: document.getElementById("inputEditorType").value
             };
 
             const token = document.getElementById("inputToken").value.trim();
-            if (token) data.token = token;
+            if (token) { data.git_username = "token"; data.git_token = token; }
 
-            if (!data.name) { Toast.error("Repository adı gerekli"); return; }
-            if (!data.url) { Toast.error("Git URL gerekli"); return; }
+            if (!data.name)     { Toast.error("Repository adi gerekli"); return; }
+            if (!data.repo_url) { Toast.error("Git URL gerekli"); return; }
 
             try {
                 if (repoId) {
                     await API.put(`/admin/repositories/${repoId}`, data);
-                    Toast.success("Repository güncellendi");
+                    Toast.success("Repository guncellendi");
                 } else {
                     await API.post("/admin/repositories", data);
-                    Toast.success("Repository oluşturuldu");
+                    Toast.success("Repository olusturuldu");
                 }
                 closeRepoModal();
                 loadRepos();
