@@ -63,8 +63,19 @@ for /f "tokens=*" %%i in ('ssh-agent -s 2^>^&1') do (
 )
 ssh-add "%USERPROFILE%\.ssh\id_ed25519" >nul 2>&1
 
+REM Port 22 bloklu olabilir — GitHub'i port 443 uzerinden bagla
+REM Bu ayar hem clone hem de run.bat pull icin gecerlidir
+(
+    echo Host github.com
+    echo     Hostname ssh.github.com
+    echo     Port 443
+    echo     User git
+    echo     IdentityFile %USERPROFILE%\.ssh\id_ed25519
+    echo     StrictHostKeyChecking no
+) > "%USERPROFILE%\.ssh\config"
+
 REM GitHub host key'ini known_hosts'a ekle (ilk baglanmada "yes" sormamak icin)
-ssh-keyscan -t ed25519 github.com >> "%USERPROFILE%\.ssh\known_hosts" 2>nul
+ssh-keyscan -p 443 ssh.github.com >> "%USERPROFILE%\.ssh\known_hosts" 2>nul
 
 REM ─── 4. REPO CLONE ────────────────────────────────────────────────────────────
 echo [4/8] Repo kontrol ediliyor...
