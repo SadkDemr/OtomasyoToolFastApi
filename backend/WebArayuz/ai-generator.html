@@ -1315,13 +1315,13 @@
             if (s.b64) {
                 contentHtml = `
                     <img class="step-img-thumb" src="data:image/png;base64,${s.b64}"
-                        onclick="retakeImage(${i})" title="Tıkla → Yeniden ekran görüntüsü al">
+                        onclick="retakeImage(${i})" title="Tıkla → Farklı görsel yükle">
                     ${imgSel}
                     <input class="step-content-input" type="text" value="${escHtml(s.content)}"
                         placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${i}, this.value)"
                         style="flex:1; min-width:80px;">`;
             } else {
-                contentHtml = `<span class="step-img-placeholder" onclick="retakeImage(${i})">📷 Tıkla → Ekran Al</span>`;
+                contentHtml = `<span class="step-img-placeholder" onclick="retakeImage(${i})">📁 Tıkla → Görsel Yükle</span>`;
             }
 
         } else if (s.type === "sql") {
@@ -1451,42 +1451,35 @@
         updateGenerateBtn();
     }
 
-    // ── Screenshot Akışı (tarayıcı ekranı — getDisplayMedia) ───────────────────
-    function startImageCapture(stepIdx) {
-        _captureTargetStepIdx = stepIdx;
-        doScreenshot();
-    }
+    // ── Görsel Yükleme Akışı ────────────────────────────────────────────────────
+    // Gizli file input — her çağrıda tetiklenir
+    const _imgFileInput = document.createElement("input");
+    _imgFileInput.type   = "file";
+    _imgFileInput.accept = "image/*";
+    _imgFileInput.style.display = "none";
+    document.body.appendChild(_imgFileInput);
 
-    async function doScreenshot() {
-        try {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-                throw new Error("Tarayıcınız ekran paylaşımını desteklemiyor (Chrome/Edge önerilir)");
-            }
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
-            const video  = document.createElement("video");
-            video.srcObject = stream;
-            video.muted = true;
-            await new Promise((resolve, reject) => {
-                video.onloadedmetadata = () => video.play().then(resolve).catch(reject);
-                video.onerror = reject;
-            });
-            await new Promise(r => setTimeout(r, 150));
-            const canvas = document.createElement("canvas");
-            canvas.width  = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext("2d").drawImage(video, 0, 0);
-            stream.getTracks().forEach(t => t.stop());
-            const b64 = canvas.toDataURL("image/png").split(",")[1];
+    _imgFileInput.addEventListener("change", function() {
+        const file = this.files[0];
+        this.value = "";  // aynı dosya tekrar seçilebilsin
+        if (!file) { removeEmptyImageStep(); _captureTargetStepIdx = -1; return; }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const b64 = e.target.result.split(",")[1];
             _screenshotB64 = b64;
             showCropModal(b64);
-        } catch (e) {
-            const msg = (e.name === "NotAllowedError" || e.name === "AbortError")
-                ? "Ekran paylaşımı iptal edildi"
-                : "Screenshot hatası: " + e.message;
-            Toast.error(msg);
+        };
+        reader.onerror = function() {
+            Toast.error("Görsel okunamadı");
             removeEmptyImageStep();
             _captureTargetStepIdx = -1;
-        }
+        };
+        reader.readAsDataURL(file);
+    });
+
+    function startImageCapture(stepIdx) {
+        _captureTargetStepIdx = stepIdx;
+        _imgFileInput.click();
     }
 
     function removeEmptyImageStep() {

@@ -313,8 +313,21 @@ def commit_changes(local_path: Path, message: str, author: Optional[str] = None)
     if code != 0:
         raise GitError(f"Git add failed: {stderr}")
     
-    # Commit
-    cmd = ["git", "commit", "-m", message]
+    # Commit — author'dan name/email çıkar, global git config gerekmemesi için -c ile geç
+    import re as _re
+    if author:
+        _m = _re.match(r'^(.+?)\s*<(.+?)>$', author.strip())
+        _name  = _m.group(1).strip() if _m else "OtomasyoTool"
+        _email = _m.group(2).strip() if _m else "noreply@otomasyotool.local"
+    else:
+        _name, _email = "OtomasyoTool", "noreply@otomasyotool.local"
+
+    cmd = [
+        "git",
+        "-c", f"user.name={_name}",
+        "-c", f"user.email={_email}",
+        "commit", "-m", message,
+    ]
     if author:
         cmd.extend(["--author", author])
     
