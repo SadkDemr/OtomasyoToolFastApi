@@ -49,6 +49,9 @@ def _run_migrations():
     """Mevcut DB'ye yeni kolonlar ekle (SQLite ALTER TABLE)."""
     migrations = [
         "ALTER TABLE repositories ADD COLUMN provider TEXT NOT NULL DEFAULT 'generic'",
+        "ALTER TABLE repositories ADD COLUMN editor_type TEXT NOT NULL DEFAULT 'ai'",
+        "ALTER TABLE scenario_share_permissions ADD COLUMN owner_user_id INTEGER",
+        "ALTER TABLE users ADD COLUMN last_login DATETIME",
     ]
     with engine.connect() as conn:
         for sql in migrations:

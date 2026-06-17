@@ -4,301 +4,409 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repository Yönetimi - Admin</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .admin-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
-        .admin-header h2 { font-size:1.3rem; display:flex; align-items:center; gap:10px; }
-        .repos-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px; }
-        .repo-card { padding:20px; position:relative; }
-        .repo-card h3 { font-size:1.05rem; margin-bottom:6px; display:flex; align-items:center; gap:8px; }
-        .repo-card .repo-url { font-family:'JetBrains Mono', monospace; font-size:0.78rem; color:var(--text-muted); margin-bottom:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .repo-card .repo-meta { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
-        .repo-card .repo-actions { display:flex; gap:8px; }
-        .repo-card .card-badge { position:absolute; top:14px; right:14px; }
+        /* ── Repo kartları ──────────────────────────────────────────────── */
+        .repos-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px; }
+        .repo-card  { padding:20px; position:relative; }
+        .repo-card h3 { font-size:1rem; font-weight:600; margin-bottom:5px; display:flex; align-items:center; gap:8px; }
+        .repo-url { font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:var(--text-muted); margin-bottom:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .repo-meta { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+        .repo-actions { display:flex; gap:8px; }
+        .top-badge  { position:absolute; top:14px; right:14px; }
+        .empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); grid-column:1/-1; }
+        .empty-icon  { font-size:3rem; opacity:.3; margin-bottom:12px; }
 
-        .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; padding-top:15px; border-top:1px solid var(--border-color); }
+        /* ── Modal overlay ──────────────────────────────────────────────── */
+        .repo-modal-overlay {
+            display:none; position:fixed; inset:0;
+            background:rgba(0,0,0,.55); z-index:1000;
+            align-items:center; justify-content:center; padding:16px;
+        }
+        .repo-modal-overlay.active { display:flex; }
 
-        .empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); }
-        .empty-state .icon { font-size:3rem; opacity:0.3; margin-bottom:12px; }
+        /* ── Modal kutu ─────────────────────────────────────────────────── */
+        .repo-modal-box {
+            background:var(--bg-primary);
+            border:1px solid var(--border-color);
+            border-radius:16px;
+            width:min(680px,100%);
+            max-height:90vh;
+            display:flex; flex-direction:column;
+            overflow:hidden;
+            box-shadow:0 20px 60px rgba(0,0,0,.35);
+        }
 
-        .type-hint { font-size:0.75rem; color:var(--text-muted); margin-top:4px; padding:8px; background:var(--bg-tertiary); border-radius:6px; }
+        /* Başlık */
+        .repo-modal-head {
+            padding:20px 24px 18px;
+            border-bottom:1px solid var(--border-color);
+            display:flex; align-items:center; justify-content:space-between;
+            flex-shrink:0;
+        }
+        .repo-modal-head-title { font-size:1.05rem; font-weight:700; display:flex; align-items:center; gap:10px; }
+        .repo-modal-close {
+            width:32px; height:32px; border-radius:8px;
+            border:1px solid var(--border-color); background:var(--bg-secondary);
+            color:var(--text-muted); font-size:1.1rem; cursor:pointer;
+            display:flex; align-items:center; justify-content:center; transition:.15s;
+        }
+        .repo-modal-close:hover { background:var(--bg-tertiary); color:var(--text-primary); }
+
+        /* Gövde */
+        .repo-modal-body { padding:22px 24px; overflow-y:auto; flex:1; }
+
+        /* Bölüm başlığı */
+        .modal-section { margin-bottom:20px; }
+        .modal-section-title {
+            font-size:0.72rem; font-weight:700; letter-spacing:.06em;
+            text-transform:uppercase; color:var(--text-muted);
+            margin-bottom:12px; display:flex; align-items:center; gap:8px;
+        }
+        .modal-section-title::after { content:''; flex:1; height:1px; background:var(--border-color); }
+
+        /* İki kolon grid */
+        .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .form-row.full { grid-template-columns:1fr; }
+
+        /* Form alanları */
+        .fm-group { display:flex; flex-direction:column; gap:5px; }
+        .fm-label { font-size:0.78rem; font-weight:600; color:var(--text-secondary); }
+        .fm-input, .fm-select {
+            padding:9px 12px; border-radius:9px;
+            border:1px solid var(--border-color);
+            background:var(--bg-secondary); color:var(--text-primary);
+            font-size:0.88rem; font-family:inherit; transition:.15s;
+            width:100%; box-sizing:border-box;
+        }
+        .fm-input:focus, .fm-select:focus {
+            outline:none; border-color:var(--accent-primary);
+            box-shadow:0 0 0 3px rgba(79,70,229,.12);
+        }
+        .fm-hint { font-size:0.74rem; color:var(--text-muted); padding:7px 10px; background:var(--bg-tertiary); border-radius:7px; line-height:1.5; }
+
+        /* Footer */
+        .repo-modal-foot {
+            padding:16px 24px;
+            border-top:1px solid var(--border-color);
+            display:flex; justify-content:flex-end; gap:10px;
+            flex-shrink:0; background:var(--bg-secondary);
+        }
+
+        /* Repo tipi renk kartları */
+        .type-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+        .type-card {
+            padding:10px 8px; border-radius:10px; border:2px solid var(--border-color);
+            background:var(--bg-secondary); cursor:pointer; text-align:center;
+            transition:.15s; font-size:0.8rem; font-weight:500; color:var(--text-secondary);
+        }
+        .type-card:hover { border-color:var(--accent-primary); color:var(--accent-primary); }
+        .type-card.selected { border-color:var(--accent-primary); background:rgba(79,70,229,.08); color:var(--accent-primary); }
+        .type-card-icon { font-size:1.4rem; display:block; margin-bottom:4px; }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <div id="sidebar-container"></div>
+<div class="app-container">
+    <div id="sidebar-container"></div>
+    <main class="main-content">
+        <header class="header">
+            <div class="header-left"><h1 class="page-title">🔧 Repository Yönetimi</h1></div>
+            <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">🌙</button></div>
+        </header>
 
-        <main class="main-content">
-            <header class="header">
-                <div class="header-left"><h1 class="page-title">🔧 Repository Yönetimi</h1></div>
-                <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">🌙</button></div>
-            </header>
+        <div class="page-content">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+                <h2 style="font-size:1.05rem;font-weight:600;margin:0;">Kayıtlı Repository'ler</h2>
+                <button class="btn btn-primary" onclick="openModal()">+ Yeni Repository</button>
+            </div>
+            <div class="repos-grid" id="reposGrid">
+                <div class="empty-state"><div class="empty-icon">📦</div><p>Yükleniyor...</p></div>
+            </div>
+        </div>
+    </main>
+</div>
 
-            <div class="page-content">
-                <div class="admin-header">
-                    <h2>Repository'ler</h2>
-                    <button class="btn btn-primary" onclick="openRepoModal()">
-                        <span class="material-icons-round" style="font-size:1rem;">add</span> Yeni Repository
-                    </button>
+<!-- ── Repo Modal ──────────────────────────────────────────────────────────── -->
+<div class="repo-modal-overlay" id="repoModal">
+    <div class="repo-modal-box">
+        <!-- Başlık -->
+        <div class="repo-modal-head">
+            <div class="repo-modal-head-title">
+                <span id="modalIcon">📦</span>
+                <span id="modalTitle">Yeni Repository</span>
+            </div>
+            <button class="repo-modal-close" onclick="closeModal()">✕</button>
+        </div>
+
+        <!-- Gövde -->
+        <div class="repo-modal-body">
+            <input type="hidden" id="editId">
+
+            <!-- Temel Bilgiler -->
+            <div class="modal-section">
+                <div class="modal-section-title">Temel Bilgiler</div>
+                <div class="form-row" style="margin-bottom:12px;">
+                    <div class="fm-group">
+                        <label class="fm-label">Repository Adı *</label>
+                        <input class="fm-input" id="fName" placeholder="Örn: Web Otomasyon">
+                    </div>
+                    <div class="fm-group">
+                        <label class="fm-label">Git Platform</label>
+                        <select class="fm-select" id="fPlatform">
+                            <option value="github">GitHub</option>
+                            <option value="azure">Azure DevOps</option>
+                            <option value="gitlab">GitLab</option>
+                            <option value="bitbucket">Bitbucket</option>
+                        </select>
+                    </div>
                 </div>
-
-                <div class="repos-grid" id="reposGrid">
-                    <div class="empty-state" style="grid-column:1/-1;">
-                        <div class="icon">📦</div>
-                        <p>Yükleniyor...</p>
+                <div class="form-row full" style="margin-bottom:12px;">
+                    <div class="fm-group">
+                        <label class="fm-label">Git URL *</label>
+                        <input class="fm-input" id="fUrl" placeholder="https://github.com/kullanici/repo.git" style="font-family:'JetBrains Mono',monospace;font-size:0.82rem;">
+                    </div>
+                </div>
+                <div class="form-row" style="margin-bottom:0;">
+                    <div class="fm-group">
+                        <label class="fm-label">Açıklama</label>
+                        <input class="fm-input" id="fDesc" placeholder="Kısa açıklama (opsiyonel)">
+                    </div>
+                    <div class="fm-group">
+                        <label class="fm-label">Branch</label>
+                        <input class="fm-input" id="fBranch" value="main" placeholder="main">
                     </div>
                 </div>
             </div>
-        </main>
-    </div>
 
-    <!-- Repo Modal -->
-    <div class="modal-overlay" id="repoModal">
-        <div class="modal">
-            <h3 id="modalTitle" style="margin:0 0 20px;">Yeni Repository</h3>
-            <input type="hidden" id="editRepoId">
-
-            <div class="form-group">
-                <label class="form-label">Repository Adı</label>
-                <input type="text" class="form-input" id="inputName" placeholder="My Web Tests">
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Git URL</label>
-                <input type="text" class="form-input" id="inputUrl" placeholder="https://github.com/user/repo.git">
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Açıklama</label>
-                <input type="text" class="form-input" id="inputDescription" placeholder="Kısa açıklama (opsiyonel)">
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Git Platform</label>
-                <select class="form-select" id="inputType">
-                    <option value="github">GitHub</option>
-                    <option value="azure">Azure DevOps</option>
-                    <option value="gitlab">GitLab</option>
-                    <option value="bitbucket">Bitbucket</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Branch</label>
-                <input type="text" class="form-input" id="inputBranch" placeholder="main" value="main">
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Repository Tipi (Test Türü)</label>
-                <select class="form-select" id="inputRepoType" onchange="onRepoTypeChange()">
-                    <option value="web-selenium">🌐 Web (Selenium)</option>
-                    <option value="mobile-android">📲 Mobil (Android)</option>
-                    <option value="mobile-ios">📱 Mobil (iOS)</option>
-                    <option value="desktop">🖥️ Desktop (PyAutoGUI)</option>
-                    <option value="web-desktop">🌐🖥️ Web + Desktop (Hibrit)</option>
-                    <option value="api">🔗 API Test</option>
-                </select>
-                <div class="type-hint" id="repoTypeHint">
+            <!-- Test Türü -->
+            <div class="modal-section">
+                <div class="modal-section-title">Test Türü</div>
+                <div class="type-cards" id="typeCards">
+                    <div class="type-card selected" data-type="web-selenium" onclick="selectType(this)">
+                        <span class="type-card-icon">🌐</span>Web
+                    </div>
+                    <div class="type-card" data-type="mobile-android" onclick="selectType(this)">
+                        <span class="type-card-icon">📲</span>Mobil Android
+                    </div>
+                    <div class="type-card" data-type="mobile-ios" onclick="selectType(this)">
+                        <span class="type-card-icon">📱</span>Mobil iOS
+                    </div>
+                    <div class="type-card" data-type="desktop" onclick="selectType(this)">
+                        <span class="type-card-icon">🖥️</span>Desktop
+                    </div>
+                    <div class="type-card" data-type="web-desktop" onclick="selectType(this)">
+                        <span class="type-card-icon">🖥️🌐</span>Hibrit
+                    </div>
+                    <div class="type-card" data-type="api" onclick="selectType(this)">
+                        <span class="type-card-icon">🔗</span>API
+                    </div>
+                </div>
+                <div class="fm-hint" id="typeHint" style="margin-top:10px;">
                     Selenium ile web otomasyon senaryoları. Normal editör kullanılır.
                 </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Editör Tipi</label>
-                <select class="form-select" id="inputEditorType">
-                    <option value="normal">📝 Normal Editör (Kod tabanlı)</option>
-                    <option value="advanced">🎯 Advanced Editör (Image/Screenshot tabanlı)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Git Token (opsiyonel)</label>
-                <input type="password" class="form-input" id="inputToken" placeholder="ghp_xxxx veya PAT">
-            </div>
-
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeRepoModal()">İptal</button>
-                <button class="btn btn-primary" onclick="saveRepo()">Kaydet</button>
+            <!-- Editör & Erişim -->
+            <div class="modal-section">
+                <div class="modal-section-title">Editör & Erişim</div>
+                <div class="form-row" style="margin-bottom:12px;">
+                    <div class="fm-group">
+                        <label class="fm-label">Editör Tipi</label>
+                        <select class="fm-select" id="fEditor">
+                            <option value="ai">🤖 AI Editör (Doğal Dil)</option>
+                            <option value="normal">📝 Normal Editör (Kod)</option>
+                            <option value="advanced">🎯 Advanced Editör (Görsel)</option>
+                        </select>
+                    </div>
+                    <div class="fm-group">
+                        <label class="fm-label">Git Token (opsiyonel)</label>
+                        <input class="fm-input" type="password" id="fToken" placeholder="ghp_xxxx veya PAT">
+                    </div>
+                </div>
             </div>
         </div>
+
+        <!-- Footer -->
+        <div class="repo-modal-foot">
+            <button class="btn btn-secondary" onclick="closeModal()">İptal</button>
+            <button class="btn btn-primary" onclick="saveRepo()" id="saveBtn">Kaydet</button>
+        </div>
     </div>
+</div>
 
-    <script src="js/app.js"></script>
-    <script src="js/sidebar.js"></script>
-    <script>
-    (function() {
-        "use strict";
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    let allRepos = [];
 
-        let allRepos = [];
+    const TYPE_ICONS = {
+        "web-selenium":"🌐","mobile-android":"📲","mobile-ios":"📱",
+        "desktop":"🖥️","web-desktop":"🖥️🌐","api":"🔗","web":"🌐","mobile":"📲"
+    };
+    const TYPE_HINTS = {
+        "web-selenium": "Selenium ile web otomasyon senaryoları. AI veya Normal editör önerilir.",
+        "mobile-android": "Appium ile Android mobil test senaryoları.",
+        "mobile-ios": "Appium ile iOS mobil test senaryoları.",
+        "desktop": "PyAutoGUI ile masaüstü otomasyon. Advanced editör önerilir.",
+        "web-desktop": "Hibrit web + desktop otomasyonu. Advanced editör önerilir.",
+        "api": "HTTP API test senaryoları. Normal editör kullanılır."
+    };
+    const PROVIDER_LABEL = { azure:"Azure DevOps", github:"GitHub", generic:"Generic Git", gitlab:"GitLab", bitbucket:"Bitbucket" };
 
-        const TYPE_ICONS = {
-            "web-selenium": "🌐", "mobile-android": "📲", "mobile-ios": "📱",
-            "desktop": "🖥️", "web-desktop": "🌐🖥️", "api": "🔗",
-            "web": "🌐", "mobile": "📲"
-        };
+    document.addEventListener("DOMContentLoaded", () => {
+        if (!Auth.checkAuth()) return;
+        if (!Auth.isAdmin()) { Toast.error("Yetkiniz yok"); location.href = "index.html"; return; }
+        loadRepos();
+    });
 
-        const TYPE_HINTS = {
-            "web-selenium": "Selenium ile web otomasyon senaryoları. Normal editör kullanılır.",
-            "mobile-android": "Appium ile Android mobil test senaryoları. Normal editör kullanılır.",
-            "mobile-ios": "Appium ile iOS mobil test senaryoları. Normal editör kullanılır.",
-            "desktop": "PyAutoGUI ile desktop otomasyon. Screenshot tabanlı Advanced editör önerilir.",
-            "web-desktop": "Hibrit web + desktop otomasyonu. Advanced editör önerilir.",
-            "api": "API test senaryoları. Normal editör kullanılır."
-        };
-
-        document.addEventListener("DOMContentLoaded", async () => {
-            if (!Auth.checkAuth()) return;
-            if (!Auth.isAdmin()) { Toast.error("Yetkiniz yok"); location.href = "index.html"; return; }
-            await loadRepos();
-        });
-
-        async function loadRepos() {
-            try {
-                const data = await API.get("/admin/repositories");
-                allRepos = data.repositories || data || [];
-                renderRepos();
-            } catch (e) {
-                document.getElementById("reposGrid").innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><p>Yükleme hatası: ${e.message}</p></div>`;
-            }
+    async function loadRepos() {
+        try {
+            const data = await API.get("/admin/repositories");
+            allRepos = data.repositories || data || [];
+            renderRepos();
+        } catch (e) {
+            document.getElementById("reposGrid").innerHTML =
+                `<div class="empty-state"><p style="color:var(--danger);">Yükleme hatası: ${e.message}</p></div>`;
         }
+    }
 
-        function renderRepos() {
-            const grid = document.getElementById("reposGrid");
-            if (!allRepos.length) {
-                grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">📦</div><h3>Henüz repository yok</h3><p>"Yeni Repository" butonu ile başlayın.</p></div>';
-                return;
-            }
-
-            const PROVIDER_LABEL = { azure:"Azure DevOps", github:"GitHub", generic:"Generic Git" };
-            grid.innerHTML = allRepos.map(r => {
-                const icon = TYPE_ICONS[r.repo_type || r.repository_type || r.type] || "📦";
-                const editorLabel  = r.editor_type === "advanced" ? "🎯 Advanced" : "📝 Normal";
-                const providerLabel = PROVIDER_LABEL[r.provider] || r.provider || "Git";
-                return `
-                <div class="card repo-card">
-                    <div class="card-badge"><span class="badge badge-info">${editorLabel}</span></div>
-                    <h3>${icon} ${escapeHtml(r.name)}</h3>
-                    <div class="repo-url">${escapeHtml(r.repo_url || r.url)}</div>
-                    <div class="repo-meta">
-                        <span class="badge badge-info">${r.repo_type || r.repository_type || '-'}</span>
-                        <span class="badge" style="background:var(--bg-tertiary); color:var(--text-muted);">${providerLabel}</span>
-                        <span class="badge" style="background:rgba(99,102,241,.15); color:#6366f1;">${r.workspace_count || 0} kullanici</span>
-                    </div>
-                    ${r.description ? `<p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">${escapeHtml(r.description)}</p>` : ''}
-                    <div class="repo-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="openRepoModal(${r.id})">
-                            <span class="material-icons-round" style="font-size:0.9rem;">edit</span> Duzenle
-                        </button>
-                        <button class="btn btn-ghost btn-sm" onclick="deleteRepo(${r.id})" style="color:var(--danger);">
-                            <span class="material-icons-round" style="font-size:0.9rem;">delete</span> Sil
-                        </button>
-                    </div>
-                </div>`;
-            }).join("");
+    function renderRepos() {
+        const grid = document.getElementById("reposGrid");
+        if (!allRepos.length) {
+            grid.innerHTML = `<div class="empty-state">
+                <div class="empty-icon">📦</div>
+                <h3 style="margin-bottom:6px;">Henüz repository yok</h3>
+                <p style="font-size:0.88rem;">"Yeni Repository" butonuyla başlayın.</p>
+            </div>`;
+            return;
         }
+        grid.innerHTML = allRepos.map(r => {
+            const icon = TYPE_ICONS[r.repo_type] || "📦";
+            const editorMap = { ai:"🤖 AI", normal:"📝 Normal", advanced:"🎯 Advanced" };
+            const editorLabel = editorMap[r.editor_type] || "📝 Normal";
+            const provider = PROVIDER_LABEL[r.provider] || r.provider || "Git";
+            return `
+            <div class="card repo-card">
+                <div class="top-badge"><span class="badge badge-info">${editorLabel}</span></div>
+                <h3>${icon} ${esc(r.name)}</h3>
+                <div class="repo-url" title="${esc(r.repo_url)}">${esc(r.repo_url)}</div>
+                <div class="repo-meta">
+                    <span class="badge badge-info">${r.repo_type || '—'}</span>
+                    <span class="badge" style="background:var(--bg-tertiary);color:var(--text-muted);">${provider}</span>
+                    <span class="badge" style="background:rgba(99,102,241,.12);color:#6366f1;">${r.workspace_count || 0} kullanıcı</span>
+                </div>
+                ${r.description ? `<p style="font-size:0.84rem;color:var(--text-muted);margin-bottom:12px;">${esc(r.description)}</p>` : ''}
+                <div class="repo-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="openModal(${r.id})">✏️ Düzenle</button>
+                    <button class="btn btn-ghost btn-sm" onclick="deleteRepo(${r.id})" style="color:var(--danger);">🗑️ Sil</button>
+                </div>
+            </div>`;
+        }).join("");
+    }
 
-        // ========== MODAL ==========
-        window.openRepoModal = function(repoId = null) {
-            document.getElementById("editRepoId").value = repoId || "";
-            document.getElementById("modalTitle").textContent = repoId ? "Repository Düzenle" : "Yeni Repository";
+    // ── Modal ──────────────────────────────────────────────────────────────────
+    window.openModal = function (repoId = null) {
+        document.getElementById("editId").value = repoId || "";
+        document.getElementById("modalTitle").textContent = repoId ? "Repository Düzenle" : "Yeni Repository";
+        document.getElementById("modalIcon").textContent  = repoId ? "✏️" : "📦";
 
-            if (repoId) {
-                const r = allRepos.find(x => x.id === repoId);
-                if (r) {
-                    document.getElementById("inputName").value = r.name || "";
-                    document.getElementById("inputUrl").value = r.url || r.repo_url || "";
-                    document.getElementById("inputDescription").value = r.description || "";
-                    document.getElementById("inputType").value = r.git_type || r.platform || "github";
-                    document.getElementById("inputBranch").value = r.branch || "main";
-                    document.getElementById("inputRepoType").value = r.repository_type || "web-selenium";
-                    document.getElementById("inputEditorType").value = r.editor_type || "normal";
-                    document.getElementById("inputToken").value = "";
-                }
-            } else {
-                document.getElementById("inputName").value = "";
-                document.getElementById("inputUrl").value = "";
-                document.getElementById("inputDescription").value = "";
-                document.getElementById("inputType").value = "github";
-                document.getElementById("inputBranch").value = "main";
-                document.getElementById("inputRepoType").value = "web-selenium";
-                document.getElementById("inputEditorType").value = "normal";
-                document.getElementById("inputToken").value = "";
-            }
-            onRepoTypeChange();
-            document.getElementById("repoModal").classList.add("active");
-        };
-
-        window.closeRepoModal = function() {
-            document.getElementById("repoModal").classList.remove("active");
-        };
-
-        window.onRepoTypeChange = function() {
-            const repoType = document.getElementById("inputRepoType").value;
-            const editorSelect = document.getElementById("inputEditorType");
-            const hint = document.getElementById("repoTypeHint");
-
-            hint.textContent = TYPE_HINTS[repoType] || "";
-
-            // Desktop ve web-desktop => otomatik advanced öner
-            if (repoType === "desktop" || repoType === "web-desktop") {
-                editorSelect.value = "advanced";
-            } else {
-                editorSelect.value = "normal";
-            }
-        };
-
-        window.saveRepo = async function() {
-            const repoId = document.getElementById("editRepoId").value;
-            // inputType: github | azure | gitlab | bitbucket  →  provider: azure | github | generic
-            const gitPlatform = document.getElementById("inputType").value;
-            const providerMap = { azure: "azure", github: "github", gitlab: "generic", bitbucket: "generic" };
-            // inputRepoType: web-selenium | mobile-android | ... → repo_type: web | mobile-android | ...
-            const repoTypeRaw = document.getElementById("inputRepoType").value;
-            const repoTypeMap = { "web-selenium": "web" };
-            const repoType = repoTypeMap[repoTypeRaw] || repoTypeRaw;
-
-            const data = {
-                name:        document.getElementById("inputName").value.trim(),
-                repo_url:    document.getElementById("inputUrl").value.trim(),
-                description: document.getElementById("inputDescription").value.trim(),
-                repo_type:   repoType,
-                provider:    providerMap[gitPlatform] || "generic",
-                editor_type: document.getElementById("inputEditorType").value
-            };
-
-            const token = document.getElementById("inputToken").value.trim();
-            if (token) { data.git_username = "token"; data.git_token = token; }
-
-            if (!data.name)     { Toast.error("Repository adi gerekli"); return; }
-            if (!data.repo_url) { Toast.error("Git URL gerekli"); return; }
-
-            try {
-                if (repoId) {
-                    await API.put(`/admin/repositories/${repoId}`, data);
-                    Toast.success("Repository guncellendi");
-                } else {
-                    await API.post("/admin/repositories", data);
-                    Toast.success("Repository olusturuldu");
-                }
-                closeRepoModal();
-                loadRepos();
-            } catch (e) { Toast.error(e.message); }
-        };
-
-        window.deleteRepo = async function(repoId) {
+        if (repoId) {
             const r = allRepos.find(x => x.id === repoId);
-            if (!confirm(`"${r?.name}" repository'sini silmek istediğinize emin misiniz?`)) return;
-            try {
-                await API.delete(`/admin/repositories/${repoId}`);
-                Toast.success("Repository silindi");
-                loadRepos();
-            } catch (e) { Toast.error(e.message); }
-        };
+            if (r) {
+                document.getElementById("fName").value   = r.name || "";
+                document.getElementById("fUrl").value    = r.repo_url || "";
+                document.getElementById("fDesc").value   = r.description || "";
+                document.getElementById("fBranch").value = r.branch || "main";
+                document.getElementById("fPlatform").value = r.provider || "github";
+                document.getElementById("fEditor").value   = r.editor_type || "ai";
+                document.getElementById("fToken").value    = "";
+                selectTypeByValue(r.repo_type || "web-selenium");
+            }
+        } else {
+            ["fName","fUrl","fDesc","fToken"].forEach(id => document.getElementById(id).value = "");
+            document.getElementById("fBranch").value   = "main";
+            document.getElementById("fPlatform").value = "github";
+            document.getElementById("fEditor").value   = "ai";
+            selectTypeByValue("web-selenium");
+        }
+        document.getElementById("repoModal").classList.add("active");
+    };
 
-        function escapeHtml(t) { if (!t) return ""; const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
-    })();
-    </script>
+    window.closeModal = function () {
+        document.getElementById("repoModal").classList.remove("active");
+    };
+
+    window.selectType = function (el) {
+        document.querySelectorAll(".type-card").forEach(c => c.classList.remove("selected"));
+        el.classList.add("selected");
+        const t = el.dataset.type;
+        document.getElementById("typeHint").textContent = TYPE_HINTS[t] || "";
+        if (t === "desktop" || t === "web-desktop") document.getElementById("fEditor").value = "advanced";
+        else if (document.getElementById("fEditor").value === "advanced") document.getElementById("fEditor").value = "ai";
+    };
+
+    function selectTypeByValue(val) {
+        const card = document.querySelector(`.type-card[data-type="${val}"]`);
+        if (card) selectType(card);
+    }
+
+    window.saveRepo = async function () {
+        const btn = document.getElementById("saveBtn");
+        btn.disabled = true; btn.textContent = "Kaydediliyor...";
+
+        const repoId    = document.getElementById("editId").value;
+        const platform  = document.getElementById("fPlatform").value;
+        const typeCard  = document.querySelector(".type-card.selected");
+        const repoTypeRaw = typeCard ? typeCard.dataset.type : "web-selenium";
+        const repoTypeMap = { "web-selenium":"web" };
+        const providerMap = { azure:"azure", github:"github", gitlab:"generic", bitbucket:"generic" };
+
+        const body = {
+            name:        document.getElementById("fName").value.trim(),
+            repo_url:    document.getElementById("fUrl").value.trim(),
+            description: document.getElementById("fDesc").value.trim(),
+            repo_type:   repoTypeMap[repoTypeRaw] || repoTypeRaw,
+            provider:    providerMap[platform] || "generic",
+            editor_type: document.getElementById("fEditor").value,
+        };
+        const token = document.getElementById("fToken").value.trim();
+        if (token) { body.git_username = "token"; body.git_token = token; }
+
+        if (!body.name)     { Toast.error("Repository adı gerekli"); btn.disabled=false; btn.textContent="Kaydet"; return; }
+        if (!body.repo_url) { Toast.error("Git URL gerekli");         btn.disabled=false; btn.textContent="Kaydet"; return; }
+
+        try {
+            if (repoId) {
+                await API.put(`/admin/repositories/${repoId}`, body);
+                Toast.success("Repository güncellendi ✓");
+            } else {
+                await API.post("/admin/repositories", body);
+                Toast.success("Repository oluşturuldu ✓");
+            }
+            closeModal();
+            loadRepos();
+        } catch (e) {
+            Toast.error(e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = "Kaydet";
+        }
+    };
+
+    window.deleteRepo = async function (repoId) {
+        const r = allRepos.find(x => x.id === repoId);
+        if (!confirm(`"${r?.name}" silinsin mi?`)) return;
+        try {
+            await API.delete(`/admin/repositories/${repoId}`);
+            Toast.success("Silindi");
+            loadRepos();
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+})();
+</script>
 </body>
 </html>
