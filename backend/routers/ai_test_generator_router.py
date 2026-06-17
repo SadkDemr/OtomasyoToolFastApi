@@ -87,8 +87,9 @@ class GenerateRequest(BaseModel):
     app_package:  Optional[str] = ""
     app_activity: Optional[str] = ""
     appium_url:   Optional[str] = "http://localhost:4723"
-    app_path:     Optional[str] = ""
-    window_title: Optional[str] = ""
+    app_path:       Optional[str]  = ""
+    window_title:   Optional[str]  = ""
+    reuse_instance: Optional[bool] = True
 
 class ExecuteRequest(BaseModel):
     script:          str
@@ -1886,17 +1887,25 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
 
 
 def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
-    app_path     = (req.app_path     or "").strip()
-    window_title = (req.window_title or "").strip()
+    app_path      = (req.app_path     or "").strip()
+    window_title  = (req.window_title or "").strip()
+    reuse_instance = getattr(req, "reuse_instance", True)
 
     # Escape backslashes so Windows paths don't cause unicode escape SyntaxError
     app_path_esc     = app_path.replace('\\', '\\\\')
     window_title_esc = window_title.replace('\\', '\\\\')
 
+    # _POPEN_KW: uygulama başlatırken stdout/stderr/stdin devralmasın, pipe kapanmasın
+    _POPEN_DEVNULL = (
+        "_dsproc.Popen(r\"{}\", shell=True, "
+        "stdout=_dsproc.DEVNULL, stderr=_dsproc.DEVNULL, stdin=_dsproc.DEVNULL)"
+    )
+
     lines = [
         "# -*- coding: utf-8 -*-",
         "import pyautogui as _pag",
         "import subprocess as _dsproc",
+        "import sys",
         "import time",
         "",
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
@@ -1909,12 +1918,12 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         "",
     ]
 
-    # Uygulama başlat — pencere zaten açıksa yeni instance başlatma
+    # Uygulama başlat
     if app_path:
-        if window_title:
-            # Önce pencere var mı dene; varsa başlatma
+        popen_line = _POPEN_DEVNULL.format(app_path_esc)
+        if reuse_instance and window_title:
             lines += [
-                f'# ── Uygulama başlat (zaten açıksa geç) ─────────────────────',
+                '# ── Uygulama başlat (zaten açıksa geç) ─────────────────────',
                 '_win_already_open = False',
                 'if _PW_OK:',
                 '    try:',
@@ -1925,15 +1934,15 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
                 '        _win_already_open = False',
                 'if not _win_already_open:',
                 f'    print("Başlatılıyor: {app_path_esc}")',
-                f'    _dsproc.Popen(r"{app_path_esc}", shell=True)',
+                f'    {popen_line}',
                 '    time.sleep(3)',
                 '',
             ]
         else:
             lines += [
-                f'# ── Uygulama başlat ─────────────────────────────────────────',
+                '# ── Uygulama başlat ─────────────────────────────────────────',
                 f'print("Başlatılıyor: {app_path_esc}")',
-                f'_dsproc.Popen(r"{app_path_esc}", shell=True)',
+                popen_line,
                 'time.sleep(2)',
                 '',
             ]
@@ -1941,7 +1950,7 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
     # Pencereyi öne getir
     if window_title:
         lines += [
-            f'# ── Pencereyi öne getir ─────────────────────────────────────',
+            '# ── Pencereyi öne getir ─────────────────────────────────────',
             'if _PW_OK:',
             '    try:',
             f'        _PwApp(backend="uia").connect(title_re=".*{window_title_esc}.*", timeout=10).top_window().set_focus()',
@@ -1960,6 +1969,8 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         "except Exception as e:",
         '    print(f"HATA: {e}")',
         "    raise",
+        "",
+        "sys.exit(0)",
     ]
 
     return "\n".join(lines)

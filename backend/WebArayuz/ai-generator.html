@@ -806,6 +806,13 @@
                             <input type="text" class="form-input" id="desk-window"
                                 placeholder="Not Defteri  (pywinauto için pencereyi bulmak amacıyla)">
                         </div>
+                        <div style="display:flex; align-items:center; gap:8px; padding:8px 0;">
+                            <input type="checkbox" id="desk-reuse" checked
+                                style="width:16px; height:16px; cursor:pointer; accent-color:#4f46e5;">
+                            <label for="desk-reuse" style="font-size:0.8rem; color:var(--text-secondary); cursor:pointer; user-select:none; margin:0;">
+                                Uygulama zaten açıksa yeni instance başlatma
+                            </label>
+                        </div>
                         <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 10px; background:rgba(79,70,229,0.05); border-radius:6px; line-height:1.6;">
                             <strong>Gerekli kütüphaneler:</strong><br>
                             <code>pip install pyautogui pywinauto pytesseract pillow</code><br>
@@ -1673,8 +1680,9 @@
             base.app_activity = document.getElementById("mob-activity").value;
             base.appium_url   = document.getElementById("mob-appium").value;
         } else if (selectedPlatform === "desktop") {
-            base.app_path     = document.getElementById("desk-app").value;
-            base.window_title = document.getElementById("desk-window").value;
+            base.app_path       = document.getElementById("desk-app").value;
+            base.window_title   = document.getElementById("desk-window").value;
+            base.reuse_instance = document.getElementById("desk-reuse").checked;
         }
         return base;
     }
@@ -2051,8 +2059,9 @@
                 params.app_activity = document.getElementById("mob-activity").value;
                 params.appium_url   = document.getElementById("mob-appium").value;
             } else if (selectedPlatform === "desktop") {
-                params.app_path     = document.getElementById("desk-app").value;
-                params.window_title = document.getElementById("desk-window").value;
+                params.app_path       = document.getElementById("desk-app").value;
+                params.window_title   = document.getElementById("desk-window").value;
+                params.reuse_instance = document.getElementById("desk-reuse").checked;
             }
             const body = {
                 name,
@@ -2212,6 +2221,7 @@
                 } else if (data.platform === "desktop") {
                     if (p.app_path)     document.getElementById("desk-app").value    = p.app_path;
                     if (p.window_title) document.getElementById("desk-window").value = p.window_title;
+                    if (p.reuse_instance !== undefined) document.getElementById("desk-reuse").checked = p.reuse_instance;
                 }
             }
 
