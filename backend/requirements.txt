@@ -1,27 +1,27 @@
 # FastAPI
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
-pydantic[email]==2.5.2
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+pydantic[email]>=2.5.2
 
 # Database
-sqlalchemy==2.0.23
+sqlalchemy>=2.0.23
 
 # Authentication
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt]==1.7.4
+passlib[bcrypt]>=1.7.4
 bcrypt>=4.0.0
 
 # Selenium - Web Test
-selenium==4.15.2
-webdriver-manager==4.0.1
+selenium>=4.15.2
+webdriver-manager>=4.0.1
 
 # Appium - Mobile Test
-Appium-Python-Client==3.1.0
+Appium-Python-Client>=3.1.0
 
 # HTTP
-requests==2.31.0
-httpx==0.27.0
+requests>=2.31.0
+httpx>=0.24.0
 
 # Excel
 openpyxl>=3.1.2
