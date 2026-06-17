@@ -1444,39 +1444,47 @@ def _get_active_window():
 def _safe_click_desktop(target, window_title=""):
     """
     Desktop tıklama — 4 strateji:
-    1. pywinauto pencere içi element
-    2. pytesseract OCR koordinatı
-    3. pyautogui.locateOnScreen() görsel eşleşme
-    4. Gemini / Ollama vision
+    1. pywinauto uia backend
+    2. pywinauto win32 backend (Java/Delphi/özel UI için)
+    3. pytesseract OCR (kuruluysa)
+    4. Vision AI / locateOnScreen
     """
-    print(f"[CLICK] \'{target}\' aranıyor...")
+    print(f"[CLICK] '{target}' aranıyor...")
 
-    # 1. pywinauto ─────────────────────────────────────────────────────────────
-    if _PW_OK:
+    def _pw_try(backend):
         try:
             if window_title:
-                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=3).top_window()
+                _win = _PwApp(backend=backend).connect(title_re=f".*{window_title}.*", timeout=3).top_window()
             else:
                 _win = _get_active_window()
-
-            if _win:
-                for _ctrl in [
-                    lambda: _win.child_window(title=target, found_index=0),
-                    lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
-                ]:
-                    try:
-                        _el = _ctrl()
-                        if _el.exists(timeout=1):
-                            _el.set_focus()
-                            _el.click_input()
-                            print(f"[OK] pywinauto: \'{target}\'")
-                            return True
-                    except Exception:
-                        continue
+            if not _win:
+                return False
+            for _ctrl in [
+                lambda: _win.child_window(title=target, found_index=0),
+                lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
+            ]:
+                try:
+                    _el = _ctrl()
+                    if _el.exists(timeout=1):
+                        _el.set_focus()
+                        _el.click_input()
+                        print(f"[OK] pywinauto({backend}): '{target}'")
+                        return True
+                except Exception:
+                    continue
         except Exception as _e:
-            print(f"[CLICK] pywinauto başarısız: {_e}")
+            print(f"[CLICK] pywinauto({backend}) başarısız: {_e}")
+        return False
 
-    # 2. OCR ──────────────────────────────────────────────────────────────────
+    # 1. pywinauto uia ─────────────────────────────────────────────────────────
+    if _PW_OK and _pw_try("uia"):
+        return True
+
+    # 2. pywinauto win32 ───────────────────────────────────────────────────────
+    if _PW_OK and _pw_try("win32"):
+        return True
+
+    # 3. pytesseract OCR ───────────────────────────────────────────────────────
     if _TESS_OK:
         try:
             shot = _pag.screenshot()
@@ -1484,35 +1492,32 @@ def _safe_click_desktop(target, window_title=""):
             _tl  = target.lower()
             for _i, _w in enumerate(data["text"]):
                 if _w and _tl in _w.lower() and data["conf"][_i] > 30:
-                    _cx = data["left"][_i] + data["width"][_i]  // 2
+                    _cx = data["left"][_i] + data["width"][_i] // 2
                     _cy = data["top"][_i]  + data["height"][_i] // 2
                     _pag.click(_cx, _cy)
-                    print(f"[OK] OCR: \'{_w}\' @ ({_cx},{_cy})")
+                    print(f"[OK] OCR: '{_w}' @ ({_cx},{_cy})")
                     return True
         except Exception as _e:
             print(f"[CLICK] OCR başarısız: {_e}")
 
-    # 3. locateOnScreen (görsel dosya yoluysa) ──────────────────────────────────
+    # 4. locateOnScreen / Vision AI ────────────────────────────────────────────
     import os as _os2
     if _os2.path.isfile(target):
         try:
             loc = _pag.locateCenterOnScreen(target, confidence=0.8)
             if loc:
                 _pag.click(loc)
-                print(f"[OK] Görsel eşleşme: {target}")
+                print(f"[OK] locateOnScreen: {target}")
                 return True
-        except Exception as _e:
-            print(f"[CLICK] locateOnScreen başarısız: {_e}")
+        except Exception: pass
 
-    # 4. Vision AI ─────────────────────────────────────────────────────────────
-    print(f"[VISION] \'{target}\' için AI analiz...")
     _vx, _vy = _vision_find_desktop(target)
     if _vx and _vy:
         _pag.click(_vx, _vy)
-        print(f"[OK] Vision: \'{target}\' @ ({_vx},{_vy})")
+        print(f"[OK] Vision AI: '{target}' @ ({_vx},{_vy})")
         return True
 
-    raise Exception(f"Element bulunamadı: \'{target}\'")
+    raise Exception(f"Element bulunamadı: '{target}'")
 
 
 def _safe_type_desktop(text):
@@ -1529,31 +1534,26 @@ def _safe_type_desktop(text):
 
 
 def _safe_double_click_desktop(target, window_title=""):
-    """Desktop çift tıklama — pywinauto → OCR → vision."""
-    print(f"[DBLCLICK] \'{target}\' aranıyor...")
+    """Desktop çift tıklama — uia → win32 → OCR → vision."""
+    print(f"[DBLCLICK] '{target}' aranıyor...")
 
-    if _PW_OK:
+    def _pw_dbl(backend):
         try:
-            if window_title:
-                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=3).top_window()
-            else:
-                _win = _get_active_window()
-            if _win:
-                for _ctrl in [
-                    lambda: _win.child_window(title=target, found_index=0),
-                    lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
-                ]:
-                    try:
-                        _el = _ctrl()
-                        if _el.exists(timeout=1):
-                            _el.set_focus()
-                            _el.double_click_input()
-                            print(f"[OK] pywinauto çift tıkla: \'{target}\'")
-                            return True
-                    except Exception:
-                        continue
+            _win = _PwApp(backend=backend).connect(title_re=f".*{window_title}.*", timeout=3).top_window() if window_title else _get_active_window()
+            if not _win: return False
+            for _ctrl in [lambda: _win.child_window(title=target, found_index=0), lambda: _win.child_window(title_re=f".*{target}.*", found_index=0)]:
+                try:
+                    _el = _ctrl()
+                    if _el.exists(timeout=1):
+                        _el.set_focus(); _el.double_click_input()
+                        print(f"[OK] pywinauto({backend}) çift tıkla: '{target}'"); return True
+                except Exception: continue
         except Exception as _e:
-            print(f"[DBLCLICK] pywinauto başarısız: {_e}")
+            print(f"[DBLCLICK] pywinauto({backend}) başarısız: {_e}")
+        return False
+
+    if _PW_OK and _pw_dbl("uia"): return True
+    if _PW_OK and _pw_dbl("win32"): return True
 
     if _TESS_OK:
         try:
@@ -1564,46 +1564,37 @@ def _safe_double_click_desktop(target, window_title=""):
                     _cx = data["left"][_i] + data["width"][_i] // 2
                     _cy = data["top"][_i]  + data["height"][_i] // 2
                     _pag.doubleClick(_cx, _cy)
-                    print(f"[OK] OCR çift tıkla: \'{_w}\' @ ({_cx},{_cy})")
-                    return True
+                    print(f"[OK] OCR çift tıkla: '{_w}' @ ({_cx},{_cy})"); return True
         except Exception as _e:
             print(f"[DBLCLICK] OCR başarısız: {_e}")
 
     _vx, _vy = _vision_find_desktop(target)
     if _vx and _vy:
-        _pag.doubleClick(_vx, _vy)
-        print(f"[OK] Vision çift tıkla: \'{target}\' @ ({_vx},{_vy})")
-        return True
-
-    raise Exception(f"Element bulunamadı (çift tıkla): \'{target}\'")
+        _pag.doubleClick(_vx, _vy); print(f"[OK] Vision çift tıkla: '{target}' @ ({_vx},{_vy})"); return True
+    raise Exception(f"Element bulunamadı (çift tıkla): '{target}'")
 
 
 def _safe_right_click_desktop(target, window_title=""):
-    """Desktop sağ tıklama — pywinauto → OCR → vision."""
-    print(f"[RCLICK] \'{target}\' aranıyor...")
+    """Desktop sağ tıklama — uia → win32 → OCR → vision."""
+    print(f"[RCLICK] '{target}' aranıyor...")
 
-    if _PW_OK:
+    def _pw_right(backend):
         try:
-            if window_title:
-                _win = _PwApp(backend="uia").connect(title_re=f".*{window_title}.*", timeout=3).top_window()
-            else:
-                _win = _get_active_window()
-            if _win:
-                for _ctrl in [
-                    lambda: _win.child_window(title=target, found_index=0),
-                    lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
-                ]:
-                    try:
-                        _el = _ctrl()
-                        if _el.exists(timeout=1):
-                            _el.set_focus()
-                            _el.right_click_input()
-                            print(f"[OK] pywinauto sağ tıkla: \'{target}\'")
-                            return True
-                    except Exception:
-                        continue
+            _win = _PwApp(backend=backend).connect(title_re=f".*{window_title}.*", timeout=3).top_window() if window_title else _get_active_window()
+            if not _win: return False
+            for _ctrl in [lambda: _win.child_window(title=target, found_index=0), lambda: _win.child_window(title_re=f".*{target}.*", found_index=0)]:
+                try:
+                    _el = _ctrl()
+                    if _el.exists(timeout=1):
+                        _el.set_focus(); _el.right_click_input()
+                        print(f"[OK] pywinauto({backend}) sağ tıkla: '{target}'"); return True
+                except Exception: continue
         except Exception as _e:
-            print(f"[RCLICK] pywinauto başarısız: {_e}")
+            print(f"[RCLICK] pywinauto({backend}) başarısız: {_e}")
+        return False
+
+    if _PW_OK and _pw_right("uia"): return True
+    if _PW_OK and _pw_right("win32"): return True
 
     if _TESS_OK:
         try:
@@ -1614,18 +1605,14 @@ def _safe_right_click_desktop(target, window_title=""):
                     _cx = data["left"][_i] + data["width"][_i] // 2
                     _cy = data["top"][_i]  + data["height"][_i] // 2
                     _pag.rightClick(_cx, _cy)
-                    print(f"[OK] OCR sağ tıkla: \'{_w}\' @ ({_cx},{_cy})")
-                    return True
+                    print(f"[OK] OCR sağ tıkla: '{_w}' @ ({_cx},{_cy})"); return True
         except Exception as _e:
             print(f"[RCLICK] OCR başarısız: {_e}")
 
     _vx, _vy = _vision_find_desktop(target)
     if _vx and _vy:
-        _pag.rightClick(_vx, _vy)
-        print(f"[OK] Vision sağ tıkla: \'{target}\' @ ({_vx},{_vy})")
-        return True
-
-    raise Exception(f"Element bulunamadı (sağ tıkla): \'{target}\'")
+        _pag.rightClick(_vx, _vy); print(f"[OK] Vision sağ tıkla: '{target}' @ ({_vx},{_vy})"); return True
+    raise Exception(f"Element bulunamadı (sağ tıkla): '{target}'")
 
 
 def _safe_menu_click_desktop(items, window_title=""):
