@@ -156,21 +156,23 @@ REM pip, setuptools ve wheel'i guncelle
 echo   pip guncelleniyor...
 python -m pip install --upgrade pip setuptools wheel --timeout 120 --retries 5 -q
 
-REM Ana bagimliliklar
-echo   Ana paketler yukleniyor...
-pip install -r requirements.txt --prefer-binary --timeout 120 --retries 5
+REM 1. Kritik paketler
+echo   Kritik paketler yukleniyor...
+pip install fastapi==0.104.1 "uvicorn[standard]==0.24.0" python-multipart==0.0.6 "pydantic[email]==2.5.2" sqlalchemy==2.0.23 "python-jose[cryptography]>=3.3.0" "passlib[bcrypt]==1.7.4" "bcrypt>=4.0.0" selenium==4.15.2 webdriver-manager==4.0.1 Appium-Python-Client==3.1.0 requests==2.31.0 httpx==0.27.0 --prefer-binary --timeout 120 --retries 5
 if %errorlevel% neq 0 (
-    echo   UYARI: Bazi paketler yuklenemedi. Tekrar deneniyor...
-    pip install -r requirements.txt --prefer-binary --timeout 180 --retries 10
+    echo HATA: Kritik paketler yuklenemedi!
+    pause
+    exit /b 1
 )
 
-REM Goruntu/otomasyon paketleri (opsiyonel, hata olursa devam et)
-echo   Goruntu/otomasyon paketleri yukleniyor...
-pip install Pillow opencv-python pyperclip --prefer-binary --timeout 120 --retries 5 -q
-pip install pyautogui --prefer-binary --timeout 120 --retries 5 -q
-if %errorlevel% neq 0 (
-    echo   UYARI: pyautogui yuklenemedi - Desktop otomasyon ozelligi calismaYabilir.
-)
+REM 2. Opsiyonel paketler
+echo   Opsiyonel paketler yukleniyor...
+pip install "openpyxl>=3.1.2" "pandas>=2.2.0" --prefer-binary --timeout 120 --retries 5 -q
+if %errorlevel% neq 0 echo   UYARI: pandas/openpyxl yuklenemedi.
+
+pip install Pillow opencv-python pyperclip --prefer-binary --timeout 120 -q
+pip install pyautogui --prefer-binary --timeout 120 -q
+if %errorlevel% neq 0 echo   UYARI: pyautogui yuklenemedi - Desktop otomasyon calismaYabilir.
 
 echo   Python paketleri yuklendi - OK
 
