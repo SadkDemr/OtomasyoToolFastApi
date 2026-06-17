@@ -1451,46 +1451,39 @@
         updateGenerateBtn();
     }
 
-    // ── Screenshot Akışı ─────────────────────────────────────────────────────
+    // ── Screenshot Akışı (tarayıcı ekranı — getDisplayMedia) ───────────────────
     function startImageCapture(stepIdx) {
         _captureTargetStepIdx = stepIdx;
-        document.getElementById("countdownModal").style.display = "flex";
-        let count = 3;
-        document.getElementById("countdownNum").textContent = count;
-        _countdownInterval = setInterval(() => {
-            count--;
-            if (count > 0) {
-                document.getElementById("countdownNum").textContent = count;
-            } else {
-                clearInterval(_countdownInterval);
-                _countdownInterval = null;
-                document.getElementById("countdownModal").style.display = "none";
-                doScreenshot();
-            }
-        }, 1000);
+        doScreenshot();
     }
-
-    window.cancelCountdown = function() {
-        if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
-        document.getElementById("countdownModal").style.display = "none";
-        removeEmptyImageStep();
-        _captureTargetStepIdx = -1;
-    };
 
     async function doScreenshot() {
         try {
-            const resp = await fetch(`${API_BASE}/desktop/screenshot`, {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${Auth.getToken()}`, "Content-Type": "application/json" },
-                body: JSON.stringify({})
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                throw new Error("Tarayıcınız ekran paylaşımını desteklemiyor (Chrome/Edge önerilir)");
+            }
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
+            const video  = document.createElement("video");
+            video.srcObject = stream;
+            video.muted = true;
+            await new Promise((resolve, reject) => {
+                video.onloadedmetadata = () => video.play().then(resolve).catch(reject);
+                video.onerror = reject;
             });
-            if (!resp.ok) throw new Error("Ekran görüntüsü alınamadı (sunucu hatası)");
-            const data = await resp.json();
-            _screenshotB64 = data.screenshot || "";
-            if (!_screenshotB64) throw new Error("Ekran görüntüsü boş geldi");
-            showCropModal(_screenshotB64);
+            await new Promise(r => setTimeout(r, 150));
+            const canvas = document.createElement("canvas");
+            canvas.width  = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0);
+            stream.getTracks().forEach(t => t.stop());
+            const b64 = canvas.toDataURL("image/png").split(",")[1];
+            _screenshotB64 = b64;
+            showCropModal(b64);
         } catch (e) {
-            Toast.error("Screenshot hatası: " + e.message);
+            const msg = (e.name === "NotAllowedError" || e.name === "AbortError")
+                ? "Ekran paylaşımı iptal edildi"
+                : "Screenshot hatası: " + e.message;
+            Toast.error(msg);
             removeEmptyImageStep();
             _captureTargetStepIdx = -1;
         }

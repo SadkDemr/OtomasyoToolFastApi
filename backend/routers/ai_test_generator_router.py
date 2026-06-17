@@ -34,6 +34,13 @@ router = APIRouter(prefix="/api/ai-gen", tags=["ai-generator"])
 
 _running_processes: dict[str, subprocess.Popen] = {}
 _stop_files:        dict[str, str]               = {}   # run_id → stop flag dosyası
+_desktop_lock:      asyncio.Lock                 = None # tek seferlik desktop kilidi (startup'ta init edilir)
+
+def _get_desktop_lock() -> asyncio.Lock:
+    global _desktop_lock
+    if _desktop_lock is None:
+        _desktop_lock = asyncio.Lock()
+    return _desktop_lock
 
 # ── Stop flag helper (her platforma gömülür) ─────────────────────────────────
 STOP_HELPER = '''\
@@ -543,39 +550,39 @@ def _rule_desktop(step: str) -> list[str] | None:
     # ── Kopyala / Yapıştır ────────────────────────────────────────────────────
     if re.search(r'(?:kopyala|copy)', sl) and quoted:
         text = quoted[0]
-        return [f'# {s}', f"_safe_click_desktop('{text}', _WINDOW_TITLE)", '_pag.hotkey("ctrl", "c")', 'time.sleep(0.3)']
+        return [f'# {s}', '_refocus_window()', f"_safe_click_desktop('{text}', _WINDOW_TITLE)", '_pag.hotkey("ctrl", "c")', 'time.sleep(0.3)']
     if re.search(r'(?:yapıştır|paste)', sl):
-        return [f'# {s}', '_pag.hotkey("ctrl", "v")', 'time.sleep(0.3)']
+        return [f'# {s}', '_refocus_window()', '_pag.hotkey("ctrl", "v")', 'time.sleep(0.3)']
 
     # ── Çift tıklama (CLICK_WORDS'ten önce kontrol edilmeli) ──────────────────
     if re.search(DOUBLE_CLICK_WORDS, sl) and quoted:
         text = quoted[0]
-        return [f'# {s}', f"_safe_double_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
+        return [f'# {s}', '_refocus_window()', f"_safe_double_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
 
     # ── Sağ tıklama ───────────────────────────────────────────────────────────
     if re.search(RIGHT_CLICK_WORDS, sl) and quoted:
         text = quoted[0]
-        return [f'# {s}', f"_safe_right_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
+        return [f'# {s}', '_refocus_window()', f"_safe_right_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
 
     # ── Menü navigasyonu: "Dosya > Yeni" tıkla ───────────────────────────────
     if re.search(CLICK_WORDS, sl) and quoted and '>' in quoted[0]:
         items = [i.strip() for i in quoted[0].split('>')]
-        return [f'# {s}', f"_safe_menu_click_desktop({items!r}, _WINDOW_TITLE)", 'time.sleep(0.5)']
+        return [f'# {s}', '_refocus_window()', f"_safe_menu_click_desktop({items!r}, _WINDOW_TITLE)", 'time.sleep(0.5)']
 
     # ── Tıklama ───────────────────────────────────────────────────────────────
     if re.search(CLICK_WORDS, sl) and quoted:
         text = quoted[0]
-        return [f'# {s}', f"_safe_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
+        return [f'# {s}', '_refocus_window()', f"_safe_click_desktop('{text}', _WINDOW_TITLE)", 'time.sleep(0.5)']
 
     # ── Doğrulama ─────────────────────────────────────────────────────────────
     if re.search(ASSERT_WORDS, sl) and quoted:
         text = quoted[0]
-        return [f'# {s}', f"_safe_assert_desktop('{text}')"]
+        return [f'# {s}', '_refocus_window()', f"_safe_assert_desktop('{text}')"]
 
     # ── Metin girişi ──────────────────────────────────────────────────────────
     if re.search(INPUT_WORDS, sl) and quoted:
         value = quoted[-1]
-        return [f'# {s}', f"_safe_type_desktop('{value}')", 'time.sleep(0.3)']
+        return [f'# {s}', '_refocus_window()', f"_safe_type_desktop('{value}')", 'time.sleep(0.3)']
 
     # ── Element görünene kadar bekle (genel bekle'den önce) ───────────────────
     if re.search(r'g[oö]r[uü]n[eu]ne\s*kadar\s*bekle|wait.*(?:appear|visible)', sl) and quoted:
@@ -1686,6 +1693,35 @@ def _safe_assert_desktop(target):
         print(f"[OK] Vision: \'{target}\'"); return
 
     raise AssertionError(f"[FAIL] \'{target}\' ekranda bulunamadi")
+
+def _refocus_window():
+    """Her adım öncesi pencereyi öne getirir — başka test pencereleri odağı çalmışsa düzeltir."""
+    if not _WINDOW_TITLE:
+        return
+    # Önce win32gui ile dene (pywinauto'dan daha hızlı ve güvenilir)
+    try:
+        import win32gui as _wg, win32con as _wc
+        _found_hwnd = None
+        def _cb(hwnd, _):
+            nonlocal _found_hwnd
+            t = _wg.GetWindowText(hwnd)
+            if _WINDOW_TITLE.lower() in t.lower() and _wg.IsWindowVisible(hwnd):
+                _found_hwnd = hwnd
+                return False
+            return True
+        _wg.EnumWindows(_cb, None)
+        if _found_hwnd:
+            _wg.ShowWindow(_found_hwnd, _wc.SW_RESTORE)
+            _wg.SetForegroundWindow(_found_hwnd)
+            return
+    except Exception:
+        pass
+    # Fallback: pywinauto
+    if _PW_OK:
+        try:
+            _PwApp(backend="uia").connect(title_re=".*" + _WINDOW_TITLE + ".*", timeout=3).top_window().set_focus()
+        except Exception:
+            pass
 '''
 
 
@@ -1811,6 +1847,9 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
             "from selenium.webdriver.firefox.options import Options as _FxOpts\n"
             "from selenium.webdriver.firefox.service import Service as _FxSvc\n"
             "_fx_opts = _FxOpts()\n"
+            "_fx_opts.add_argument('--headless')\n"
+            "_fx_opts.add_argument('--width=1920')\n"
+            "_fx_opts.add_argument('--height=1080')\n"
             "try:\n"
             "    from webdriver_manager.firefox import GeckoDriverManager\n"
             "    driver = webdriver.Firefox(service=_FxSvc(GeckoDriverManager().install()), options=_fx_opts)\n"
@@ -1819,24 +1858,33 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
         )
     elif browser == "edge":
         driver_setup = (
+            "from selenium.webdriver.edge.options import Options as _EdgeOpts\n"
+            "_edge_opts = _EdgeOpts()\n"
+            "_edge_opts.add_argument('--headless')\n"
+            "_edge_opts.add_argument('--window-size=1920,1080')\n"
+            "_edge_opts.add_argument('--disable-gpu')\n"
             "try:\n"
             "    from webdriver_manager.microsoft import EdgeChromiumDriverManager\n"
             "    from selenium.webdriver.edge.service import Service as _EdgeSvc\n"
-            "    driver = webdriver.Edge(service=_EdgeSvc(EdgeChromiumDriverManager().install()))\n"
+            "    driver = webdriver.Edge(service=_EdgeSvc(EdgeChromiumDriverManager().install()), options=_edge_opts)\n"
             "except Exception:\n"
-            "    driver = webdriver.Edge()"
+            "    driver = webdriver.Edge(options=_edge_opts)"
         )
     else:  # chrome (default)
         driver_setup = (
             "from selenium.webdriver.chrome.options import Options as _CrOpts\n"
             "_cr_opts = _CrOpts()\n"
-            "# _cr_opts.add_argument('--headless')  # Başsız mod için aktif et\n"
+            "_cr_opts.add_argument('--headless=new')\n"
+            "_cr_opts.add_argument('--window-size=1920,1080')\n"
+            "_cr_opts.add_argument('--disable-gpu')\n"
+            "_cr_opts.add_argument('--no-sandbox')\n"
+            "_cr_opts.add_argument('--disable-dev-shm-usage')\n"
             "try:\n"
             "    from webdriver_manager.chrome import ChromeDriverManager\n"
             "    from selenium.webdriver.chrome.service import Service as _CrSvc\n"
             "    driver = webdriver.Chrome(service=_CrSvc(ChromeDriverManager().install()), options=_cr_opts)\n"
             "except Exception:\n"
-            "    driver = webdriver.Chrome(options=_cr_opts)  # Selenium 4.6+ otomatik driver"
+            "    driver = webdriver.Chrome(options=_cr_opts)"
         )
 
     lines = [
@@ -1924,15 +1972,29 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         if reuse_instance and window_title:
             lines += [
                 '# ── Uygulama başlat (zaten açıksa geç) ─────────────────────',
-                '_win_already_open = False',
-                'if _PW_OK:',
+                'def _is_window_open(_title):',
                 '    try:',
-                f'        _PwApp(backend="uia").connect(title_re=".*{window_title_esc}.*", timeout=3)',
-                '        _win_already_open = True',
-                '        print("[OK] Uygulama zaten açık, yeni instance başlatılmıyor")',
+                '        import win32gui as _wg',
+                '        _found = []',
+                '        def _cb(hwnd, _):',
+                '            t = _wg.GetWindowText(hwnd)',
+                '            if _title.lower() in t.lower() and _wg.IsWindowVisible(hwnd):',
+                '                _found.append(hwnd)',
+                '            return True',
+                '        _wg.EnumWindows(_cb, None)',
+                '        return bool(_found)',
                 '    except Exception:',
-                '        _win_already_open = False',
-                'if not _win_already_open:',
+                '        pass',
+                '    if _PW_OK:',
+                '        try:',
+                '            _PwApp(backend="uia").connect(title_re=".*" + _title + ".*", timeout=2)',
+                '            return True',
+                '        except Exception:',
+                '            pass',
+                '    return False',
+                f'if _is_window_open("{window_title_esc}"):',
+                '    print("[OK] Uygulama zaten açık, yeni instance başlatılmıyor")',
+                'else:',
                 f'    print("Başlatılıyor: {app_path_esc}")',
                 f'    {popen_line}',
                 '    time.sleep(3)',
@@ -2611,6 +2673,12 @@ async def execute_script(
     if not req.script or len(req.script.strip()) < 10:
         raise HTTPException(400, "Geçersiz script")
 
+    is_desktop = req.platform == "desktop"
+    if is_desktop:
+        lock = _get_desktop_lock()
+        if lock.locked():
+            raise HTTPException(423, "Şu an başka bir desktop testi çalışıyor. Lütfen bekleyin.")
+
     run_id     = str(uuid.uuid4())[:8]
     log_dir    = _run_log_dir(current_user.id, db)
     started_at = _datetime.datetime.utcnow().isoformat()
@@ -2634,6 +2702,9 @@ async def execute_script(
         yield _sse("info", f"Script: {os.path.basename(tmp)}")
         yield _sse("info", f"Platform: {req.platform}")
         yield _sse("info", "Kosum baslatiliyor...\n")
+
+        if is_desktop:
+            await _get_desktop_lock().acquire()
 
         proc = None
         try:
@@ -2724,6 +2795,12 @@ async def execute_script(
                 )
             except Exception:
                 pass
+
+            if is_desktop:
+                try:
+                    _get_desktop_lock().release()
+                except RuntimeError:
+                    pass
 
             yield _sse("done", "")
 

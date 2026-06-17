@@ -26,8 +26,7 @@
         .btn-icon:hover { background:var(--bg-secondary); }
         .btn-icon.danger:hover { background:rgba(239,68,68,.15); border-color:#ef4444; color:#ef4444; }
 
-        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center; }
-        .modal-overlay.open { display:flex; }
+        .modal { width:100%; max-width:460px; background:var(--bg-secondary); border-radius:var(--radius-lg); padding:24px; box-shadow:var(--shadow-lg); }
         .modal { background:var(--bg-primary); border-radius:12px; padding:28px; width:480px; max-width:95vw; max-height:90vh; overflow-y:auto; }
         .modal h3 { margin:0 0 20px; font-size:1.1rem; }
         .form-group { margin-bottom:14px; }
@@ -270,7 +269,7 @@
         document.getElementById("fPasswordHint").textContent = "";
         document.getElementById("fFullName").value = "";
         document.getElementById("fRole").value = "user";
-        document.getElementById("userModal").classList.add("open");
+        document.getElementById("userModal").classList.add("active");
     };
 
     window.openEditModal = function (userId) {
@@ -287,7 +286,7 @@
         document.getElementById("fPasswordHint").textContent = "";
         document.getElementById("fFullName").value = u.full_name || "";
         document.getElementById("fRole").value = u.role;
-        document.getElementById("userModal").classList.add("open");
+        document.getElementById("userModal").classList.add("active");
     };
 
     window.saveUser = async function () {
@@ -348,7 +347,7 @@
         const u = _users.find(x => x.id === userId);
         document.getElementById("permUsername").textContent = u ? u.username : userId;
         document.getElementById("permList").innerHTML = '<em style="color:var(--text-muted);font-size:.85rem;">Yukleniyor...</em>';
-        document.getElementById("permModal").classList.add("open");
+        document.getElementById("permModal").classList.add("active");
 
         try {
             const r = await fetch(`${API}/admin/users/${userId}/permissions`, { headers:hdrs() });
@@ -428,7 +427,7 @@
         const u = _users.find(x => x.id === userId);
         document.getElementById("shareUsername").textContent = u ? u.username : userId;
         document.getElementById("shareList").innerHTML = '<em style="color:var(--text-muted);font-size:.85rem;">Yukleniyor...</em>';
-        document.getElementById("shareModal").classList.add("open");
+        document.getElementById("shareModal").classList.add("active");
 
         try {
             const r = await fetch(`${API}/admin/users/${userId}/scenario-access`, { headers:hdrs() });
@@ -486,7 +485,7 @@
     };
 
     // ── Util ──────────────────────────────────────────────────────────────────
-    window.closeModal = function (id) { document.getElementById(id).classList.remove("open"); };
+    window.closeModal = function (id) { document.getElementById(id).classList.remove("active"); };
     document.addEventListener("keydown", e => { if (e.key==="Escape") { ["userModal","permModal","shareModal"].forEach(closeModal); } });
     ["userModal","permModal","shareModal"].forEach(id => {
         document.getElementById(id).addEventListener("click", function(e) { if (e.target===this) closeModal(id); });
