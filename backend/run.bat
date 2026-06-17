@@ -33,6 +33,17 @@ echo.
 
 call venv\Scripts\activate.bat
 
+REM Paketler yuklu mu kontrol et, yoksa yukle
+python -c "import fastapi" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo   Paketler eksik, yukleniyor...
+    python -m pip install --upgrade pip setuptools wheel --timeout 120 --retries 5 -q
+    pip install -r requirements.txt --prefer-binary --timeout 120 --retries 5
+    pip install Pillow opencv-python pyperclip --prefer-binary --timeout 120 -q
+    pip install pyautogui --prefer-binary --timeout 120 -q
+    if %errorlevel% neq 0 echo   UYARI: pyautogui yuklenemedi.
+)
+
 echo.
 echo ========================================
 echo    Test Otomasyon Platformu v2.1
