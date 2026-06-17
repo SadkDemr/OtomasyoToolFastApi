@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from database import get_db
-from models.db_models import User, Repository, UserWorkspace, UserProjectPermission
+from models.db_models import User, Repository, UserWorkspace, UserProjectPermission, ScenarioSharePermission, Scenario
 from routers.auth import require_admin
 from services.auth_service import auth_service
 from services import git_service
@@ -41,6 +41,11 @@ class UserUpdate(BaseModel):
 class PermissionSet(BaseModel):
     repository_id: int
     permission: str = Field(default="view")  # view | edit
+
+
+class ScenarioShareSet(BaseModel):
+    owner_user_id: int            # senaryosu paylaşılacak kullanıcı
+    permission: str = Field(default="view_run")  # view_run | view_edit_run
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -326,5 +331,91 @@ async def revoke_permission(
     if not perm:
         raise HTTPException(404, "Yetki bulunamadi")
     db.delete(perm)
+    db.commit()
+    return {"success": True}
+
+
+# ─── Senaryo Paylaşım Yetkileri ───────────────────────────────────────────────
+
+@router.get("/{user_id}/scenario-access")
+async def get_scenario_access(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Kullanıcının hangi diğer kullanıcıların senaryolarına erişimi var."""
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user:
+        raise HTTPException(404, "Kullanici bulunamadi")
+
+    shares = db.query(ScenarioSharePermission).filter_by(grantee_user_id=user_id).all()
+    all_users = db.query(User).filter(User.id != user_id).all()
+
+    return {
+        "user_id": user_id,
+        "username": user.username,
+        "accesses": [
+            {
+                "id":            s.id,
+                "owner_user_id": s.owner_user_id,
+                "owner_username": s.owner.username if s.owner else "?",
+                "permission":    s.permission,
+                "granted_at":    s.granted_at.isoformat() if s.granted_at else None,
+            }
+            for s in shares
+        ],
+        "all_users": [{"id": u.id, "username": u.username, "full_name": u.full_name} for u in all_users],
+    }
+
+
+@router.post("/{user_id}/scenario-access")
+async def set_scenario_access(
+    user_id: int,
+    body: ScenarioShareSet,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Kullanıcıya başka bir kullanıcının senaryolarına erişim ver."""
+    if db.query(User).filter_by(id=user_id).first() is None:
+        raise HTTPException(404, "Kullanici bulunamadi")
+    if db.query(User).filter_by(id=body.owner_user_id).first() is None:
+        raise HTTPException(404, "Hedef kullanici bulunamadi")
+    if user_id == body.owner_user_id:
+        raise HTTPException(400, "Kullanici kendi senaryolarina zaten erisebilir")
+    if body.permission not in ("view_run", "view_edit_run"):
+        raise HTTPException(400, "Yetki 'view_run' veya 'view_edit_run' olmali")
+
+    existing = db.query(ScenarioSharePermission).filter_by(
+        grantee_user_id=user_id, owner_user_id=body.owner_user_id
+    ).first()
+    if existing:
+        existing.permission = body.permission
+        existing.granted_at = datetime.utcnow()
+        existing.granted_by = admin.id
+    else:
+        db.add(ScenarioSharePermission(
+            granted_by=admin.id,
+            grantee_user_id=user_id,
+            owner_user_id=body.owner_user_id,
+            permission=body.permission,
+            granted_at=datetime.utcnow(),
+        ))
+    db.commit()
+    return {"success": True}
+
+
+@router.delete("/{user_id}/scenario-access/{access_id}")
+async def revoke_scenario_access(
+    user_id: int,
+    access_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    share = db.query(ScenarioSharePermission).filter_by(
+        id=access_id, grantee_user_id=user_id
+    ).first()
+    if not share:
+        raise HTTPException(404, "Erisim yetkisi bulunamadi")
+    db.delete(share)
     db.commit()
     return {"success": True}

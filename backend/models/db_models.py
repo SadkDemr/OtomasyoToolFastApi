@@ -242,6 +242,26 @@ class UserProjectPermission(Base):
     grantor = relationship("User", foreign_keys=[granted_by])
 
 
+class ScenarioSharePermission(Base):
+    """
+    Admin tarafından verilen kullanıcılar arası senaryo erişim yetkisi.
+    Örn: Admin, Engin'e Sadık'ın senaryolarını görme+koşma yetkisi verir.
+    permission: view_run | view_edit_run
+    """
+    __tablename__ = "scenario_share_permissions"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    granted_by      = Column(Integer, ForeignKey("users.id"), nullable=False)
+    grantee_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # yetkiyi alan
+    owner_user_id   = Column(Integer, ForeignKey("users.id"), nullable=False)  # senaryosu paylaşılan
+    permission      = Column(String(20), nullable=False, default="view_run")   # view_run | view_edit_run
+    granted_at      = Column(DateTime, default=datetime.utcnow)
+
+    grantor  = relationship("User", foreign_keys=[granted_by])
+    grantee  = relationship("User", foreign_keys=[grantee_user_id])
+    owner    = relationship("User", foreign_keys=[owner_user_id])
+
+
 class UserWorkspace(Base):
     """
     Kullanıcının clone'ladığı repository'ler (workspace).

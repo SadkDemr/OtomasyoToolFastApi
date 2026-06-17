@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Senaryolar - Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px; }
+        .toolbar h2 { font-size:1.2rem; margin:0; }
+        .search-box { padding:8px 14px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:0.88rem; width:220px; }
+
+        .user-card { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; margin-bottom:16px; overflow:hidden; }
+        .user-card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; cursor:pointer; user-select:none; }
+        .user-card-header:hover { background:var(--bg-tertiary); }
+        .user-info { display:flex; align-items:center; gap:12px; }
+        .user-avatar-sm { width:36px; height:36px; border-radius:50%; background:var(--accent-primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem; flex-shrink:0; }
+        .user-name-label { font-weight:600; font-size:0.95rem; }
+        .user-meta { font-size:0.78rem; color:var(--text-muted); margin-top:2px; }
+        .total-badge { padding:3px 10px; border-radius:20px; font-size:0.78rem; font-weight:600; background:rgba(79,70,229,.12); color:var(--accent-primary); }
+        .chevron { font-size:0.8rem; color:var(--text-muted); transition:transform .2s; }
+        .chevron.open { transform:rotate(90deg); }
+
+        .platform-sections { display:none; padding:0 18px 16px; }
+        .platform-sections.open { display:block; }
+
+        .plat-block { margin-top:14px; }
+        .plat-title { font-size:0.8rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+        .plat-count { font-size:0.72rem; padding:1px 7px; border-radius:10px; background:var(--bg-tertiary); color:var(--text-secondary); }
+
+        .scenario-list { display:flex; flex-direction:column; gap:5px; }
+        .scenario-item { display:flex; align-items:center; gap:8px; padding:7px 12px; border-radius:8px; background:var(--bg-primary); border:1px solid var(--border-color); font-size:0.85rem; }
+        .scenario-item:hover { border-color:var(--accent-primary); }
+        .scenario-name { flex:1; font-weight:500; }
+        .scenario-folder { font-size:0.75rem; color:var(--text-muted); }
+        .scenario-date { font-size:0.74rem; color:var(--text-muted); white-space:nowrap; }
+        .empty-plat { font-size:0.82rem; color:var(--text-muted); font-style:italic; padding:6px 12px; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div id="sidebar-container"></div>
+    <main class="main-content">
+        <header class="header">
+            <div class="header-left"><h1 class="page-title">&#128193; Senaryo Genel Bakis</h1></div>
+            <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">&#127769;</button></div>
+        </header>
+        <div class="page-content">
+            <div class="toolbar">
+                <h2>Kullanicilar &rsaquo; Senaryolar</h2>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <input class="search-box" id="searchBox" placeholder="&#128269; Kullanici veya senaryo ara..." oninput="applyFilter()">
+                    <button class="btn btn-secondary" onclick="loadData()">&#8635; Yenile</button>
+                </div>
+            </div>
+            <div id="content"><div style="text-align:center;padding:60px;color:var(--text-muted);">Yukleniyor...</div></div>
+        </div>
+    </main>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    const API = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+    function hdrs() { return { "Authorization": `Bearer ${Auth.getToken()}` }; }
+
+    let _data = [];
+
+    async function loadData() {
+        document.getElementById("content").innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted);">Yukleniyor...</div>';
+        try {
+            const r = await fetch(`${API}/admin/scenarios-overview`, { headers: hdrs() });
+            if (!r.ok) throw new Error();
+            const d = await r.json();
+            _data = d.users || [];
+            applyFilter();
+        } catch {
+            document.getElementById("content").innerHTML = '<div style="text-align:center;padding:60px;color:#ef4444;">Yuklenemedi. Admin giris yaptiginizdan emin olun.</div>';
+        }
+    }
+
+    window.applyFilter = function () {
+        const q = (document.getElementById("searchBox").value || "").toLowerCase().trim();
+        const filtered = _data.filter(u => {
+            if (!q) return true;
+            if (u.username.toLowerCase().includes(q)) return true;
+            if ((u.full_name||"").toLowerCase().includes(q)) return true;
+            for (const plat of ["web","mobile","desktop"]) {
+                if ((u.scenarios[plat]||[]).some(s => s.name.toLowerCase().includes(q))) return true;
+            }
+            return false;
+        });
+        render(filtered, q);
+    };
+
+    function render(users, q) {
+        if (!users.length) {
+            document.getElementById("content").innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted);">Sonuc bulunamadi.</div>';
+            return;
+        }
+        document.getElementById("content").innerHTML = users.map(u => userCard(u, q)).join("");
+        // ilk kullanicinin bolumunu ac
+        if (users.length === 1) toggle(users[0].user_id);
+    }
+
+    function userCard(u, q) {
+        const initials = (u.full_name || u.username).split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2);
+        const platIcons = { web:"&#127760;", mobile:"&#128242;", desktop:"&#128421;" };
+        const platNames = { web:"Web", mobile:"Mobil", desktop:"Desktop" };
+
+        const sections = ["web","mobile","desktop"].map(plat => {
+            const list = u.scenarios[plat] || [];
+            const filtered = q ? list.filter(s => s.name.toLowerCase().includes(q)) : list;
+            return `<div class="plat-block">
+                <div class="plat-title">${platIcons[plat]} ${platNames[plat]} <span class="plat-count">${filtered.length}</span></div>
+                <div class="scenario-list">${
+                    filtered.length
+                        ? filtered.map(s => `
+                            <div class="scenario-item">
+                                <span class="scenario-name">${esc(s.name)}</span>
+                                ${s.folder ? `<span class="scenario-folder">&#128193; ${esc(s.folder)}</span>` : ""}
+                                <span class="scenario-date">${fmtDate(s.updated_at)}</span>
+                            </div>`).join("")
+                        : `<div class="empty-plat">Senaryo yok</div>`
+                }</div>
+            </div>`;
+        }).join("");
+
+        return `<div class="user-card">
+            <div class="user-card-header" onclick="toggle(${u.user_id})">
+                <div class="user-info">
+                    <div class="user-avatar-sm">${initials}</div>
+                    <div>
+                        <div class="user-name-label">${esc(u.username)}${u.full_name ? " <span style='font-weight:400;color:var(--text-muted);'>— "+esc(u.full_name)+"</span>" : ""}</div>
+                        <div class="user-meta">${u.role === "admin" ? "&#128737; Admin" : "&#128100; Kullanici"} &middot; ${u.total} senaryo</div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="total-badge">${u.total} senaryo</span>
+                    <span class="chevron" id="chev-${u.user_id}">&#9654;</span>
+                </div>
+            </div>
+            <div class="platform-sections" id="plat-${u.user_id}">${sections}</div>
+        </div>`;
+    }
+
+    window.toggle = function (uid) {
+        const el   = document.getElementById("plat-" + uid);
+        const chev = document.getElementById("chev-" + uid);
+        if (!el) return;
+        el.classList.toggle("open");
+        chev.classList.toggle("open");
+    };
+
+    function fmtDate(iso) {
+        if (!iso) return "";
+        try { return new Date(iso).toLocaleDateString("tr-TR"); } catch { return ""; }
+    }
+    function esc(s) {
+        return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    if (!Auth.checkAuth()) return;
+    loadData();
+})();
+</script>
+</body>
+</html>

@@ -156,10 +156,38 @@
     </div>
 </div>
 
+<!-- Senaryo Erisim Modal -->
+<div class="modal-overlay" id="shareModal">
+    <div class="modal" style="width:560px;">
+        <h3>&#128101; Senaryo Erisimi &#8212; <span id="shareUsername"></span></h3>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 14px;">Bu kullanicinin baskalarinin senaryolarini gorup calistirabilecegi yetkiler.</p>
+
+        <div class="perm-section">
+            <h4>Mevcut Erisimler</h4>
+            <div id="shareList"><em style="color:var(--text-muted);font-size:.85rem;">Yukleniyor...</em></div>
+        </div>
+
+        <div class="perm-section">
+            <h4>Erisim Ekle</h4>
+            <div class="add-perm-row">
+                <select id="shareTargetUser"><option value="">-- Kullanici sec --</option></select>
+                <select id="shareLevel">
+                    <option value="view_run">Goruntule + Kostur</option>
+                    <option value="view_edit_run">Goruntule + Duzenle + Kostur</option>
+                </select>
+                <button class="btn-grant" onclick="grantShareAccess()">Ekle</button>
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('shareModal')">Kapat</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<script src="js/auth.js"></script>
-<script src="js/theme.js"></script>
+<script src="js/app.js"></script>
 <script src="js/sidebar.js"></script>
 <script>
 (function () {
@@ -220,6 +248,7 @@
                     <div class="action-btns">
                         <button class="btn-icon" onclick="openEditModal(${u.id})" title="Duzenle">&#9998;</button>
                         <button class="btn-icon" onclick="openPermModal(${u.id})" title="Proje Yetkileri">&#128274;</button>
+                        <button class="btn-icon" onclick="openShareModal(${u.id})" title="Senaryo Erisimi">&#128101;</button>
                         <button class="btn-icon" onclick="setupWorkspace(${u.id})" title="Workspace Kur">&#128190;</button>
                         <button class="btn-icon danger" onclick="deleteUser(${u.id})" title="Sil">&#128465;</button>
                     </div>
@@ -391,10 +420,75 @@
         loadUsers();
     };
 
+    // ── Senaryo Erisim Yonetimi ───────────────────────────────────────────────
+    let _shareUserId = null;
+
+    window.openShareModal = async function (userId) {
+        _shareUserId = userId;
+        const u = _users.find(x => x.id === userId);
+        document.getElementById("shareUsername").textContent = u ? u.username : userId;
+        document.getElementById("shareList").innerHTML = '<em style="color:var(--text-muted);font-size:.85rem;">Yukleniyor...</em>';
+        document.getElementById("shareModal").classList.add("open");
+
+        try {
+            const r = await fetch(`${API}/admin/users/${userId}/scenario-access`, { headers:hdrs() });
+            const d = await r.json();
+            renderShareList(d.accesses || []);
+
+            const sel = document.getElementById("shareTargetUser");
+            const usedIds = new Set((d.accesses || []).map(a => a.owner_user_id));
+            sel.innerHTML = '<option value="">-- Kullanici sec --</option>' +
+                (d.all_users || []).filter(u => !usedIds.has(u.id))
+                    .map(u => `<option value="${u.id}">${esc(u.username)}${u.full_name ? ' ('+esc(u.full_name)+')' : ''}</option>`).join("");
+        } catch {
+            document.getElementById("shareList").innerHTML = '<em style="color:#ef4444;">Yuklenemedi</em>';
+        }
+    };
+
+    function renderShareList(accesses) {
+        const el = document.getElementById("shareList");
+        if (!accesses.length) {
+            el.innerHTML = '<em style="color:var(--text-muted);font-size:.85rem;">Erisim atanmamis</em>';
+            return;
+        }
+        el.innerHTML = accesses.map(a => {
+            const label = a.permission === "view_edit_run" ? "Goruntule+Duzenle+Kostur" : "Goruntule+Kostur";
+            return `<div class="perm-row">
+                <span class="perm-name">&#128100; ${esc(a.owner_username)}</span>
+                <div class="perm-controls">
+                    <span style="font-size:0.8rem;color:var(--text-muted);">${label}</span>
+                    <button class="btn-revoke" onclick="revokeShareAccess(${a.id})">Kaldir</button>
+                </div>
+            </div>`;
+        }).join("");
+    }
+
+    window.grantShareAccess = async function () {
+        const ownerUserId = parseInt(document.getElementById("shareTargetUser").value);
+        const level       = document.getElementById("shareLevel").value;
+        if (!ownerUserId) { toast("Kullanici secin", false); return; }
+        const r = await fetch(`${API}/admin/users/${_shareUserId}/scenario-access`, {
+            method:"POST", headers:hdrs(),
+            body:JSON.stringify({ owner_user_id:ownerUserId, permission:level })
+        });
+        if (!r.ok) { toast("Eklenemedi", false); return; }
+        toast("Erisim yetkisi eklendi");
+        openShareModal(_shareUserId);
+    };
+
+    window.revokeShareAccess = async function (accessId) {
+        const r = await fetch(`${API}/admin/users/${_shareUserId}/scenario-access/${accessId}`, {
+            method:"DELETE", headers:hdrs()
+        });
+        if (!r.ok) { toast("Kaldirilmadi", false); return; }
+        toast("Erisim yetkisi kaldirildi");
+        openShareModal(_shareUserId);
+    };
+
     // ── Util ──────────────────────────────────────────────────────────────────
     window.closeModal = function (id) { document.getElementById(id).classList.remove("open"); };
-    document.addEventListener("keydown", e => { if (e.key==="Escape") { closeModal("userModal"); closeModal("permModal"); } });
-    ["userModal","permModal"].forEach(id => {
+    document.addEventListener("keydown", e => { if (e.key==="Escape") { ["userModal","permModal","shareModal"].forEach(closeModal); } });
+    ["userModal","permModal","shareModal"].forEach(id => {
         document.getElementById(id).addEventListener("click", function(e) { if (e.target===this) closeModal(id); });
     });
 

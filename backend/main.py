@@ -86,6 +86,8 @@ from services.ai_service import get_ai_config, save_ai_config, get_gemini_key
 
 class AIConfigBody(_BM):
     gemini_api_key: str = ""
+    ollama_url:     str = ""
+    ollama_model:   str = ""
 
 @app.get("/api/admin/ai-config", tags=["Admin"])
 async def get_ai_config_endpoint(current_user=Depends(_get_user)):
@@ -93,10 +95,14 @@ async def get_ai_config_endpoint(current_user=Depends(_get_user)):
         from fastapi import HTTPException
         raise HTTPException(403, "Admin yetkisi gerekli")
     cfg = get_ai_config()
-    # Key'i maskele (son 4 karakter göster)
     key = cfg.get("gemini_api_key", "")
     masked = ("*" * (len(key) - 4) + key[-4:]) if len(key) > 4 else ("*" * len(key))
-    return {"configured": bool(key), "masked_key": masked}
+    return {
+        "configured":   bool(key),
+        "masked_key":   masked,
+        "ollama_url":   cfg.get("ollama_url",   "http://localhost:11434/api/generate"),
+        "ollama_model": cfg.get("ollama_model", "gemma3:4b"),
+    }
 
 @app.post("/api/admin/ai-config", tags=["Admin"])
 async def set_ai_config_endpoint(body: AIConfigBody, current_user=Depends(_get_user)):
@@ -106,8 +112,170 @@ async def set_ai_config_endpoint(body: AIConfigBody, current_user=Depends(_get_u
     cfg = get_ai_config()
     if body.gemini_api_key:
         cfg["gemini_api_key"] = body.gemini_api_key
+    if body.ollama_url:
+        cfg["ollama_url"] = body.ollama_url
+    if body.ollama_model:
+        cfg["ollama_model"] = body.ollama_model
     save_ai_config(cfg)
     return {"success": True, "message": "AI yapılandırması kaydedildi"}
+
+
+# ── Admin: Senaryolara Genel Bakış - workspace dosyalarından okur (Feature 1) ──
+@app.get("/api/admin/scenarios-overview", tags=["Admin"])
+async def scenarios_overview(current_user=Depends(_get_user)):
+    if current_user.role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(403, "Admin yetkisi gerekli")
+    import json as _json
+    from pathlib import Path
+    from database import get_db as _gdb
+    from models.db_models import User as _User, UserWorkspace as _UW
+
+    db = next(_gdb())
+    try:
+        users = {u.id: u for u in db.query(_User).order_by(_User.username).all()}
+        workspaces = db.query(_UW).filter_by(is_cloned=True).all()
+
+        # user_id → { repo_name, scenarios_by_platform }
+        user_data: dict = {}
+
+        for ws in workspaces:
+            uid = ws.user_id
+            u = users.get(uid)
+            if not u:
+                continue
+            if uid not in user_data:
+                user_data[uid] = {
+                    "user_id":   uid,
+                    "username":  u.username,
+                    "full_name": u.full_name,
+                    "role":      u.role,
+                    "scenarios": {"web": [], "mobile": [], "desktop": []},
+                }
+
+            scenarios_dir = Path(ws.local_path) / "scenarios"
+            if not scenarios_dir.exists():
+                continue
+
+            for f in sorted(scenarios_dir.glob("*.json")):
+                try:
+                    data = _json.loads(f.read_text(encoding="utf-8"))
+                    plat = data.get("type", "web")
+                    if plat not in ("web", "mobile", "desktop"):
+                        plat = "web"
+                    user_data[uid]["scenarios"][plat].append({
+                        "id":         data.get("id"),
+                        "name":       data.get("name", f.stem),
+                        "folder":     data.get("folder"),
+                        "updated_at": data.get("updated_at"),
+                        "workspace":  ws.repository.name if ws.repository else "",
+                    })
+                except Exception:
+                    pass
+
+        result = []
+        for uid in sorted(user_data, key=lambda x: user_data[x]["username"]):
+            d = user_data[uid]
+            total = sum(len(v) for v in d["scenarios"].values())
+            d["total"] = total
+            result.append(d)
+
+        return {"users": result}
+    finally:
+        db.close()
+
+
+# ── Admin: Koşum İstatistikleri (Feature 4) ───────────────────────────────────
+@app.get("/api/admin/run-stats", tags=["Admin"])
+async def run_stats(
+    date_from: str = None,
+    date_to:   str = None,
+    current_user=Depends(_get_user)
+):
+    if current_user.role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(403, "Admin yetkisi gerekli")
+    import json as _json
+    from pathlib import Path
+    from datetime import datetime as _dt
+    from database import get_db as _gdb
+    from models.db_models import User as _User, UserWorkspace as _UW
+
+    db = next(_gdb())
+    try:
+        users = {u.id: u.username for u in db.query(_User).all()}
+        workspaces = db.query(_UW).filter_by(is_cloned=True).all()
+
+        # Tarih filtresi sınırları
+        dt_from = _dt.fromisoformat(date_from) if date_from else None
+        dt_to   = _dt.fromisoformat(date_to)   if date_to   else None
+
+        stats_by_user: dict = {}
+        all_runs: list = []
+
+        for ws in workspaces:
+            log_dir = Path(ws.local_path) / "ai_run_logs"
+            if not log_dir.exists():
+                continue
+            uid = ws.user_id
+            uname = users.get(uid, f"user_{uid}")
+            if uid not in stats_by_user:
+                stats_by_user[uid] = {
+                    "username": uname, "total": 0,
+                    "passed": 0, "failed": 0,
+                    "platforms": {"web": 0, "mobile": 0, "desktop": 0},
+                    "total_duration_sec": 0,
+                }
+            for f in log_dir.glob("*.json"):
+                try:
+                    d = _json.loads(f.read_text(encoding="utf-8"))
+                    # Tarih filtresi uygula
+                    started_raw = d.get("started_at")
+                    if started_raw and (dt_from or dt_to):
+                        try:
+                            started_dt = _dt.fromisoformat(started_raw.replace("Z",""))
+                            if dt_from and started_dt < dt_from:
+                                continue
+                            if dt_to and started_dt > dt_to:
+                                continue
+                        except Exception:
+                            pass
+
+                    s = stats_by_user[uid]
+                    s["total"] += 1
+                    plat = d.get("platform", "web")
+                    s["platforms"][plat] = s["platforms"].get(plat, 0) + 1
+                    ok = d.get("exit_code", 1) == 0 and d.get("failed", 1) == 0
+                    if ok:
+                        s["passed"] += 1
+                    else:
+                        s["failed"] += 1
+                    try:
+                        dur = (_dt.fromisoformat(d["ended_at"]) - _dt.fromisoformat(d["started_at"])).seconds
+                        s["total_duration_sec"] += dur
+                    except Exception:
+                        pass
+                    all_runs.append({
+                        "username":     uname,
+                        "scenario":     d.get("scenario_name", "?"),
+                        "platform":     plat,
+                        "started_at":   started_raw,
+                        "exit_code":    d.get("exit_code", -1),
+                        "total_steps":  d.get("total_steps", 0),
+                        "passed":       d.get("passed", 0),
+                        "failed_steps": d.get("failed", 0),
+                        "status":       "passed" if ok else "failed",
+                    })
+                except Exception:
+                    pass
+
+        all_runs.sort(key=lambda x: x.get("started_at") or "", reverse=True)
+        return {
+            "by_user":  list(stats_by_user.values()),
+            "all_runs": all_runs,
+        }
+    finally:
+        db.close()
 
 @app.on_event("startup")
 async def startup_event():

@@ -43,9 +43,11 @@
         if (isAdmin) {
             adminBlock = section(
                 "Admin",
-                item("admin-repos",  "&#128295;", "Repo Yönetimi")
-                + item("admin-users", "&#128101;", "Kullanıcılar")
-                + item("admin-logs",  "&#128203;", "Koşum Logları")
+                item("admin-repos",      "&#128295;", "Repo Yönetimi")
+                + item("admin-users",    "&#128101;", "Kullanıcılar")
+                + item("admin-scenarios","&#128193;", "Senaryolar")
+                + item("admin-stats",    "&#128202;", "Koşum İstatistikleri")
+                + item("admin-logs",     "&#128203;", "Koşum Logları")
             );
         }
 

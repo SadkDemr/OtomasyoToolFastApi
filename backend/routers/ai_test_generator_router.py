@@ -46,7 +46,12 @@ def _check_stop():
         raise SystemExit(0)
 '''
 
-OLLAMA_URL   = "http://localhost:11434/api/generate"
+from services.ai_service import get_ollama_config as _get_ollama_cfg
+
+def _ollama_url():   return _get_ollama_cfg()["url"]
+def _ollama_model(): return _get_ollama_cfg()["model"]
+
+OLLAMA_URL   = "http://localhost:11434/api/generate"  # geriye dönük compat
 OLLAMA_MODEL = "gemma3:4b"
 
 # Backend kök dizini (ai_config.json burada)
@@ -685,8 +690,8 @@ def _vision_find(driver, search_text):
             answer = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         else:
             # Ollama fallback (llava/gemma3 vision)
-            resp = _req.post("http://localhost:11434/api/generate", json={
-                "model": "gemma3:4b",
+            resp = _req.post(_ollama_url(), json={
+                "model": _ollama_model(),
                 "prompt": _prompt_en,
                 "images": [screenshot],
                 "stream": False
@@ -1406,8 +1411,8 @@ def _vision_find_desktop(search_text):
             )
             answer = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         else:
-            resp = _req.post("http://localhost:11434/api/generate", json={
-                "model": "gemma3:4b", "prompt": _prompt,
+            resp = _req.post(_ollama_url(), json={
+                "model": _ollama_model(), "prompt": _prompt,
                 "images": [shot_b64], "stream": False
             }, timeout=60)
             answer = resp.json().get("response", "")
@@ -2400,8 +2405,8 @@ Code (one block per step, separated by blank lines):"""
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(OLLAMA_URL, json={
-                "model": OLLAMA_MODEL,
+            resp = await client.post(_ollama_url(), json={
+                "model": _ollama_model(),
                 "prompt": prompt,
                 "stream": False,
                 "options": {"temperature": 0.1, "num_predict": 512}
@@ -2593,6 +2598,7 @@ async def execute_script(
     log_dir    = _run_log_dir(current_user.id, db)
     started_at = _datetime.datetime.utcnow().isoformat()
     step_outcomes: dict[int, str] = {}   # idx -> "pass" | "fail"
+    terminal_lines: list[str] = []        # tam terminal çıktısı
     stop_file  = tempfile.mktemp(suffix=".stop", prefix=f"ai_stop_{run_id}_")
     _stop_files[run_id] = stop_file
 
@@ -2643,6 +2649,7 @@ async def execute_script(
                     except ValueError: pass
                     yield _sse("step_fail", idx_s)
                 else:
+                    terminal_lines.append(text)
                     yield _sse("log", text)
 
             await loop.run_in_executor(None, proc.wait)
@@ -2693,6 +2700,7 @@ async def execute_script(
                         }
                         for i in range(n)
                     ],
+                    "terminal_log": "\n".join(terminal_lines),
                 }
                 (log_dir / f"{run_id}.json").write_text(
                     _json.dumps(log_entry, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koşum İstatistikleri - Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:28px; }
+        .stat-card  { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:18px 20px; }
+        .stat-val   { font-size:2rem; font-weight:700; color:var(--text-primary); line-height:1; }
+        .stat-lbl   { font-size:0.78rem; color:var(--text-muted); margin-top:6px; }
+
+        .section-title { font-size:1rem; font-weight:600; margin:28px 0 14px; display:flex; align-items:center; gap:8px; }
+        .divider { flex:1; height:1px; background:var(--border-color); }
+
+        /* Tarih filtresi */
+        .date-filter { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+        .period-btn  { padding:5px 12px; border:1px solid var(--border-color); border-radius:20px; background:var(--bg-secondary); color:var(--text-secondary); font-size:0.82rem; cursor:pointer; transition:.15s; }
+        .period-btn.active  { background:var(--accent-primary); border-color:var(--accent-primary); color:#fff; }
+        .period-btn:hover:not(.active) { border-color:var(--accent-primary); color:var(--accent-primary); }
+        .custom-dates { display:none; align-items:center; gap:6px; }
+        .custom-dates.show { display:flex; }
+        .custom-dates input { padding:4px 10px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-secondary); color:var(--text-primary); font-size:0.82rem; }
+
+        /* Kullanici tablosu */
+        .usr-table { width:100%; border-collapse:collapse; font-size:0.86rem; }
+        .usr-table th { text-align:left; padding:10px 14px; background:var(--bg-secondary); border-bottom:2px solid var(--border-color); color:var(--text-muted); font-weight:600; white-space:nowrap; }
+        .usr-table td { padding:11px 14px; border-bottom:1px solid var(--border-color); vertical-align:middle; }
+        .usr-table tr:hover td { background:var(--bg-secondary); }
+
+        .clickable-num { cursor:pointer; text-decoration:underline dotted; border-bottom:none; }
+        .clickable-num:hover { opacity:.75; }
+
+        .plat-pills { display:flex; gap:4px; flex-wrap:wrap; }
+        .plat-pill  { padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:600; }
+        .pill-web     { background:rgba(59,130,246,.15); color:#3b82f6; }
+        .pill-mobile  { background:rgba(16,185,129,.15); color:#10b981; }
+        .pill-desktop { background:rgba(245,158,11,.15); color:#f59e0b; }
+
+        .pass-rate { display:flex; align-items:center; gap:8px; }
+        .rate-bar  { flex:1; height:6px; border-radius:3px; background:var(--bg-tertiary); overflow:hidden; min-width:60px; }
+        .rate-fill { height:100%; border-radius:3px; background:#10b981; }
+        .rate-txt  { font-size:0.78rem; color:var(--text-muted); white-space:nowrap; }
+
+        /* Son koşumlar */
+        .run-table { width:100%; border-collapse:collapse; font-size:0.84rem; }
+        .run-table th { text-align:left; padding:9px 12px; background:var(--bg-secondary); border-bottom:2px solid var(--border-color); color:var(--text-muted); font-weight:600; white-space:nowrap; }
+        .run-table td { padding:10px 12px; border-bottom:1px solid var(--border-color); vertical-align:middle; }
+        .run-table tr:hover td { background:var(--bg-secondary); }
+
+        .badge-ok   { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:600; background:rgba(16,185,129,.15); color:#10b981; }
+        .badge-fail { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:600; background:rgba(239,68,68,.15); color:#ef4444; }
+
+        .refresh-btn { padding:7px 14px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-secondary); color:var(--text-secondary); font-size:0.85rem; cursor:pointer; transition:.15s; }
+        .refresh-btn:hover { border-color:var(--accent-primary); color:var(--accent-primary); }
+
+        /* Modal */
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1000; align-items:center; justify-content:center; }
+        .modal-overlay.show { display:flex; }
+        .modal-box { background:var(--bg-primary); border:1px solid var(--border-color); border-radius:16px; width:min(860px,95vw); max-height:85vh; display:flex; flex-direction:column; overflow:hidden; }
+        .modal-header { padding:18px 24px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; }
+        .modal-title { font-size:1rem; font-weight:600; }
+        .modal-close { background:none; border:none; font-size:1.4rem; cursor:pointer; color:var(--text-muted); line-height:1; }
+        .modal-close:hover { color:var(--text-primary); }
+        .modal-body  { overflow-y:auto; padding:20px 24px; flex:1; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div id="sidebar-container"></div>
+    <main class="main-content">
+        <header class="header">
+            <div class="header-left"><h1 class="page-title">&#128202; Koşum İstatistikleri</h1></div>
+            <div class="header-right">
+                <button class="refresh-btn" onclick="loadStats()">&#8635; Yenile</button>
+                <button class="theme-toggle" onclick="Theme.toggle()">&#127769;</button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <!-- Tarih filtresi -->
+            <div class="date-filter">
+                <span style="font-size:0.82rem;color:var(--text-muted);font-weight:600;">Dönem:</span>
+                <button class="period-btn active" onclick="setPeriod('all',this)">Tümü</button>
+                <button class="period-btn" onclick="setPeriod('today',this)">Bugün</button>
+                <button class="period-btn" onclick="setPeriod('week',this)">Bu Hafta</button>
+                <button class="period-btn" onclick="setPeriod('month',this)">Bu Ay</button>
+                <button class="period-btn" onclick="setPeriod('3m',this)">3 Ay</button>
+                <button class="period-btn" onclick="setPeriod('custom',this)">Özel</button>
+                <div class="custom-dates" id="customDates">
+                    <input type="date" id="dateFrom"> —
+                    <input type="date" id="dateTo">
+                    <button class="period-btn" style="border-radius:8px;" onclick="applyCustom()">Uygula</button>
+                </div>
+            </div>
+
+            <!-- Genel özet -->
+            <div class="stats-grid" id="summaryGrid">
+                <div class="stat-card"><div class="stat-val">—</div><div class="stat-lbl">Toplam Koşum</div></div>
+                <div class="stat-card"><div class="stat-val" style="color:#10b981;">—</div><div class="stat-lbl">Başarılı</div></div>
+                <div class="stat-card"><div class="stat-val" style="color:#ef4444;">—</div><div class="stat-lbl">Başarısız</div></div>
+                <div class="stat-card"><div class="stat-val">—</div><div class="stat-lbl">Aktif Kullanıcı</div></div>
+            </div>
+
+            <!-- Kullanıcı bazlı tablo -->
+            <div class="section-title">&#128101; Kullanıcı Bazlı <div class="divider"></div></div>
+            <div style="overflow-x:auto;" class="card">
+                <table class="usr-table">
+                    <thead>
+                        <tr>
+                            <th>Kullanıcı</th>
+                            <th>Toplam</th>
+                            <th>Başarılı ↗</th>
+                            <th>Başarısız ↗</th>
+                            <th>Başarı Oranı</th>
+                            <th>Platform</th>
+                            <th>Toplam Süre</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTbody"><tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted);">Yükleniyor...</td></tr></tbody>
+                </table>
+            </div>
+
+            <!-- Ollama / AI Ayarları -->
+            <div class="section-title">&#129302; AI Yapılandırması <div class="divider"></div></div>
+            <div class="card" style="padding:20px;max-width:560px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                    <div>
+                        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:5px;">Ollama URL</label>
+                        <input id="cfgOllamaUrl" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;" placeholder="http://localhost:11434/api/generate">
+                    </div>
+                    <div>
+                        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:5px;">Ollama Model</label>
+                        <input id="cfgOllamaModel" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;" placeholder="gemma3:4b">
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:5px;">Gemini API Key</label>
+                    <input id="cfgGeminiKey" type="password" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;" placeholder="Yeni key girin (boş bırakırsanız değişmez)">
+                </div>
+                <button onclick="saveAiConfig()" style="padding:9px 20px;background:var(--accent-primary);color:#fff;border:none;border-radius:8px;font-size:0.88rem;cursor:pointer;font-weight:600;">Kaydet</button>
+                <span id="cfgMsg" style="font-size:0.82rem;margin-left:12px;color:var(--text-muted);"></span>
+            </div>
+
+            <!-- Son koşumlar -->
+            <div class="section-title">&#128203; Son Koşumlar <div class="divider"></div></div>
+            <div style="overflow-x:auto;" class="card">
+                <table class="run-table">
+                    <thead>
+                        <tr>
+                            <th>Kullanıcı</th>
+                            <th>Senaryo</th>
+                            <th>Platform</th>
+                            <th>Tarih</th>
+                            <th>Adımlar</th>
+                            <th>Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody id="runTbody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);">Yükleniyor...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Koşum Detay Modalı -->
+<div class="modal-overlay" id="runsModal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span class="modal-title" id="modalTitle">Koşumlar</span>
+            <button class="modal-close" onclick="closeModal()">&#215;</button>
+        </div>
+        <div class="modal-body">
+            <table class="run-table" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Senaryo</th>
+                        <th>Platform</th>
+                        <th>Tarih</th>
+                        <th>Adımlar</th>
+                        <th>Durum</th>
+                    </tr>
+                </thead>
+                <tbody id="modalTbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    const API = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+    function hdrs() { return { "Authorization": `Bearer ${Auth.getToken()}` }; }
+
+    const platIcon  = { web:"🌐", mobile:"📱", desktop:"🖥" };
+    const platClass = { web:"pill-web",  mobile:"pill-mobile", desktop:"pill-desktop" };
+    const platLabel = { web:"Web",       mobile:"Mobil",       desktop:"Desktop" };
+
+    let _byUser  = [];
+    let _allRuns = [];
+    let _activePeriod = "all";
+    let _dateFrom = null;
+    let _dateTo   = null;
+
+    function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+    function fmtDate(iso) {
+        if (!iso) return "—";
+        try {
+            const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+            return d.toLocaleString("tr-TR",{dateStyle:"short",timeStyle:"short"});
+        } catch { return iso; }
+    }
+    function fmtDur(sec) {
+        if (!sec) return "—";
+        const m = Math.floor(sec/60), s = sec%60;
+        return m ? `${m}d ${s}s` : `${s}s`;
+    }
+
+    // ── Dönem seçimi ──────────────────────────────────────────────────────────
+    window.setPeriod = function(period, btn) {
+        _activePeriod = period;
+        document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const cd = document.getElementById("customDates");
+        if (period === "custom") { cd.classList.add("show"); return; }
+        else { cd.classList.remove("show"); }
+
+        const now  = new Date();
+        const today = now.toISOString().slice(0,10);
+        _dateTo   = null;
+        _dateFrom = null;
+
+        if (period === "today") {
+            _dateFrom = today + "T00:00:00";
+            _dateTo   = today + "T23:59:59";
+        } else if (period === "week") {
+            const w = new Date(now); w.setDate(w.getDate()-6);
+            _dateFrom = w.toISOString().slice(0,10) + "T00:00:00";
+        } else if (period === "month") {
+            _dateFrom = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-01T00:00:00";
+        } else if (period === "3m") {
+            const m3 = new Date(now); m3.setMonth(m3.getMonth()-3);
+            _dateFrom = m3.toISOString().slice(0,10) + "T00:00:00";
+        }
+        renderFromCache();
+    };
+
+    window.applyCustom = function() {
+        _dateFrom = document.getElementById("dateFrom").value ? document.getElementById("dateFrom").value + "T00:00:00" : null;
+        _dateTo   = document.getElementById("dateTo").value   ? document.getElementById("dateTo").value   + "T23:59:59" : null;
+        renderFromCache();
+    };
+
+    function filterRuns(runs) {
+        if (!_dateFrom && !_dateTo) return runs;
+        return runs.filter(r => {
+            if (!r.started_at) return true;
+            const t = new Date(r.started_at.endsWith("Z") ? r.started_at : r.started_at+"Z");
+            if (_dateFrom && t < new Date(_dateFrom+"Z")) return false;
+            if (_dateTo   && t > new Date(_dateTo+"Z"))   return false;
+            return true;
+        });
+    }
+
+    // ── Veri yükleme ──────────────────────────────────────────────────────────
+    window.loadStats = async function () {
+        try {
+            const r = await fetch(`${API}/admin/run-stats`, { headers: hdrs() });
+            if (!r.ok) throw new Error();
+            const d = await r.json();
+            _allRuns = d.all_runs || [];
+            _byUser  = d.by_user  || [];
+            renderFromCache();
+            loadAiConfig();
+        } catch {
+            document.getElementById("userTbody").innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;">Yüklenemedi</td></tr>';
+        }
+    };
+
+    function renderFromCache() {
+        const filtered = filterRuns(_allRuns);
+
+        // Kullanıcı bazlı özet — filtrelenmiş runs'dan hesapla
+        const umap = {};
+        for (const r of filtered) {
+            if (!umap[r.username]) umap[r.username] = { username:r.username, total:0, passed:0, failed:0, platforms:{}, total_duration_sec:0 };
+            const u = umap[r.username];
+            u.total++;
+            if (r.status === "passed") u.passed++; else u.failed++;
+            u.platforms[r.platform] = (u.platforms[r.platform]||0) + 1;
+        }
+
+        // Eğer filtreleme yoksa orijinal by_user'ı kullan (daha hızlı + süre bilgisi içeriyor)
+        const byUser = (_dateFrom || _dateTo)
+            ? Object.values(umap)
+            : _byUser;
+
+        renderSummary(byUser);
+        renderUsers(byUser);
+        renderRuns(filtered.slice(0, 100));
+    }
+
+    function renderSummary(users) {
+        const total  = users.reduce((a,u)=>a+u.total,0);
+        const passed = users.reduce((a,u)=>a+(u.passed||0),0);
+        const failed = users.reduce((a,u)=>a+(u.failed||0),0);
+        const active = users.filter(u=>u.total>0).length;
+        document.getElementById("summaryGrid").innerHTML = `
+            <div class="stat-card"><div class="stat-val">${total}</div><div class="stat-lbl">Toplam Koşum</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#10b981;">${passed}</div><div class="stat-lbl">Başarılı</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#ef4444;">${failed}</div><div class="stat-lbl">Başarısız</div></div>
+            <div class="stat-card"><div class="stat-val">${active}</div><div class="stat-lbl">Aktif Kullanıcı</div></div>`;
+    }
+
+    function renderUsers(users) {
+        const tb = document.getElementById("userTbody");
+        if (!users.length) { tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted);">Veri yok</td></tr>'; return; }
+        tb.innerHTML = [...users].sort((a,b)=>b.total-a.total).map(u => {
+            const rate  = u.total ? Math.round(((u.passed||0)/u.total)*100) : 0;
+            const pills = Object.entries(u.platforms||{}).filter(([,v])=>v>0).map(([p,v]) =>
+                `<span class="plat-pill ${platClass[p]||''}">${platIcon[p]||''} ${platLabel[p]||p}: ${v}</span>`).join("");
+            const uEnc = encodeURIComponent(u.username);
+            return `<tr>
+                <td><strong>${esc(u.username)}</strong></td>
+                <td>${u.total}</td>
+                <td style="color:#10b981;">
+                    <span class="clickable-num" onclick="openRunsModal('${uEnc}','passed')" title="Başarılı koşumları göster">${u.passed||0}</span>
+                </td>
+                <td style="color:#ef4444;">
+                    <span class="clickable-num" onclick="openRunsModal('${uEnc}','failed')" title="Başarısız koşumları göster">${u.failed||0}</span>
+                </td>
+                <td><div class="pass-rate">
+                    <div class="rate-bar"><div class="rate-fill" style="width:${rate}%"></div></div>
+                    <span class="rate-txt">${rate}%</span>
+                </div></td>
+                <td><div class="plat-pills">${pills||'—'}</div></td>
+                <td>${fmtDur(u.total_duration_sec)}</td>
+            </tr>`;
+        }).join("");
+    }
+
+    function renderRuns(runs) {
+        const tb = document.getElementById("runTbody");
+        if (!runs.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);">Veri yok</td></tr>'; return; }
+        tb.innerHTML = runs.map(r => {
+            const ok = r.status === "passed";
+            return `<tr>
+                <td>${esc(r.username)}</td>
+                <td>${esc(r.scenario)}</td>
+                <td>${platIcon[r.platform]||'❓'} ${platLabel[r.platform]||r.platform}</td>
+                <td style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">${fmtDate(r.started_at)}</td>
+                <td style="font-size:0.8rem;"><span style="color:#10b981;">${r.passed}</span> / ${r.total_steps}</td>
+                <td>${ok ? '<span class="badge-ok">Başarılı</span>' : '<span class="badge-fail">Başarısız</span>'}</td>
+            </tr>`;
+        }).join("");
+    }
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+    window.openRunsModal = function(usernameEnc, status) {
+        const username = decodeURIComponent(usernameEnc);
+        const label    = status === "passed" ? "Başarılı" : "Başarısız";
+        document.getElementById("modalTitle").textContent = `${username} — ${label} Koşumlar`;
+
+        const filtered = filterRuns(_allRuns).filter(r =>
+            r.username === username && r.status === status
+        );
+
+        const tb = document.getElementById("modalTbody");
+        if (!filtered.length) {
+            tb.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Koşum bulunamadı</td></tr>';
+        } else {
+            tb.innerHTML = filtered.map(r => {
+                const ok = r.status === "passed";
+                return `<tr>
+                    <td>${esc(r.scenario)}</td>
+                    <td>${platIcon[r.platform]||'❓'} ${platLabel[r.platform]||r.platform}</td>
+                    <td style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">${fmtDate(r.started_at)}</td>
+                    <td style="font-size:0.8rem;"><span style="color:#10b981;">${r.passed}</span> / ${r.total_steps}</td>
+                    <td>${ok ? '<span class="badge-ok">Başarılı</span>' : '<span class="badge-fail">Başarısız</span>'}</td>
+                </tr>`;
+            }).join("");
+        }
+
+        document.getElementById("runsModal").classList.add("show");
+    };
+
+    window.closeModal = function() {
+        document.getElementById("runsModal").classList.remove("show");
+    };
+
+    // ── AI Config ─────────────────────────────────────────────────────────────
+    async function loadAiConfig() {
+        try {
+            const r = await fetch(`${API}/admin/ai-config`, { headers: hdrs() });
+            if (!r.ok) return;
+            const d = await r.json();
+            document.getElementById("cfgOllamaUrl").value   = d.ollama_url   || "";
+            document.getElementById("cfgOllamaModel").value = d.ollama_model || "";
+        } catch {}
+    }
+
+    window.saveAiConfig = async function () {
+        const msg  = document.getElementById("cfgMsg");
+        const body = {
+            ollama_url:     document.getElementById("cfgOllamaUrl").value.trim(),
+            ollama_model:   document.getElementById("cfgOllamaModel").value.trim(),
+            gemini_api_key: document.getElementById("cfgGeminiKey").value.trim(),
+        };
+        try {
+            const r = await fetch(`${API}/admin/ai-config`, {
+                method:"POST", headers:{...hdrs(),"Content-Type":"application/json"},
+                body:JSON.stringify(body)
+            });
+            const d = await r.json();
+            msg.textContent = r.ok ? "✓ Kaydedildi" : (d.detail || "Hata");
+            msg.style.color = r.ok ? "#10b981" : "#ef4444";
+        } catch { msg.textContent = "Hata"; msg.style.color="#ef4444"; }
+        setTimeout(() => { msg.textContent = ""; }, 3000);
+    };
+
+    if (!Auth.checkAuth()) return;
+    loadStats();
+})();
+</script>
+</body>
+</html>

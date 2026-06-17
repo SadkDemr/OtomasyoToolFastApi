@@ -151,8 +151,27 @@ REM ─── 8. PYTHON VENV + PAKETLER + APPIUM ──────────�
 echo [8/8] Python ortami ve Appium hazirlaniyor...
 if not exist "venv" python -m venv venv
 call venv\Scripts\activate.bat
-pip install -r requirements.txt -q
-pip install pyautogui opencv-python pyperclip Pillow -q
+
+REM pip, setuptools ve wheel'i guncelle
+echo   pip guncelleniyor...
+python -m pip install --upgrade pip setuptools wheel --timeout 120 --retries 5 -q
+
+REM Ana bagimliliklar
+echo   Ana paketler yukleniyor...
+pip install -r requirements.txt --prefer-binary --timeout 120 --retries 5
+if %errorlevel% neq 0 (
+    echo   UYARI: Bazi paketler yuklenemedi. Tekrar deneniyor...
+    pip install -r requirements.txt --prefer-binary --timeout 180 --retries 10
+)
+
+REM Goruntu/otomasyon paketleri (opsiyonel, hata olursa devam et)
+echo   Goruntu/otomasyon paketleri yukleniyor...
+pip install Pillow opencv-python pyperclip --prefer-binary --timeout 120 --retries 5 -q
+pip install pyautogui --prefer-binary --timeout 120 --retries 5 -q
+if %errorlevel% neq 0 (
+    echo   UYARI: pyautogui yuklenemedi - Desktop otomasyon ozelligi calismaYabilir.
+)
+
 echo   Python paketleri yuklendi - OK
 
 appium --version >nul 2>&1

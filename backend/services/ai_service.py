@@ -38,6 +38,15 @@ def get_gemini_key() -> Optional[str]:
     return cfg.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY") or None
 
 
+def get_ollama_config() -> dict:
+    """Ollama URL ve model (config > varsayılan)"""
+    cfg = get_ai_config()
+    return {
+        "url":   cfg.get("ollama_url",   "http://localhost:11434/api/generate"),
+        "model": cfg.get("ollama_model", "gemma3:4b"),
+    }
+
+
 # ──────────────────────────────────────────────────────
 # Gemini yardımcıları
 # ──────────────────────────────────────────────────────

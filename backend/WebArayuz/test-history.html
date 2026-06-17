@@ -219,6 +219,38 @@
         .step-detail-item.fail { border-left: 3px solid #ef4444; }
         .step-detail-item.unknown { border-left: 3px solid var(--border-color); }
 
+        /* Terminal log */
+        .terminal-block {
+            background: #0d1117;
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: #e6edf3;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 320px;
+            overflow-y: auto;
+            border: 1px solid #30363d;
+            line-height: 1.6;
+        }
+        .terminal-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 0.83rem;
+            color: var(--text-secondary);
+            transition: all .15s;
+        }
+        .terminal-toggle:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+        .terminal-wrap { display:none; margin-top:8px; }
+        .terminal-wrap.open { display:block; }
+
         /* Özet satırı (detay modal) */
         .run-summary {
             display: grid;
@@ -281,6 +313,7 @@
         </div>
         <div class="run-summary" id="detailSummary"></div>
         <div id="detailSteps" style="display:flex; flex-direction:column; gap:6px;"></div>
+        <div id="terminalSection"></div>
     </div>
 </div>
 
@@ -432,10 +465,34 @@
                 stepsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">Adım detayı yok.</div>';
             }
 
+            // Terminal log (sadece hata varsa göster)
+            const termSec = document.getElementById("terminalSection");
+            if (d.terminal_log && (d.failed > 0 || d.exit_code !== 0)) {
+                const logId = "termLog_" + d.run_id;
+                termSec.innerHTML = `
+                    <div class="terminal-toggle" onclick="toggleTerminal('${logId}')">
+                        <span>&#128196;</span> Terminal Logu
+                        <span style="margin-left:auto;font-size:0.75rem;" id="termArrow_${logId}">&#9660; Goster</span>
+                    </div>
+                    <div class="terminal-wrap" id="${logId}">
+                        <div class="terminal-block">${escHtml(d.terminal_log)}</div>
+                    </div>`;
+            } else {
+                termSec.innerHTML = "";
+            }
+
             document.getElementById("detailModal").style.display = "flex";
         } catch (e) {
             Toast.error("Detay yüklenemedi: " + e.message);
         }
+    };
+
+    window.toggleTerminal = function (id) {
+        const wrap  = document.getElementById(id);
+        const arrow = document.getElementById("termArrow_" + id);
+        if (!wrap) return;
+        const open = wrap.classList.toggle("open");
+        if (arrow) arrow.innerHTML = open ? "&#9650; Gizle" : "&#9660; Goster";
     };
 
     window.closeDetail = function () {
