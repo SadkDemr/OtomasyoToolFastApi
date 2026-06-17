@@ -2905,9 +2905,12 @@ async def save_scenario(
     (scenario_dir / "script.py").write_text(req.script, encoding="utf-8")
 
     # Git commit + push
+    author_email = getattr(current_user, "email", None) or f"{current_user.username}@localhost"
+    git_author = f"{current_user.username} <{author_email}>"
     committed = git_service.commit_changes(
         Path(ws.local_path),
         f"ai-gen: senaryo kaydet '{req.name}'",
+        author=git_author,
     )
     push_ok = False
     if committed:
@@ -3004,9 +3007,11 @@ async def delete_scenario(
     import shutil
     shutil.rmtree(scenario_dir)
 
+    _del_author_email = getattr(current_user, "email", None) or f"{current_user.username}@localhost"
     committed = git_service.commit_changes(
         Path(ws.local_path),
         f"ai-gen: senaryo sil '{folder_name}'",
+        author=f"{current_user.username} <{_del_author_email}>",
     )
     push_ok = False
     if committed:
