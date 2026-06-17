@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime, timedelta
 from typing import Optional
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
@@ -20,21 +20,15 @@ SECRET_KEY = "test-platform-secret-key-change-in-production-2024"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
-# Şifre hashleme
-# Not: "bcrypt==4.0.1" kurulu olmalidir
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 class AuthService:
     """Authentication Servisi"""
     
     def hash_password(self, password: str) -> str:
-        """Şifreyi hashle"""
-        return pwd_context.hash(password)
-    
+        return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """Şifreyi doğrula"""
-        return pwd_context.verify(plain_password, hashed_password)
+        return _bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     
     def create_access_token(self, user_id: int, username: str) -> str:
         """JWT token oluştur"""

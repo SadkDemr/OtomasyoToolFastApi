@@ -12,12 +12,11 @@ password = input("Sifre [123]: ").strip() or "123"
 full_name = input("Ad Soyad [Admin]: ").strip() or "Admin"
 
 try:
-    from passlib.context import CryptContext
-    pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    hashed = pwd_ctx.hash(password)
+    import bcrypt as _bcrypt
+    hashed = _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
 except Exception as e:
-    print(f"HATA: passlib yuklu degil - {e}")
-    print("Once venv'i aktive edip 'pip install passlib[bcrypt]' calistirin.")
+    print(f"HATA: bcrypt yuklu degil - {e}")
+    print("Once venv'i aktive edip 'pip install bcrypt' calistirin.")
     sys.exit(1)
 
 try:
