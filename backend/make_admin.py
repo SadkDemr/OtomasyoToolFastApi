@@ -1,33 +1,48 @@
 import sqlite3
 import os
+import sys
 
-# Veritabanı dosyasının yolunu bul
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "test_platform.db")
 
-print(f"📂 Veritabanı yolu: {db_path}")
+print(f"Veritabani yolu: {db_path}")
+
+username = input("Admin kullanici adi [admin]: ").strip() or "admin"
+password = input("Sifre [123]: ").strip() or "123"
+full_name = input("Ad Soyad [Admin]: ").strip() or "Admin"
 
 try:
-    # Veritabanına bağlan
+    from passlib.context import CryptContext
+    pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    hashed = pwd_ctx.hash(password)
+except Exception as e:
+    print(f"HATA: passlib yuklu degil - {e}")
+    print("Once venv'i aktive edip 'pip install passlib[bcrypt]' calistirin.")
+    sys.exit(1)
+
+try:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Kullanıcıyı admin yap
-    cursor.execute("UPDATE users SET role='admin' WHERE username='admin'")
-    
-    # Değişiklikleri kaydet
-    conn.commit()
-    
-    # Kontrol et
-    cursor.execute("SELECT username, role FROM users WHERE username='admin'")
-    user = cursor.fetchone()
-    
-    if user and user[1] == 'admin':
-        print(f"✅ BAŞARILI: '{user[0]}' kullanıcısı artık YÖNETİCİ (ADMIN) yetkisine sahip.")
-    else:
-        print("❌ HATA: Güncelleme yapılamadı.")
+    cursor.execute("SELECT id FROM users WHERE username=?", (username,))
+    existing = cursor.fetchone()
 
+    if existing:
+        cursor.execute(
+            "UPDATE users SET role='admin', hashed_password=? WHERE username=?",
+            (hashed, username)
+        )
+        print(f"OK: '{username}' guncellendi ve admin yapildi.")
+    else:
+        cursor.execute(
+            "INSERT INTO users (username, email, full_name, hashed_password, role, is_active) VALUES (?,?,?,?,'admin',1)",
+            (username, f"{username}@local.com", full_name, hashed)
+        )
+        print(f"OK: '{username}' olusturuldu ve admin yapildi.")
+
+    conn.commit()
     conn.close()
+    print(f"\nGiris: kullanici={username}  sifre={password}")
 
 except Exception as e:
-    print(f"💥 Bir hata oluştu: {e}")
+    print(f"HATA: {e}")
