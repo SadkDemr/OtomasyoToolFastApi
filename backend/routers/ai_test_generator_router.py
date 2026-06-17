@@ -1922,15 +1922,34 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         "",
     ]
 
-    # Uygulama başlat
+    # Uygulama başlat — pencere zaten açıksa yeni instance başlatma
     if app_path:
-        lines += [
-            f'# ── Uygulama başlat ─────────────────────────────────────────',
-            f'print("Başlatılıyor: {app_path_esc}")',
-            f'_app_proc = _dsproc.Popen([r"{app_path}"])',
-            'time.sleep(2)',
-            '',
-        ]
+        if window_title:
+            # Önce pencere var mı dene; varsa başlatma
+            lines += [
+                f'# ── Uygulama başlat (zaten açıksa geç) ─────────────────────',
+                '_win_already_open = False',
+                'if _PW_OK:',
+                '    try:',
+                f'        _PwApp(backend="uia").connect(title_re=".*{window_title_esc}.*", timeout=3)',
+                '        _win_already_open = True',
+                '        print("[OK] Uygulama zaten açık, yeni instance başlatılmıyor")',
+                '    except Exception:',
+                '        _win_already_open = False',
+                'if not _win_already_open:',
+                f'    print("Başlatılıyor: {app_path_esc}")',
+                f'    _dsproc.Popen([r"{app_path}"])',
+                '    time.sleep(3)',
+                '',
+            ]
+        else:
+            lines += [
+                f'# ── Uygulama başlat ─────────────────────────────────────────',
+                f'print("Başlatılıyor: {app_path_esc}")',
+                f'_dsproc.Popen([r"{app_path}"])',
+                'time.sleep(2)',
+                '',
+            ]
 
     # Pencereyi öne getir
     if window_title:
