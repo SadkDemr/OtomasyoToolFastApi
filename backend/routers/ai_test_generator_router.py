@@ -1925,7 +1925,7 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
                 '        _win_already_open = False',
                 'if not _win_already_open:',
                 f'    print("Başlatılıyor: {app_path_esc}")',
-                f'    _dsproc.Popen([r"{app_path}"])',
+                f'    _dsproc.Popen(r"{app_path_esc}", shell=True)',
                 '    time.sleep(3)',
                 '',
             ]
@@ -1933,7 +1933,7 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
             lines += [
                 f'# ── Uygulama başlat ─────────────────────────────────────────',
                 f'print("Başlatılıyor: {app_path_esc}")',
-                f'_dsproc.Popen([r"{app_path}"])',
+                f'_dsproc.Popen(r"{app_path_esc}", shell=True)',
                 'time.sleep(2)',
                 '',
             ]

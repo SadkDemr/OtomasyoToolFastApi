@@ -52,8 +52,8 @@ if %errorlevel% neq 0 (
     if %errorlevel% neq 0 echo   UYARI: pandas/openpyxl yuklenemedi - Excel ozelligi calismaYabilir.
 
     pip install Pillow opencv-python pyperclip --prefer-binary --timeout 120 -q
-    pip install pyautogui --prefer-binary --timeout 120 -q
-    if %errorlevel% neq 0 echo   UYARI: pyautogui yuklenemedi - Desktop otomasyon ozelligi calismaYabilir.
+    pip install pyautogui pywinauto --prefer-binary --timeout 120 -q
+    if %errorlevel% neq 0 echo   UYARI: pyautogui/pywinauto yuklenemedi - Desktop otomasyon ozelligi calismaYabilir.
 )
 
 echo.
