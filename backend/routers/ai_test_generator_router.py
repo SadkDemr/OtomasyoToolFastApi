@@ -1288,20 +1288,34 @@ def _get_window_region():
     return None
 
 def _find_b64_on_screen(b64_data, threshold=0.80, timeout=10):
-    """Base64 görseli pencere bölgesinde (yoksa tüm ekranda) OpenCV ile ara."""
+    """Base64 gorsel arar — _WINDOW_TITLE varsa yalnizca o pencere icinde."""
     _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_find_{id(b64_data)}.png")
     try:
         with open(_tmp_path, "wb") as _f:
             _f.write(_ib64.b64decode(b64_data))
+        # Pencere bolgesi — _WINDOW_TITLE varsa tam ekran aramaz
         _region = _get_window_region()
+        if _WINDOW_TITLE and _region is None:
+            _wt_end = _itime.time() + 3
+            while _itime.time() < _wt_end:
+                _itime.sleep(0.3)
+                _region = _get_window_region()
+                if _region: break
+            if _region is None:
+                print(f"[HATA] '{_WINDOW_TITLE}' penceresi bulunamadi — gorsel aranamaz.")
+                return None
         _start = _itime.time()
         while _itime.time() - _start < timeout:
+            if _WINDOW_TITLE:
+                _upd = _get_window_region()
+                if _upd: _region = _upd
             _elapsed = _itime.time() - _start
-            _conf = max(0.65, threshold - (_elapsed / timeout) * 0.20)
+            _conf = max(0.50, threshold - (_elapsed / timeout) * 0.30)
             _coords = _find_image_on_screen(_tmp_path, threshold=_conf, region=_region)
             if _coords:
                 return _coords
             _itime.sleep(0.3)
+        print(f"[DEBUG] Gorsel {timeout}s icinde bulunamadi. Farkli bir bolgeyi kroplayip tekrar deneyin.")
         return None
     finally:
         try: _ios.unlink(_tmp_path)
@@ -1312,6 +1326,13 @@ def _find_image_on_screen(target_path, threshold=0.80, region=None):
     try:
         import cv2 as _cv2, numpy as _np
         import pyautogui as _pag_sc
+        # Windows DPI ölçeğini tespit et — template farklı DPI'da alınmış olabilir
+        _dpi_scale = 1.0
+        try:
+            import ctypes as _ct
+            _dpi_scale = _ct.windll.user32.GetDpiForSystem() / 96.0
+        except Exception:
+            pass
         _screenshot = _pag_sc.screenshot(region=region) if region else _pag_sc.screenshot()
         _screen      = _np.array(_screenshot)
         _ox, _oy     = (region[0], region[1]) if region else (0, 0)
@@ -1324,9 +1345,14 @@ def _find_image_on_screen(target_path, threshold=0.80, region=None):
         _tmpl_gray = _cv2.GaussianBlur(_tmpl_gray, (3,3), 0)
         _h, _w = _tmpl_gray.shape[:2]
         _best = None; _best_val = -1
-        for _sc in _np.linspace(0.7, 1.3, 13):
+        # DPI farklılıklarını (125%/150%/200%) karşılamak için geniş scale aralığı
+        # Merkez: 1/dpi_scale (fiziksel px template → mantıksal px ekran)
+        _center = 1.0 / _dpi_scale
+        _lo = max(0.3, _center * 0.6)
+        _hi = min(2.5, _center * 1.7)
+        for _sc in _np.linspace(_lo, _hi, 25):
             _rw, _rh = int(_w*_sc), int(_h*_sc)
-            if _rw < 10 or _rh < 10: continue
+            if _rw < 8 or _rh < 8: continue
             if _rw > _screen_gray.shape[1] or _rh > _screen_gray.shape[0]: continue
             _res = _cv2.matchTemplate(_screen_gray, _cv2.resize(_tmpl_gray,(_rw,_rh)), _cv2.TM_CCOEFF_NORMED)
             _, _val, _, _loc = _cv2.minMaxLoc(_res)
@@ -1969,30 +1995,40 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
     # Uygulama başlat
     if app_path:
         popen_line = _POPEN_DEVNULL.format(app_path_esc)
-        if reuse_instance and window_title:
+        if reuse_instance:
             lines += [
                 '# ── Uygulama başlat (zaten açıksa geç) ─────────────────────',
-                'def _is_window_open(_title):',
-                '    try:',
-                '        import win32gui as _wg',
-                '        _found = []',
-                '        def _cb(hwnd, _):',
-                '            t = _wg.GetWindowText(hwnd)',
-                '            if _title.lower() in t.lower() and _wg.IsWindowVisible(hwnd):',
-                '                _found.append(hwnd)',
-                '            return True',
-                '        _wg.EnumWindows(_cb, None)',
-                '        return bool(_found)',
-                '    except Exception:',
-                '        pass',
-                '    if _PW_OK:',
+                'def _is_app_running():',
+                '    # 1) Pencere başlığıyla kontrol',
+                f'    _wtitle = "{window_title_esc}"',
+                '    if _wtitle:',
                 '        try:',
-                '            _PwApp(backend="uia").connect(title_re=".*" + _title + ".*", timeout=2)',
-                '            return True',
-                '        except Exception:',
-                '            pass',
+                '            import win32gui as _wg2',
+                '            _fnd = []',
+                '            def _cb2(hwnd, _):',
+                '                t = _wg2.GetWindowText(hwnd)',
+                '                if _wtitle.lower() in t.lower() and _wg2.IsWindowVisible(hwnd):',
+                '                    _fnd.append(hwnd)',
+                '                return True',
+                '            _wg2.EnumWindows(_cb2, None)',
+                '            if _fnd: return True',
+                '        except Exception: pass',
+                '        if _PW_OK:',
+                '            try:',
+                f'                _PwApp(backend="uia").connect(title_re=".*{window_title_esc}.*", timeout=2)',
+                '                return True',
+                '            except Exception: pass',
+                '    # 2) Süreç adıyla kontrol (pencere başlığı eşleşmese de yakalar)',
+                '    try:',
+                '        import os as _os2, subprocess as _sp2',
+                f'        _exe = _os2.path.basename(r"{app_path_esc}")',
+                '        if _exe:',
+                '            _r = _sp2.run(["tasklist", "/FI", f"IMAGENAME eq {_exe}", "/NH"],',
+                '                          capture_output=True, text=True, timeout=3)',
+                '            if _exe.lower() in _r.stdout.lower(): return True',
+                '    except Exception: pass',
                 '    return False',
-                f'if _is_window_open("{window_title_esc}"):',
+                'if _is_app_running():',
                 '    print("[OK] Uygulama zaten açık, yeni instance başlatılmıyor")',
                 'else:',
                 f'    print("Başlatılıyor: {app_path_esc}")',
@@ -2052,6 +2088,7 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
                 f"# [GÖRSEL DOĞRULA] {desc}\n"
                 f"print('STEP_START:{idx}')\n"
                 f"try:\n"
+                f"    _refocus_window()\n"
                 f"    _img_b64_{idx} = '{b64}'\n"
                 f"    _res_{idx} = _find_b64_on_screen(_img_b64_{idx}, timeout=8)\n"
                 f"    if not _res_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
@@ -2071,6 +2108,7 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
                 f"# [GÖRSEL TIKLAMA] {desc}\n"
                 f"print('STEP_START:{idx}')\n"
                 f"try:\n"
+                f"    _refocus_window()\n"
                 f"    _img_b64_{idx} = '{b64}'\n"
                 f"    _coords_{idx} = _find_b64_on_screen(_img_b64_{idx}, timeout=10)\n"
                 f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
@@ -2725,16 +2763,21 @@ async def execute_script(
                     break
                 text = line.decode("utf-8", errors="replace").rstrip()
                 if text.startswith("STEP_START:"):
-                    yield _sse("step_start", text.split(":", 1)[1])
+                    idx_s = text.split(":", 1)[1].strip()
+                    n_label = req.step_labels[int(idx_s)] if idx_s.isdigit() and int(idx_s) < len(req.step_labels) else f"Adım {idx_s}"
+                    terminal_lines.append(f"▶ [{idx_s}] {n_label}")
+                    yield _sse("step_start", idx_s)
                 elif text.startswith("STEP_DONE:"):
                     idx_s = text.split(":", 1)[1].strip()
                     try: step_outcomes[int(idx_s)] = "pass"
                     except ValueError: pass
+                    terminal_lines.append(f"✓ [{idx_s}] PASS")
                     yield _sse("step_done", idx_s)
                 elif text.startswith("STEP_FAIL:"):
                     idx_s = text.split(":", 1)[1].strip()
                     try: step_outcomes[int(idx_s)] = "fail"
                     except ValueError: pass
+                    terminal_lines.append(f"✗ [{idx_s}] FAIL")
                     yield _sse("step_fail", idx_s)
                 else:
                     terminal_lines.append(text)
@@ -2978,28 +3021,40 @@ async def save_scenario(
 
     folder_name = req.folder if req.folder else _sanitize_folder_name(req.name)
     scenario_dir = Path(ws.local_path) / "ai_scenarios" / folder_name
-    scenario_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        raise HTTPException(500, f"Klasör oluşturulamadı: {e}")
 
     # steps.json — b64 alanını koru (büyük veri)
-    (scenario_dir / "steps.json").write_text(
-        _json.dumps({
-            "name":     req.name,
-            "steps":    req.steps,
-            "platform": req.platform,
-            "params":   req.params or {},
-        }, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    (scenario_dir / "script.py").write_text(req.script, encoding="utf-8")
+    try:
+        (scenario_dir / "steps.json").write_text(
+            _json.dumps({
+                "name":     req.name,
+                "steps":    req.steps,
+                "platform": req.platform,
+                "params":   req.params or {},
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        (scenario_dir / "script.py").write_text(req.script, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(500, f"Dosya yazılamadı: {e}")
 
     # Git commit + push
     author_email = getattr(current_user, "email", None) or f"{current_user.username}@localhost"
     git_author = f"{current_user.username} <{author_email}>"
-    committed = git_service.commit_changes(
-        Path(ws.local_path),
-        f"ai-gen: senaryo kaydet '{req.name}'",
-        author=git_author,
-    )
+    committed = False
+    try:
+        committed = git_service.commit_changes(
+            Path(ws.local_path),
+            f"ai-gen: senaryo kaydet '{req.name}'",
+            author=git_author,
+        )
+    except Exception as e:
+        # Git hatası olsa bile local kayıt yapıldı — uyarı ver ama başarısız sayma
+        print(f"[WARN] Git commit başarısız ({folder_name}): {e}")
+
     push_ok = False
     if committed:
         repo = ws.repository

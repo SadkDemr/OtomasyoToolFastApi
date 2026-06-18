@@ -2070,17 +2070,36 @@
                 platform: selectedPlatform,
                 params,
             };
+            let bodyStr;
+            try {
+                bodyStr = JSON.stringify(body);
+            } catch (jsonErr) {
+                throw new Error("JSON serileştirme hatası: " + jsonErr.message);
+            }
             const resp = await fetch(`${API_BASE}/ai-gen/scenarios`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${Auth.getToken()}`
                 },
-                body: JSON.stringify(body)
+                body: bodyStr
             });
             if (!resp.ok) {
-                const err = await resp.json();
-                throw new Error(err.detail || "Kayıt başarısız");
+                let errMsg = "Kayıt başarısız";
+                try {
+                    const err = await resp.json();
+                    if (typeof err.detail === "string") {
+                        errMsg = err.detail;
+                    } else if (Array.isArray(err.detail)) {
+                        errMsg = err.detail.map(e => {
+                            const field = Array.isArray(e.loc) ? e.loc.slice(1).join(".") : "";
+                            return field ? `${field}: ${e.msg}` : e.msg;
+                        }).join("; ");
+                    } else if (err.detail) {
+                        errMsg = JSON.stringify(err.detail);
+                    }
+                } catch (_) {}
+                throw new Error(errMsg);
             }
             const data = await resp.json();
             // Kayıt sonrası editing state'i güncelle (yeni kayıtta folder döner)
