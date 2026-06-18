@@ -9,6 +9,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +38,17 @@ from routers.java_generator_router import router as java_gen_router
 # 🥒 BDD Generator
 from routers.bdd_generator_router import router as bdd_gen_router
 
-app = FastAPI(title="Test Otomasyon Platformu API", version="2.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("="*50)
+    print("--- SISTEM BASLATILIYOR ---")
+    init_db()
+    print("Swagger: http://localhost:8000/docs")
+    print("Web UI: http://localhost:8000/ui")
+    print("="*50)
+    yield
+
+app = FastAPI(title="Test Otomasyon Platformu API", version="2.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -277,14 +288,6 @@ async def run_stats(
     finally:
         db.close()
 
-@app.on_event("startup")
-async def startup_event():
-    print("="*50)
-    print("--- SISTEM BASLATILIYOR ---")
-    init_db()
-    print("Swagger: http://localhost:8000/docs")
-    print("Web UI: http://localhost:8000/ui")
-    print("="*50)
 
 if __name__ == "__main__":
     import uvicorn

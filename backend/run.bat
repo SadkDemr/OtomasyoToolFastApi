@@ -83,8 +83,11 @@ set LOGFILE=logs\server_%DT:~0,8%_%DT:~8,6%.log
 echo Loglar: %LOGFILE%
 echo.
 
+REM UTF-8 encoding ayarla (emoji ve Turkce karakter icin)
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
+
 REM Konsola VE log dosyasina yaz (PowerShell Tee-Object)
-REM UTF-8 encoding: emoji ve Turkce karakterlerin log dosyasina dogru yazilmasi icin
-powershell -NoProfile -NonInteractive -Command "& { $env:PYTHONUTF8='1'; $env:PYTHONIOENCODING='utf-8'; python main.py 2>&1 } | Tee-Object -FilePath '%LOGFILE%' -Append"
+powershell -NoProfile -NonInteractive -Command "python main.py | Tee-Object -FilePath '%LOGFILE%' -Append"
 
 pause
