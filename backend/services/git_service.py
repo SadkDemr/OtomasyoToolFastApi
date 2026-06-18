@@ -4,11 +4,21 @@ Git Service
 Repository clone, branch, commit, push, pull işlemleri.
 """
 
+import base64
+import logging
 import os
 import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
+
+
+def _auth_config(username: str, token: str) -> list:
+    """HTTPS kimlik doğrulama için git -c argümanları. Token'ı URL'e gömmez."""
+    creds = base64.b64encode(f"{username}:{token}".encode()).decode()
+    return ["-c", f"http.extraheader=AUTHORIZATION: basic {creds}"]
 
 
 WORKSPACES_BASE = os.environ.get("WORKSPACES_BASE", "./workspaces")
@@ -27,19 +37,13 @@ def get_default_branch(repo_url: str, username: Optional[str] = None, token: Opt
         Branch adı (main, master, develop, vb.)
         Boş repo ise "main" döner
     """
-    # Credential injection
-    auth_url = repo_url
-    if username and token:
-        if "@" in repo_url:
-            parts = repo_url.split("@")
-            auth_url = f"https://{username}:{token}@{parts[1]}"
-        else:
-            auth_url = repo_url.replace("https://", f"https://{username}:{token}@")
-    
+    # Credential injection via http.extraheader (token URL'de görünmez)
+    extra_cfg = _auth_config(username, token) if (username and token) else []
+
     # Remote branch'leri listele
-    cmd = ["git", "ls-remote", "--symref", auth_url, "HEAD"]
+    cmd = ["git"] + extra_cfg + ["ls-remote", "--symref", repo_url, "HEAD"]
     code, stdout, stderr = _run_git_command(cmd)
-    
+
     if code == 0 and stdout.strip():
         # Output: ref: refs/heads/main	HEAD
         for line in stdout.split('\n'):
@@ -47,9 +51,9 @@ def get_default_branch(repo_url: str, username: Optional[str] = None, token: Opt
                 branch = line.split('/')[-1].split('\t')[0].strip()
                 if branch:
                     return branch
-    
+
     # Fallback: tüm branch'leri listele
-    cmd = ["git", "ls-remote", "--heads", auth_url]
+    cmd = ["git"] + extra_cfg + ["ls-remote", "--heads", repo_url]
     code, stdout, stderr = _run_git_command(cmd)
     
     if code == 0 and stdout.strip():
@@ -112,23 +116,14 @@ def clone_repository(
     # Önce default branch'i tespit et
     detected_branch = get_default_branch(repo_url, username, token)
     if detected_branch != branch:
-        print(f"Branch auto-detected: {detected_branch} (requested: {branch})")
+        logger.info("Branch auto-detected: %s (requested: %s)", detected_branch, branch)
         branch = detected_branch
     
-    # Credential injection (Azure Repos / GitHub için)
-    auth_url = repo_url
-    if username and token:
-        # https://username:token@dev.azure.com/org/project/_git/repo
-        if "@" in repo_url:
-            # Zaten credential var, değiştir
-            parts = repo_url.split("@")
-            auth_url = f"https://{username}:{token}@{parts[1]}"
-        else:
-            # https:// ekle
-            auth_url = repo_url.replace("https://", f"https://{username}:{token}@")
-    
+    # Credential injection via http.extraheader (token URL'de görünmez)
+    extra_cfg = _auth_config(username, token) if (username and token) else []
+
     # Önce branch'siz clone dene (boş repo için)
-    cmd_no_branch = ["git", "clone", auth_url, str(local_path)]
+    cmd_no_branch = ["git"] + extra_cfg + ["clone", repo_url, str(local_path)]
     code, stdout, stderr = _run_git_command(cmd_no_branch)
     
     if code == 0:
@@ -168,7 +163,7 @@ def clone_repository(
             }
     
     # Branch'li clone dene
-    cmd = ["git", "clone", "-b", branch, auth_url, str(local_path)]
+    cmd = ["git"] + extra_cfg + ["clone", "-b", branch, repo_url, str(local_path)]
     code, stdout, stderr = _run_git_command(cmd)
     
     if code != 0:
@@ -360,27 +355,11 @@ def push_branch(
     Returns:
         True if success
     """
-    # Remote URL'i credential ile güncelle (eğer varsa)
-    if username and token:
-        # Get current remote URL
-        cmd = ["git", "remote", "get-url", "origin"]
-        code, stdout, stderr = _run_git_command(cmd, cwd=local_path)
-        
-        if code == 0:
-            current_url = stdout.strip()
-            # Credential ekle
-            if "@" in current_url:
-                parts = current_url.split("@")
-                new_url = f"https://{username}:{token}@{parts[1]}"
-            else:
-                new_url = current_url.replace("https://", f"https://{username}:{token}@")
-            
-            # Set new URL
-            cmd = ["git", "remote", "set-url", "origin", new_url]
-            _run_git_command(cmd, cwd=local_path)
-    
+    # Credential injection via http.extraheader (token URL'de görünmez)
+    extra_cfg = _auth_config(username, token) if (username and token) else []
+
     # Push
-    cmd = ["git", "push", "-u", "origin", branch_name]
+    cmd = ["git"] + extra_cfg + ["push", "-u", "origin", branch_name]
     code, stdout, stderr = _run_git_command(cmd, cwd=local_path)
     
     if code != 0:

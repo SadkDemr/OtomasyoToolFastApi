@@ -7,57 +7,175 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
+        /* ── Design tokens ── */
+        :root {
+            --ai-accent: #6366f1;
+            --ai-accent-hover: #4f46e5;
+            --ai-green: #22c55e;
+            --ai-green-hover: #16a34a;
+            --ai-red: #ef4444;
+            --ai-yellow: #f59e0b;
+            --ai-blue: #3b82f6;
+            --ai-cyan: #06b6d4;
+            --ai-radius: 10px;
+            --ai-radius-lg: 14px;
+            --ai-transition: 160ms ease;
+        }
+
         /* ── Sayfa özgü stiller ── */
         .page-content {
             padding: 24px;
             width: 100%;
-            max-width: 1400px;
+            max-width: 1440px;
             box-sizing: border-box;
             overflow-x: hidden;
         }
 
-        /* Durum bandı */
+        /* ── Workflow stepper ── */
+        .workflow-stepper {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--ai-radius-lg);
+            padding: 12px 20px;
+            overflow-x: auto;
+        }
+        .wf-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .wf-num {
+            width: 22px; height: 22px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 1.5px solid var(--border-color);
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            transition: var(--ai-transition);
+        }
+        .wf-step.active .wf-num {
+            background: var(--ai-accent);
+            border-color: var(--ai-accent);
+            color: #fff;
+        }
+        .wf-step.done .wf-num {
+            background: var(--ai-green);
+            border-color: var(--ai-green);
+            color: #fff;
+        }
+        .wf-label {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            transition: var(--ai-transition);
+        }
+        .wf-step.active .wf-label { color: var(--text-primary); }
+        .wf-step.done .wf-label   { color: var(--ai-green); }
+        .wf-arrow {
+            margin: 0 12px;
+            color: var(--border-color);
+            flex-shrink: 0;
+        }
+
+        /* ── Durum bandı ── */
         .status-bar {
             display: flex;
             align-items: center;
             gap: 10px;
             padding: 10px 16px;
-            border-radius: var(--radius-md);
-            background: var(--bg-tertiary);
+            border-radius: var(--ai-radius);
+            background: var(--bg-secondary);
             border: 1px solid var(--border-color);
             font-size: 0.85rem;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
         .status-dot {
-            width: 10px; height: 10px; border-radius: 50%;
-            background: #718096; flex-shrink: 0;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--text-muted); flex-shrink: 0;
+            transition: background 0.3s, box-shadow 0.3s;
         }
-        .status-dot.online  { background: var(--success); box-shadow: 0 0 6px var(--success); }
-        .status-dot.offline { background: var(--danger);  box-shadow: 0 0 6px var(--danger); }
+        .status-dot.online {
+            background: var(--ai-green);
+            box-shadow: 0 0 0 3px rgba(34,197,94,0.2);
+            animation: pulse-ring 2s ease infinite;
+        }
+        .status-dot.offline { background: var(--ai-red); }
+        @keyframes pulse-ring {
+            0%,100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
+            50%      { box-shadow: 0 0 0 6px rgba(34,197,94,0.05); }
+        }
 
-        /* İki sütunlu ana layout */
+        /* ── Tek sütunlu ana layout ── */
         .gen-layout {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            display: flex;
+            flex-direction: column;
             gap: 20px;
         }
-        @media (max-width: 900px) { .gen-layout { grid-template-columns: 1fr; } }
 
-        /* Kartlar */
+        /* ── Collapsible sections ── */
+        .collapse-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--ai-radius-lg);
+            overflow: hidden;
+        }
+        .collapse-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 20px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            border-bottom: 1px solid transparent;
+            width: 100%;
+            text-align: left;
+            color: var(--text-primary);
+            font-size: 0.92rem;
+            font-weight: 600;
+            transition: background var(--ai-transition), border-color var(--ai-transition);
+            user-select: none;
+        }
+        .collapse-header:hover { background: rgba(99,102,241,0.04); }
+        .collapse-section.open .collapse-header { border-bottom-color: var(--border-color); }
+        .collapse-chevron {
+            margin-left: auto;
+            transition: transform 250ms ease;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .collapse-section.open .collapse-chevron { transform: rotate(180deg); }
+        .collapse-body {
+            display: none;
+            padding: 20px;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .collapse-section.open .collapse-body { display: flex; }
+
+        /* ── Kartlar ── */
         .gen-card {
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 24px;
+            border-radius: var(--ai-radius-lg);
+            padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 18px;
+            gap: 16px;
             min-width: 0;
             overflow: hidden;
         }
         .gen-card-title {
             font-weight: 600;
-            font-size: 1rem;
+            font-size: 0.95rem;
             color: var(--text-primary);
             display: flex;
             align-items: center;
@@ -65,108 +183,233 @@
             padding-bottom: 14px;
             border-bottom: 1px solid var(--border-color);
         }
+        .gen-card-title svg { flex-shrink: 0; opacity: 0.7; }
 
-        /* Platform seçici */
+        /* ── Platform seçici ── */
         .platform-selector {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
+            gap: 8px;
         }
         .platform-btn {
-            padding: 14px 10px;
-            border: 2px solid var(--border-color);
-            border-radius: var(--radius-md);
+            padding: 16px 8px 14px;
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--ai-radius);
             background: var(--bg-primary);
             color: var(--text-secondary);
             cursor: pointer;
             text-align: center;
-            transition: var(--transition);
-            font-size: 0.85rem;
+            transition: border-color var(--ai-transition), background var(--ai-transition), color var(--ai-transition), transform var(--ai-transition);
+            font-size: 0.83rem;
             font-weight: 500;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
         }
-        .platform-btn .plat-icon { font-size: 1.8rem; display: block; margin-bottom: 6px; }
-        .platform-btn:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+        .platform-btn svg { opacity: 0.55; transition: opacity var(--ai-transition), transform var(--ai-transition); }
+        .platform-btn:hover {
+            border-color: var(--ai-accent);
+            color: var(--ai-accent);
+            transform: translateY(-1px);
+        }
+        .platform-btn:hover svg { opacity: 0.9; }
         .platform-btn.selected {
-            border-color: var(--accent-primary);
-            background: rgba(79,70,229,0.08);
-            color: var(--accent-primary);
+            border-color: var(--ai-accent);
+            background: rgba(99,102,241,0.09);
+            color: var(--ai-accent);
             font-weight: 600;
         }
+        .platform-btn.selected svg { opacity: 1; }
 
-        /* Form elemanları */
+        /* ── Form elemanları ── */
         .form-group { display: flex; flex-direction: column; gap: 6px; }
         .form-label {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 600;
-            color: var(--text-secondary);
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.06em;
         }
         .form-input, .form-select, .form-textarea {
-            padding: 10px 12px;
+            padding: 9px 12px;
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
+            border-radius: 8px;
             background: var(--bg-primary);
             color: var(--text-primary);
-            font-size: 0.9rem;
+            font-size: 0.875rem;
             font-family: inherit;
-            transition: var(--transition);
+            transition: border-color var(--ai-transition), box-shadow var(--ai-transition);
             outline: none;
         }
         .form-input:focus, .form-select:focus, .form-textarea:focus {
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+            border-color: var(--ai-accent);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
         }
 
-        /* Platform params bölümü */
+        /* ── Platform params ── */
         .platform-params {
             display: none;
             flex-direction: column;
             gap: 12px;
             padding: 16px;
             background: var(--bg-tertiary);
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-light);
+            border-radius: var(--ai-radius);
+            border: 1px solid var(--border-color);
         }
         .platform-params.visible { display: flex; }
+        .params-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 2px;
+        }
 
-        /* Action butonları */
+        /* ── Action row ── */
         .action-row {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
+            padding-top: 4px;
+            border-top: 1px solid var(--border-color);
         }
+
+        /* ── Butonlar ── */
         .btn-generate {
             flex: 1;
-            padding: 13px 20px;
-            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            min-width: 120px;
+            padding: 11px 20px;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
             color: #fff;
             border: none;
-            border-radius: var(--radius-md);
-            font-size: 0.95rem;
+            border-radius: var(--ai-radius);
+            font-size: 0.9rem;
             font-weight: 600;
             cursor: pointer;
-            transition: var(--transition);
+            transition: opacity var(--ai-transition), transform var(--ai-transition), box-shadow var(--ai-transition);
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
+            box-shadow: 0 2px 8px rgba(99,102,241,0.3);
         }
-        .btn-generate:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-generate:hover:not(:disabled) {
+            opacity: 0.92;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(99,102,241,0.4);
+        }
+        .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 
-        /* Spinner */
+        .btn-execute {
+            width: 100%;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #fff;
+            border: none;
+            border-radius: var(--ai-radius);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity var(--ai-transition), transform var(--ai-transition), box-shadow var(--ai-transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 2px 8px rgba(34,197,94,0.25);
+        }
+        .btn-execute:hover:not(:disabled) {
+            opacity: 0.92;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(34,197,94,0.35);
+        }
+        .btn-execute:disabled { opacity: 0.38; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .btn-reset {
+            padding: 9px 14px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--ai-radius);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color var(--ai-transition), color var(--ai-transition), background var(--ai-transition);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-reset:hover { border-color: var(--ai-red); color: var(--ai-red); background: rgba(239,68,68,0.05); }
+
+        .btn-new-scenario {
+            padding: 9px 14px;
+            background: rgba(34,197,94,0.07);
+            border: 1px solid rgba(34,197,94,0.3);
+            border-radius: var(--ai-radius);
+            color: var(--ai-green);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color var(--ai-transition), background var(--ai-transition);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-new-scenario:hover { border-color: var(--ai-green); background: rgba(34,197,94,0.12); }
+
+        .btn-save {
+            padding: 10px 14px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--ai-radius);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color var(--ai-transition), color var(--ai-transition);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-save:hover:not(:disabled) { border-color: var(--ai-green); color: var(--ai-green); }
+        .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        .btn-icon-sm {
+            padding: 7px 11px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: border-color var(--ai-transition), color var(--ai-transition);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        .btn-icon-sm:hover { border-color: var(--ai-accent); color: var(--ai-accent); }
+
+        /* ── Spinner ── */
         .spinner {
-            width: 18px; height: 18px;
-            border: 2px solid rgba(255,255,255,0.3);
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.25);
             border-top-color: #fff;
             border-radius: 50%;
-            animation: spin 0.7s linear infinite;
+            animation: spin 0.65s linear infinite;
             display: none;
+            flex-shrink: 0;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Sağ panel */
+        /* ── Sağ panel ── */
         .output-panel {
             display: flex;
             flex-direction: column;
@@ -175,11 +418,11 @@
             overflow: hidden;
         }
 
-        /* Script görüntüleyici */
+        /* ── Script görüntüleyici ── */
         .script-viewer {
-            background: #1e1e2e;
-            border-radius: var(--radius-md);
-            border: 1px solid #2d2d4a;
+            background: #13131f;
+            border-radius: var(--ai-radius);
+            border: 1px solid #252540;
             overflow: hidden;
             min-width: 0;
             width: 100%;
@@ -188,87 +431,77 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 10px 14px;
-            background: #252540;
-            border-bottom: 1px solid #2d2d4a;
+            padding: 9px 14px;
+            background: #1a1a2e;
+            border-bottom: 1px solid #252540;
             gap: 8px;
         }
-        .script-viewer-header span { font-size: 0.8rem; color: #8888aa; font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .script-viewer-header span {
+            font-size: 0.78rem;
+            color: #6666aa;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .script-code {
             padding: 16px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.82rem;
-            color: #cdd6f4;
+            font-size: 0.8rem;
+            color: #c8d3f5;
             white-space: pre;
             overflow-x: auto;
             overflow-y: auto;
-            max-height: 400px;
-            line-height: 1.7;
+            max-height: 380px;
+            line-height: 1.75;
             width: 100%;
             box-sizing: border-box;
         }
         .script-placeholder {
-            padding: 40px 16px;
+            padding: 48px 16px;
             text-align: center;
-            color: #4a4a6a;
+            color: #3a3a5a;
             font-size: 0.85rem;
+            line-height: 1.7;
         }
 
         /* Toggle link */
         .toggle-script {
-            font-size: 0.82rem;
-            color: var(--accent-primary);
+            font-size: 0.78rem;
+            color: var(--ai-accent);
             cursor: pointer;
-            text-decoration: underline;
             user-select: none;
+            opacity: 0.8;
+            transition: opacity var(--ai-transition);
         }
+        .toggle-script:hover { opacity: 1; }
 
-        /* Execute butonu */
-        .btn-execute {
-            width: 100%;
-            padding: 13px 20px;
-            background: var(--success);
-            color: #fff;
-            border: none;
-            border-radius: var(--radius-md);
-            font-size: 0.95rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .btn-execute:hover:not(:disabled) { background: #0d9e6e; }
-        .btn-execute:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        /* Log terminali */
+        /* ── Log terminali ── */
         .log-terminal {
-            background: #0d1117;
-            border-radius: var(--radius-md);
-            border: 1px solid #21262d;
+            background: #0a0d14;
+            border-radius: var(--ai-radius);
+            border: 1px solid #1c2333;
             overflow: hidden;
         }
         .log-terminal-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 8px 14px;
-            background: #161b22;
-            border-bottom: 1px solid #21262d;
+            padding: 9px 14px;
+            background: #0f1623;
+            border-bottom: 1px solid #1c2333;
         }
-        .log-terminal-header span { font-size: 0.78rem; color: #8b949e; font-family: 'JetBrains Mono', monospace; }
-        .terminal-dots { display: flex; gap: 5px; }
-        .terminal-dots span { width: 10px; height: 10px; border-radius: 50%; }
+        .log-terminal-header span { font-size: 0.75rem; color: #6e7a8a; font-family: 'JetBrains Mono', monospace; }
+        .terminal-dots { display: flex; gap: 6px; }
+        .terminal-dots span { width: 11px; height: 11px; border-radius: 50%; }
         .log-body {
             padding: 12px 16px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            line-height: 1.7;
-            color: #c9d1d9;
+            font-size: 0.78rem;
+            line-height: 1.75;
+            color: #b0bec5;
             min-height: 200px;
-            max-height: 340px;
+            max-height: 320px;
             overflow-x: hidden;
             overflow-y: auto;
             white-space: pre-wrap;
@@ -277,187 +510,168 @@
             box-sizing: border-box;
         }
         .log-line { margin-bottom: 1px; }
-        .log-line.info    { color: #79c0ff; }
-        .log-line.success { color: #56d364; }
-        .log-line.error   { color: #ff7b72; }
-        .log-line.log     { color: #c9d1d9; }
-        .log-placeholder  { color: #484f58; text-align: center; padding: 40px 0; }
+        .log-line.info    { color: #82aaff; }
+        .log-line.success { color: #c3e88d; }
+        .log-line.error   { color: #ff5370; }
+        .log-line.log     { color: #b0bec5; }
+        .log-placeholder  { color: #2d3748; text-align: center; padding: 44px 0; font-size: 0.8rem; }
 
-        /* Badge */
+        /* ── Badge platform ── */
         .badge-platform {
             display: inline-flex;
             align-items: center;
             gap: 5px;
             padding: 3px 10px;
-            border-radius: var(--radius-full);
-            font-size: 0.75rem;
+            border-radius: 99px;
+            font-size: 0.72rem;
             font-weight: 600;
-            background: rgba(79,70,229,0.12);
-            color: var(--accent-primary);
+            background: rgba(99,102,241,0.12);
+            color: var(--ai-accent);
+            border: 1px solid rgba(99,102,241,0.2);
         }
 
-        /* Sıfırla butonu */
-        .btn-reset {
-            padding: 10px 16px;
-            background: var(--bg-tertiary);
-            color: var(--text-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            font-size: 0.9rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
-            white-space: nowrap;
-        }
-        .btn-reset:hover { border-color: var(--danger); color: var(--danger); }
-
-        /* Yeni Senaryo butonu */
-        .btn-new-scenario {
-            padding: 10px 16px;
-            background: rgba(16,185,129,0.08);
-            border: 1px solid rgba(16,185,129,0.35);
-            border-radius: var(--radius-md);
-            color: #10b981;
-            font-size: 0.85rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-        .btn-new-scenario:hover { border-color: #10b981; background: rgba(16,185,129,0.15); }
-
-        /* Senaryo listesinde platform badge */
+        /* ── Senaryo listesinde platform badge ── */
         .scenario-plat-badge {
-            font-size: 1rem;
+            font-size: 0.9rem;
             flex-shrink: 0;
-            width: 24px;
+            width: 22px;
             text-align: center;
         }
 
-        /* Çalışma süresi */
+        /* ── Çalışma süresi ── */
         .exec-timer {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.78rem;
+            font-size: 0.75rem;
             color: var(--text-muted);
-            min-width: 52px;
+            min-width: 48px;
             text-align: right;
         }
 
-        /* Adım raporu badge */
+        /* ── Adım raporu badge ── */
         .step-badge {
             display: inline-flex;
             align-items: center;
             gap: 4px;
             padding: 2px 8px;
             border-radius: 99px;
-            font-size: 0.72rem;
+            font-size: 0.7rem;
             font-weight: 600;
         }
-        .step-badge.rule { background: rgba(16,185,129,0.12); color: #10b981; }
-        .step-badge.llm  { background: rgba(59,130,246,0.12); color: #3b82f6; }
-        .step-badge.todo { background: rgba(245,158,11,0.12);  color: #f59e0b; }
+        .step-badge.rule { background: rgba(34,197,94,0.12); color: var(--ai-green); }
+        .step-badge.llm  { background: rgba(99,102,241,0.12); color: var(--ai-accent); }
+        .step-badge.todo { background: rgba(245,158,11,0.12); color: var(--ai-yellow); }
 
         /* ── Step List ── */
         .step-toolbar {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
         }
         .btn-add-step {
-            padding: 7px 14px;
+            padding: 6px 12px;
             border: 1px dashed var(--border-color);
-            border-radius: var(--radius-md);
+            border-radius: 8px;
             background: transparent;
             color: var(--text-secondary);
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 500;
-            transition: var(--transition);
+            transition: border-color var(--ai-transition), color var(--ai-transition), background var(--ai-transition);
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
         }
-        .btn-add-step:hover { border-color: var(--accent-primary); color: var(--accent-primary); border-style: solid; }
-        .btn-add-step.img-btn { border-color: rgba(16,185,129,0.4); color: #10b981; }
-        .btn-add-step.img-btn:hover { border-color: #10b981; background: rgba(16,185,129,0.05); }
+        .btn-add-step:hover { border-color: var(--ai-accent); color: var(--ai-accent); border-style: solid; background: rgba(99,102,241,0.05); }
+        .btn-add-step.img-btn { border-color: rgba(34,197,94,0.4); color: var(--ai-green); }
+        .btn-add-step.img-btn:hover { border-color: var(--ai-green); background: rgba(34,197,94,0.06); }
+        .btn-add-step.sql-btn { border-color: rgba(234,179,8,0.35); color: #ca8a04; }
+        .btn-add-step.sql-btn:hover { border-color: #ca8a04; background: rgba(234,179,8,0.06); }
+        .btn-add-step.api-btn { border-color: rgba(6,182,212,0.35); color: #0891b2; }
+        .btn-add-step.api-btn:hover { border-color: #0891b2; background: rgba(6,182,212,0.06); }
+
         .btn-import-file {
             margin-left: auto;
             padding: 5px 10px;
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
+            border-radius: 7px;
             background: transparent;
             color: var(--text-muted);
             cursor: pointer;
-            font-size: 0.78rem;
-            transition: var(--transition);
+            font-size: 0.75rem;
+            transition: border-color var(--ai-transition), color var(--ai-transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
-        .btn-import-file:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+        .btn-import-file:hover { border-color: var(--ai-accent); color: var(--ai-accent); }
+
         .step-list {
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            min-height: 80px;
-            max-height: 380px;
+            gap: 5px;
+            min-height: 200px;
+            max-height: calc(100vh - 460px);
             overflow-x: hidden;
             overflow-y: auto;
             width: 100%;
         }
         .step-empty {
             color: var(--text-muted);
-            font-size: 0.85rem;
+            font-size: 0.83rem;
             text-align: center;
-            padding: 28px 16px;
-            border: 2px dashed var(--border-color);
-            border-radius: var(--radius-md);
-            line-height: 1.7;
+            padding: 32px 16px;
+            border: 1.5px dashed var(--border-color);
+            border-radius: var(--ai-radius);
+            line-height: 1.8;
         }
         .step-item {
             display: flex;
             align-items: center;
             gap: 7px;
-            padding: 7px 10px;
+            padding: 8px 10px;
             background: var(--bg-primary);
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            transition: border-color 0.2s, background 0.2s;
+            border-radius: 8px;
+            transition: border-color 150ms, background 150ms;
         }
-        .step-item.running { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
-        .step-item.done    { border-color: #10b981; background: rgba(16,185,129,0.05); }
-        .step-item.fail    { border-color: #ef4444; background: rgba(239,68,68,0.05); }
+        .step-item:hover { border-color: var(--ai-accent); }
+        .step-item.running { border-color: var(--ai-blue); background: rgba(59,130,246,0.05); }
+        .step-item.done    { border-color: var(--ai-green); background: rgba(34,197,94,0.05); }
+        .step-item.fail    { border-color: var(--ai-red); background: rgba(239,68,68,0.05); }
         .step-num {
-            font-size: 0.7rem;
+            font-size: 0.68rem;
             color: var(--text-muted);
             font-family: 'JetBrains Mono', monospace;
-            min-width: 16px;
+            min-width: 18px;
             text-align: right;
             flex-shrink: 0;
         }
         .step-type-badge {
             padding: 2px 7px;
             border-radius: 99px;
-            font-size: 0.68rem;
+            font-size: 0.65rem;
             font-weight: 700;
             flex-shrink: 0;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.05em;
         }
-        .step-type-badge.text  { background: rgba(79,70,229,0.12); color: var(--accent-primary); }
-        .step-type-badge.image { background: rgba(16,185,129,0.12); color: #10b981; }
-        .step-type-badge.sql   { background: rgba(234,179,8,0.14);  color: #ca8a04; }
-        .step-type-badge.api   { background: rgba(6,182,212,0.14);  color: #0891b2; }
+        .step-type-badge.text  { background: rgba(99,102,241,0.12); color: var(--ai-accent); }
+        .step-type-badge.image { background: rgba(34,197,94,0.12); color: var(--ai-green); }
+        .step-type-badge.sql   { background: rgba(234,179,8,0.14); color: #ca8a04; }
+        .step-type-badge.api   { background: rgba(6,182,212,0.14); color: #0891b2; }
         .step-content-input {
             flex: 1;
             padding: 4px 6px;
             background: transparent;
             border: none;
-            border-bottom: 1px solid var(--border-light);
+            border-bottom: 1px solid var(--border-color);
             color: var(--text-primary);
             font-size: 0.85rem;
             outline: none;
             min-width: 0;
         }
-        .step-content-input:focus { border-bottom-color: var(--accent-primary); }
+        .step-content-input:focus { border-bottom-color: var(--ai-accent); }
         .step-img-thumb {
             height: 32px;
             width: 52px;
@@ -495,7 +709,7 @@
             outline: none;
             min-width: 0;
         }
-        .step-ext-input:focus { border-bottom-color: var(--accent-primary); }
+        .step-ext-input:focus { border-bottom-color: var(--ai-accent); }
         .step-drag-handle {
             color: var(--text-muted);
             cursor: grab;
@@ -506,9 +720,9 @@
             padding: 0 1px;
             line-height: 1;
         }
-        .step-drag-handle:hover { opacity: 1; color: var(--accent-primary); }
+        .step-drag-handle:hover { opacity: 1; color: var(--ai-accent); }
         .step-item.dragging  { opacity: 0.35; border-style: dashed; }
-        .step-item.drag-over { border-color: var(--accent-primary) !important; background: rgba(79,70,229,0.07) !important; }
+        .step-item.drag-over { border-color: var(--ai-accent) !important; background: rgba(99,102,241,0.08) !important; }
         /* Input/textarea içinde istem dışı drag başlamasın */
         .step-item input, .step-item textarea, .step-item select { -webkit-user-drag: none; }
         .step-ext-textarea {
@@ -526,11 +740,7 @@
             outline: none;
             box-sizing: border-box;
         }
-        .step-ext-textarea:focus { border-color: var(--accent-primary); }
-        .btn-add-step.sql-btn { border-color: rgba(234,179,8,0.4);  color: #ca8a04; }
-        .btn-add-step.sql-btn:hover { border-color: #ca8a04; background: rgba(234,179,8,0.08); }
-        .btn-add-step.api-btn { border-color: rgba(6,182,212,0.4);  color: #0891b2; }
-        .btn-add-step.api-btn:hover { border-color: #0891b2; background: rgba(6,182,212,0.08); }
+        .step-ext-textarea:focus { border-color: var(--ai-accent); }
         .step-action-select {
             padding: 3px 6px;
             background: var(--bg-secondary);
@@ -541,7 +751,7 @@
             cursor: pointer;
             flex-shrink: 0;
         }
-        .step-action-select:focus { outline: none; border-color: var(--accent-primary); }
+        .step-action-select:focus { outline: none; border-color: var(--ai-accent); }
         .step-img-placeholder {
             font-size: 0.78rem;
             color: #10b981;
@@ -582,26 +792,29 @@
         .ai-modal-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.75);
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(4px);
             z-index: 2000;
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 16px;
         }
         .modal-box {
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 28px;
+            border-radius: var(--ai-radius-lg);
+            padding: 24px;
             display: flex;
             flex-direction: column;
             gap: 16px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.5);
         }
         .countdown-num {
-            font-size: 6rem;
+            font-size: 5.5rem;
             font-weight: 800;
             text-align: center;
-            color: var(--accent-primary);
+            color: var(--ai-accent);
             line-height: 1;
             font-family: 'JetBrains Mono', monospace;
         }
@@ -609,30 +822,11 @@
             overflow: auto;
             max-height: 70vh;
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
+            border-radius: 8px;
         }
         #cropCanvas { cursor: crosshair; display: block; }
 
-        /* Kaydet butonu */
-        .btn-save {
-            padding: 12px 18px;
-            background: var(--bg-tertiary);
-            color: var(--text-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            font-size: 0.9rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .btn-save:hover:not(:disabled) { border-color: #10b981; color: #10b981; }
-        .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
-
-        /* Senaryo listesi modal */
+        /* ── Senaryo listesi modal ── */
         .scenario-item {
             display: flex;
             align-items: center;
@@ -640,37 +834,71 @@
             padding: 10px 12px;
             background: var(--bg-primary);
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            transition: border-color 0.2s;
+            border-radius: var(--ai-radius);
+            transition: border-color 150ms;
         }
-        .scenario-item:hover { border-color: var(--accent-primary); }
-        .scenario-item-name { flex: 1; font-size: 0.88rem; color: var(--text-primary); }
+        .scenario-item:hover { border-color: var(--ai-accent); }
+        .scenario-item-name { flex: 1; font-size: 0.875rem; color: var(--text-primary); }
         .btn-scenario-load {
             padding: 5px 12px;
-            background: rgba(79,70,229,0.1);
-            color: var(--accent-primary);
-            border: 1px solid var(--accent-primary);
-            border-radius: var(--radius-sm);
-            font-size: 0.78rem;
+            background: rgba(99,102,241,0.1);
+            color: var(--ai-accent);
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 7px;
+            font-size: 0.75rem;
             font-weight: 600;
             cursor: pointer;
+            transition: background var(--ai-transition);
         }
+        .btn-scenario-load:hover { background: rgba(99,102,241,0.18); }
         .btn-scenario-del {
             padding: 5px 10px;
             background: rgba(239,68,68,0.06);
-            color: var(--danger);
-            border: 1px solid rgba(239,68,68,0.3);
-            border-radius: var(--radius-sm);
-            font-size: 0.78rem;
+            color: var(--ai-red);
+            border: 1px solid rgba(239,68,68,0.25);
+            border-radius: 7px;
+            font-size: 0.75rem;
             cursor: pointer;
+            transition: background var(--ai-transition);
         }
+        .btn-scenario-del:hover { background: rgba(239,68,68,0.12); }
         .scenario-list-body {
             display: flex;
             flex-direction: column;
-            gap: 7px;
+            gap: 6px;
             max-height: 380px;
             overflow-y: auto;
         }
+
+        /* ── Execute row ── */
+        .exec-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ── Hint bölümü ── */
+        .hint-box {
+            padding: 14px 16px;
+            border-radius: var(--ai-radius);
+            font-size: 0.8rem;
+            line-height: 1.75;
+            color: var(--text-secondary);
+        }
+        .hint-box.purple { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.18); }
+        .hint-box.green  { background: rgba(34,197,94,0.06);  border: 1px solid rgba(34,197,94,0.18); }
+        .hint-box-title  { font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+        .hint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+        .hint-section-label {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        code.hint { background: rgba(0,0,0,0.08); padding: 1px 5px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
     </style>
 </head>
 <body>
@@ -680,22 +908,56 @@
     <main class="main-content">
         <header class="header">
             <div class="header-left">
-                <h1 class="page-title">🤖 AI Test Generator</h1>
-                <p style="margin:6px 0 0; color:var(--text-muted); font-size:0.9rem;">
-                    Adımları ekle → Platform seç → Script üret → Çalıştır
+                <h1 class="page-title" style="display:flex;align-items:center;gap:10px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--ai-accent);flex-shrink:0;"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+                    AI Test Generator
+                </h1>
+                <p style="margin:5px 0 0; color:var(--text-muted); font-size:0.83rem; padding-left:32px;">
+                    Adım ekle &rarr; Platform seç &rarr; Script üret &rarr; Çalıştır
                 </p>
             </div>
             <div class="header-right">
-                <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+                <button class="theme-toggle" onclick="Theme.toggle()" aria-label="Tema değiştir">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
             </div>
         </header>
 
         <div class="page-content">
 
-            <!-- Ollama Durum Bandı -->
-            <div class="status-bar" id="statusBar">
-                <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">Ollama durumu kontrol ediliyor...</span>
+            <!-- Workflow Stepper -->
+            <div class="workflow-stepper" id="workflowStepper">
+                <div class="wf-step" id="wf1">
+                    <div class="wf-num">1</div>
+                    <span class="wf-label">Adım Ekle</span>
+                </div>
+                <div class="wf-arrow">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <div class="wf-step" id="wf2">
+                    <div class="wf-num">2</div>
+                    <span class="wf-label">Platform Seç</span>
+                </div>
+                <div class="wf-arrow">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <div class="wf-step" id="wf3">
+                    <div class="wf-num">3</div>
+                    <span class="wf-label">Script Üret</span>
+                </div>
+                <div class="wf-arrow">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+                <div class="wf-step" id="wf4">
+                    <div class="wf-num">4</div>
+                    <span class="wf-label">Çalıştır</span>
+                </div>
+                <div style="margin-left:auto; display:flex; align-items:center; gap:16px; flex-shrink:0;">
+                    <div class="status-bar" id="statusBar" style="margin-bottom:0; padding:6px 14px; font-size:0.78rem;">
+                        <div class="status-dot" id="statusDot"></div>
+                        <span id="statusText" style="color:var(--text-muted);">Ollama kontrol ediliyor...</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Ana İki Sütun Layout -->
@@ -704,27 +966,50 @@
                 <!-- SOL: GİRİŞ PANELİ -->
                 <div class="gen-card">
                     <div class="gen-card-title">
-                        📋 Senaryo Adımları
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        Senaryo Adımları
                         <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
-                            <button class="btn-import-file" onclick="openScenarios()" title="Kaydedilmiş senaryoları aç">📂 Senaryolar</button>
-                            <button class="btn-import-file" onclick="document.getElementById('fileImportInput').click()" title="Dosyadan adım içe aktar (her satır = 1 metin adımı)">📁 Dosyadan</button>
+                            <button class="btn-import-file" onclick="openScenarios()" title="Kaydedilmiş senaryoları aç">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                Senaryolar
+                            </button>
+                            <button class="btn-import-file" onclick="document.getElementById('fileImportInput').click()" title="Dosyadan adım içe aktar">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Dosyadan
+                            </button>
                             <input type="file" id="fileImportInput" accept=".txt,.csv,.xlsx,.xls,.md" style="display:none">
                         </span>
                     </div>
 
                     <!-- Step Araç Çubuğu -->
                     <div class="step-toolbar">
-                        <button class="btn-add-step" onclick="addTextStep()">＋ Metin</button>
-                        <button class="btn-add-step img-btn" id="btnAddImage" onclick="addImageStep()" style="display:none;">📷 Görsel</button>
-                        <button class="btn-add-step sql-btn" onclick="addSqlStep()">🗄️ SQL</button>
-                        <button class="btn-add-step api-btn" onclick="addApiStep()">🔌 API</button>
+                        <button class="btn-add-step" onclick="addTextStep()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Metin
+                        </button>
+                        <button class="btn-add-step img-btn" id="btnAddImage" onclick="addImageStep()" style="display:none;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            Görsel
+                        </button>
+                        <button class="btn-add-step sql-btn" onclick="addSqlStep()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                            SQL
+                        </button>
+                        <button class="btn-add-step api-btn" onclick="addApiStep()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                            API
+                        </button>
                     </div>
 
                     <!-- Step Listesi -->
                     <div class="step-list" id="stepList"
                          ondragover="stepListDragOver(event)"
                          ondrop="stepListDrop(event)">
-                        <div class="step-empty">Henüz adım yok.<br>Yukarıdaki butonlarla <strong>Metin</strong> veya <strong>Görsel</strong> adım ekleyin.</div>
+                        <div class="step-empty">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.25; margin-bottom:10px; display:block; margin-left:auto; margin-right:auto;"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                            Henüz adım yok.<br>
+                            Yukarıdaki butonlarla <strong>Metin</strong>, <strong>Görsel</strong>, <strong>SQL</strong> veya <strong>API</strong> adım ekleyin.
+                        </div>
                     </div>
 
                     <!-- Platform Seçimi -->
@@ -732,15 +1017,15 @@
                         <label class="form-label">Platform</label>
                         <div class="platform-selector">
                             <div class="platform-btn" data-platform="web" onclick="selectPlatform('web')">
-                                <span class="plat-icon">🌐</span>
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                                 Web
                             </div>
                             <div class="platform-btn" data-platform="mobile" onclick="selectPlatform('mobile')">
-                                <span class="plat-icon">📱</span>
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                                 Mobil
                             </div>
                             <div class="platform-btn" data-platform="desktop" onclick="selectPlatform('desktop')">
-                                <span class="plat-icon">🖥️</span>
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                                 Desktop
                             </div>
                         </div>
@@ -748,7 +1033,10 @@
 
                     <!-- WEB PARAMETRELERİ -->
                     <div class="platform-params" id="params-web">
-                        <div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:4px;">🌐 Web Parametreleri</div>
+                        <div class="params-title">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                            Web Parametreleri
+                        </div>
                         <div class="form-group">
                             <label class="form-label">Tarayıcı</label>
                             <select class="form-select" id="web-browser">
@@ -766,7 +1054,10 @@
 
                     <!-- MOBİL PARAMETRELERİ -->
                     <div class="platform-params" id="params-mobile">
-                        <div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:4px;">📱 Mobil Parametreler</div>
+                        <div class="params-title">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                            Mobil Parametreler
+                        </div>
                         <div class="form-group">
                             <label class="form-label">Cihaz ID / Emülatör</label>
                             <div style="display:flex; gap:8px;">
@@ -795,7 +1086,10 @@
 
                     <!-- DESKTOP PARAMETRELERİ -->
                     <div class="platform-params" id="params-desktop">
-                        <div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:4px;">🖥️ Desktop Parametreleri</div>
+                        <div class="params-title">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            Desktop Parametreleri
+                        </div>
                         <div class="form-group">
                             <label class="form-label">Uygulama Yolu (opsiyonel)</label>
                             <input type="text" class="form-input" id="desk-app"
@@ -821,153 +1115,184 @@
                     </div>
 
                     <!-- Mobil İpucu -->
-                    <div id="scan-section" style="display:none; padding:12px; background:rgba(79,70,229,0.06); border-radius:var(--radius-md); border:1px solid rgba(79,70,229,0.2); font-size:0.8rem; color:var(--text-secondary); line-height:1.7;">
-                        <strong style="color:var(--accent-primary);">💡 İpucu — Test case nasıl yazılır?</strong><br>
-                        AI, buton <strong>metnine göre</strong> otomatik bulur — element ID gerekmez.<br><br>
-                        <strong>Örnek:</strong><br>
-                        Adım 1: "Giriş Yap" butonuna tıkla<br>
-                        Adım 2: Telefon alanına "05xx" yaz<br>
-                        Adım 3: "Devam" butonuna tıkla<br>
-                        Adım 4: "Hesabım" yazısının göründüğünü doğrula
+                    <div id="scan-section" style="display:none;" class="hint-box purple">
+                        <div class="hint-box-title" style="color:var(--ai-accent);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            İpucu — Test case nasıl yazılır?
+                        </div>
+                        AI, buton <strong>metnine göre</strong> otomatik bulur — element ID gerekmez.<br>
+                        <strong>Örnek:</strong> "Giriş Yap" butonuna tıkla &rarr; Telefon alanına "05xx" yaz &rarr; "Hesabım" yazısının göründüğünü doğrula
                     </div>
 
                     <!-- Web İpucu -->
-                    <div id="web-hint-section" style="display:none; padding:12px; background:rgba(16,185,129,0.06); border-radius:var(--radius-md); border:1px solid rgba(16,185,129,0.2); font-size:0.8rem; color:var(--text-secondary); line-height:1.8;">
-                        <strong style="color:#10b981;">💡 Web Kural Seti</strong>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-top:8px;">
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Navigasyon</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"https://ornek.com" aç</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">geri</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">ileri</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">sayfayı yenile</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">aşağı kaydır</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">yukarı kaydır</code></div>
-                            </div>
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Tıklama / Yazma</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Giriş Yap" tıkla</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">kullanıcı adı alanına "admin" yaz</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">şifre alanına "1234" gir</code></div>
-                            </div>
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Doğrulama / Bekleme</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Hoşgeldiniz" görünmeli</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Yüklendi" görünene kadar bekle</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">3 saniye bekle</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">ekran görüntüsü al</code></div>
-                            </div>
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Klavye</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Ctrl+A" bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Ctrl+C" bas</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Delete" bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Backspace" bas</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">enter bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">tab bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">esc bas</code></div>
-                            </div>
+                    <div id="web-hint-section" style="display:none;" class="hint-box green">
+                        <div class="hint-box-title" style="color:var(--ai-green);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                            Web Kural Seti
                         </div>
-                        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(16,185,129,0.15); opacity:0.7;">
-                            Selenium WebDriver kullanır. Tırnak içi metin: element metni veya alan adı olarak aranır.
+                        <div class="hint-grid">
+                            <div>
+                                <div class="hint-section-label">Navigasyon</div>
+                                <div><code class="hint">"https://ornek.com" aç</code></div>
+                                <div><code class="hint">geri</code> / <code class="hint">ileri</code></div>
+                                <div><code class="hint">sayfayı yenile</code></div>
+                                <div><code class="hint">aşağı kaydır</code></div>
+                            </div>
+                            <div>
+                                <div class="hint-section-label">Tıklama / Yazma</div>
+                                <div><code class="hint">"Giriş Yap" tıkla</code></div>
+                                <div><code class="hint">kullanıcı adına "admin" yaz</code></div>
+                                <div><code class="hint">şifre alanına "1234" gir</code></div>
+                            </div>
+                            <div>
+                                <div class="hint-section-label">Doğrulama</div>
+                                <div><code class="hint">"Hoşgeldiniz" görünmeli</code></div>
+                                <div><code class="hint">"Yüklendi" görünene kadar bekle</code></div>
+                                <div><code class="hint">3 saniye bekle</code></div>
+                            </div>
+                            <div>
+                                <div class="hint-section-label">Klavye</div>
+                                <div><code class="hint">"Ctrl+A" bas</code></div>
+                                <div><code class="hint">enter bas</code> / <code class="hint">esc bas</code></div>
+                                <div><code class="hint">ekran görüntüsü al</code></div>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Desktop İpucu -->
-                    <div id="desk-hint-section" style="display:none; padding:12px; background:rgba(79,70,229,0.06); border-radius:var(--radius-md); border:1px solid rgba(79,70,229,0.2); font-size:0.8rem; color:var(--text-secondary); line-height:1.8;">
-                        <strong style="color:var(--accent-primary);">💡 Desktop Kural Seti</strong>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-top:8px;">
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Tıklama</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Kaydet" tıkla</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"dosya.txt" çift tıkla</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"öğe" sağ tıkla</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Dosya > Yeni" tıkla</code></div>
-                            </div>
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Yazma</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Merhaba" yaz</code> <span style="opacity:0.6;">(Türkçe ✓)</span></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"metin" kopyala</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">yapıştır</code></div>
-                            </div>
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Doğrulama / Bekleme</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Başarılı" görünmeli</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Yükleniyor" görünene kadar bekle</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">3 saniye bekle</code></div>
-                            </div>
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">Klavye / Diğer</div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">"Ctrl+S" bas</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">enter bas</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">escape bas</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">aşağı kaydır</code> / <code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">yukarı kaydır</code></div>
-                                <div><code style="background:rgba(0,0,0,0.06); padding:1px 4px; border-radius:3px;">ekran görüntüsü al</code></div>
-                            </div>
+                    <div id="desk-hint-section" style="display:none;" class="hint-box purple">
+                        <div class="hint-box-title" style="color:var(--ai-accent);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            Desktop Kural Seti
                         </div>
-                        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(79,70,229,0.15); opacity:0.7;">
-                            Görsel adımlar OpenCV ile eşleştirilir. Tırnak içi metin: pywinauto → OCR → Vision AI.
+                        <div class="hint-grid">
+                            <div>
+                                <div class="hint-section-label">Tıklama</div>
+                                <div><code class="hint">"Kaydet" tıkla</code></div>
+                                <div><code class="hint">"dosya.txt" çift tıkla</code></div>
+                                <div><code class="hint">"Dosya &gt; Yeni" tıkla</code></div>
+                            </div>
+                            <div>
+                                <div class="hint-section-label">Yazma</div>
+                                <div><code class="hint">"Merhaba" yaz</code> <span style="opacity:0.6;">(Türkçe ✓)</span></div>
+                                <div><code class="hint">"metin" kopyala</code></div>
+                                <div><code class="hint">yapıştır</code></div>
+                            </div>
+                            <div>
+                                <div class="hint-section-label">Doğrulama</div>
+                                <div><code class="hint">"Başarılı" görünmeli</code></div>
+                                <div><code class="hint">3 saniye bekle</code></div>
+                                <div><code class="hint">ekran görüntüsü al</code></div>
+                            </div>
+                            <div>
+                                <div class="hint-section-label">Klavye</div>
+                                <div><code class="hint">"Ctrl+S" bas</code></div>
+                                <div><code class="hint">enter bas</code> / <code class="hint">escape bas</code></div>
+                                <div><code class="hint">aşağı kaydır</code></div>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Generate Butonu -->
                     <div class="action-row">
-                        <button class="btn-reset" onclick="resetAll()" title="Platformu da dahil her şeyi sıfırla">↺ Sıfırla</button>
-                        <button class="btn-new-scenario" onclick="newScenario()" title="Adımları ve scripti temizle, platform seçimi kalır">✚ Yeni Senaryo</button>
+                        <button class="btn-reset" onclick="resetAll()" title="Her şeyi sıfırla">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+                            Sıfırla
+                        </button>
+                        <button class="btn-new-scenario" onclick="newScenario()" title="Adımları temizle, platform seçimi kalır">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Yeni Senaryo
+                        </button>
                         <button class="btn-generate" id="btnGenerate" onclick="generateScript()" disabled>
                             <div class="spinner" id="genSpinner"></div>
-                            <span id="genBtnText">✨ Script Üret</span>
+                            <svg id="genIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            <span id="genBtnText">Script Üret</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- SAĞ: ÇIKTI PANELİ -->
-                <div class="output-panel">
-
-                    <!-- Script Gösterici -->
-                    <div class="gen-card" style="gap:12px;">
-                        <div class="gen-card-title" style="justify-content:space-between; flex-wrap:wrap; gap:8px; min-width:0;">
-                            <span style="white-space:nowrap;">⚙️ Üretilen Script</span>
-                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex-shrink:0;">
-                                <span id="platformBadge" style="display:none;" class="badge-platform"></span>
-                                <span class="toggle-script" id="toggleScript" onclick="toggleScriptView()" style="display:none;">Gizle</span>
-                                <button onclick="copyScript()" id="btnCopy" style="display:none; padding:4px 10px; font-size:0.78rem;" class="btn btn-secondary btn-sm">Kopyala</button>
-                                <button onclick="toggleEditScript()" id="btnEdit" style="display:none; padding:4px 10px; font-size:0.78rem;" class="btn btn-secondary btn-sm">Düzenle</button>
-                            </div>
+                <!-- Üretilen Script (collapsible) -->
+                <div class="collapse-section" id="scriptSection">
+                    <button class="collapse-header" onclick="toggleCollapseSection('scriptSection')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.7"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                        Üretilen Script
+                        <span id="platformBadge" class="badge-platform" style="display:none;"></span>
+                        <svg class="collapse-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="collapse-body">
+                        <!-- Adım Analiz Raporu -->
+                        <div id="stepReport" style="display:none;">
+                            <div style="font-size:0.73rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">Adım Analizi</div>
+                            <div id="stepReportBody" style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;"></div>
                         </div>
 
-                        <!-- Adım Analiz Raporu -->
-                        <div id="stepReport" style="display:none; margin-bottom:12px;">
-                            <div style="font-size:0.78rem; font-weight:600; color:var(--text-muted); margin-bottom:6px;">Adım Analizi</div>
-                            <div id="stepReportBody" style="display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;"></div>
+                        <!-- Script Araç Çubuğu -->
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span class="toggle-script" id="toggleScript" onclick="toggleScriptView()" style="display:none;">Gizle</span>
+                            <button onclick="copyScript()" id="btnCopy" class="btn-icon-sm" style="display:none;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                Kopyala
+                            </button>
+                            <button onclick="toggleEditScript()" id="btnEdit" class="btn-icon-sm" style="display:none;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                Düzenle
+                            </button>
                         </div>
 
                         <div id="scriptViewerWrap">
                             <div class="script-viewer">
                                 <div class="script-viewer-header">
                                     <span id="scriptFileName">generated_test.py</span>
-                                    <span id="scriptLineCount" style="font-size:0.75rem; color:#555577;"></span>
+                                    <span id="scriptLineCount" style="font-size:0.72rem; color:#44447a; flex-shrink:0;"></span>
                                 </div>
                                 <div class="script-code" id="scriptCode">
                                     <div class="script-placeholder">
+                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:0.15; display:block; margin:0 auto 12px;"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                                         Script henüz üretilmedi.<br>
-                                        <span style="font-size:0.75rem; opacity:0.6;">Sol panelden adımları ekle ve "Script Üret" butonuna bas.</span>
+                                        <span style="font-size:0.75rem; opacity:0.5;">Sol panelden adım ekle, platform seç, "Script Üret"e bas.</span>
                                     </div>
                                 </div>
-                                <textarea id="scriptEditArea" style="display:none; width:100%; min-height:400px; max-width:100%; background:#1a1a2e; color:#c9d1d9; font-family:'JetBrains Mono',monospace; font-size:0.82rem; border:none; outline:none; resize:vertical; padding:12px; box-sizing:border-box; line-height:1.6; overflow-x:auto;" spellcheck="false"></textarea>
+                                <textarea id="scriptEditArea" style="display:none; width:100%; min-height:380px; max-width:100%; background:#0e0e1c; color:#c8d3f5; font-family:'JetBrains Mono',monospace; font-size:0.8rem; border:none; outline:none; resize:vertical; padding:14px; box-sizing:border-box; line-height:1.75; overflow-x:auto;" spellcheck="false"></textarea>
                             </div>
                         </div>
 
-                        <!-- Execute -->
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <button class="btn-execute" id="btnExecute" onclick="executeScript()" disabled style="flex:1;">
-                                <div class="spinner" id="execSpinner" style="border-top-color:#fff; border-color:rgba(255,255,255,0.3);"></div>
-                                <span id="execBtnText">▶ Çalıştır</span>
+                        <!-- Execute Row -->
+                        <div class="exec-row">
+                            <button class="btn-execute" id="btnExecute" onclick="executeScript()" disabled style="flex:1; min-width:100px;">
+                                <div class="spinner" id="execSpinner"></div>
+                                <svg id="execIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <span id="execBtnText">Çalıştır</span>
                             </button>
-                            <button id="btnStop" onclick="stopExecution()" style="display:none; padding:12px 18px; background:#dc2626; color:#fff; border:none; border-radius:var(--radius-md); cursor:pointer; font-size:0.9rem; font-weight:600; white-space:nowrap;">⏹ Durdur</button>
-                            <button class="btn-save" id="btnSave" onclick="openSaveModal()" disabled title="Senaryoyu Git workspace'e kaydet">💾 Kaydet</button>
-                            <button onclick="gitPull()" title="Remote'dan son degisiklikleri cek" style="padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color); background:var(--bg-tertiary); color:var(--text-primary); cursor:pointer; font-size:0.85rem; white-space:nowrap;">⬇ Pull</button>
-                            <button onclick="gitPush()" title="Degisiklikleri remote branch'e push et" style="padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color); background:var(--bg-tertiary); color:var(--text-primary); cursor:pointer; font-size:0.85rem; white-space:nowrap;">⬆ Push</button>
+                            <button id="btnStop" onclick="stopExecution()" style="display:none; padding:10px 16px; background:#dc2626; color:#fff; border:none; border-radius:var(--ai-radius); cursor:pointer; font-size:0.85rem; font-weight:600; white-space:nowrap; align-items:center; gap:6px;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                                Durdur
+                            </button>
+                            <button class="btn-save" id="btnSave" onclick="openSaveModal()" disabled title="Git workspace'e kaydet">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                Kaydet
+                            </button>
+                            <button onclick="gitPull()" title="Remote'dan değişiklikleri çek" class="btn-icon-sm">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                                Pull
+                            </button>
+                            <button onclick="gitPush()" title="Değişiklikleri push et" class="btn-icon-sm">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                                Push
+                            </button>
                             <span class="exec-timer" id="execTimer" style="display:none;">0:00</span>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Log Terminali -->
-                    <div class="gen-card" style="gap:12px; padding:0; overflow:hidden;">
-                        <div class="log-terminal" style="border:none; border-radius:var(--radius-lg);">
+                <!-- Terminal (collapsible) -->
+                <div class="collapse-section" id="terminalSection">
+                    <button class="collapse-header" onclick="toggleCollapseSection('terminalSection')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                        Terminal
+                        <svg class="collapse-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="collapse-body" style="padding:0;">
+                        <div class="log-terminal" style="border:none; border-radius:0 0 var(--ai-radius-lg) var(--ai-radius-lg);">
                             <div class="log-terminal-header">
                                 <div class="terminal-dots">
                                     <span style="background:#ff5f57;"></span>
@@ -975,15 +1300,17 @@
                                     <span style="background:#28c840;"></span>
                                 </div>
                                 <span>terminal output</span>
-                                <button onclick="clearLogs()" style="background:none; border:none; color:#8b949e; cursor:pointer; font-size:0.75rem;">temizle</button>
+                                <button onclick="clearLogs()" style="background:none; border:none; color:#4a5568; cursor:pointer; font-size:0.72rem; transition:color 150ms;" onmouseover="this.style.color='#9ca3af'" onmouseout="this.style.color='#4a5568'">temizle</button>
                             </div>
                             <div class="log-body" id="logBody">
-                                <div class="log-placeholder">Koşum başlatıldığında çıktılar burada görüntülenir.</div>
+                                <div class="log-placeholder">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block; margin:0 auto 10px; opacity:0.2;"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                                    Koşum başlatıldığında çıktılar burada görüntülenir.
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <!-- /SAĞ PANEL -->
 
             </div>
         </div>
@@ -993,7 +1320,10 @@
 <!-- ── MODAL: Geri Sayım ── -->
 <div id="countdownModal" class="ai-modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:340px; text-align:center; align-items:center;">
-        <div style="font-size:0.9rem; color:var(--text-muted);">Hedef uygulamaya geçin</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); display:flex; align-items:center; gap:6px; justify-content:center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Hedef uygulamaya geçin
+        </div>
         <div id="countdownNum" class="countdown-num">3</div>
         <div style="font-size:0.85rem; color:var(--text-secondary);">saniye sonra ekran görüntüsü alınacak…</div>
         <button class="btn-reset" onclick="cancelCountdown()" style="margin-top:4px;">İptal</button>
@@ -1008,7 +1338,9 @@
                 <div style="font-weight:600; font-size:1rem;">Ekranı Kırp ve Adıma Ekle</div>
                 <div style="font-size:0.8rem; color:var(--text-muted); margin-top:3px;">Tıkla ve sürükle → hedef alanı seç → Kırp ve Ekle</div>
             </div>
-            <button class="step-del-btn" onclick="cancelCrop()" style="font-size:1.2rem; opacity:0.7;" title="İptal">✕</button>
+            <button onclick="cancelCrop()" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:4px; border-radius:6px; display:flex; align-items:center;" aria-label="İptal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
         </div>
         <div class="crop-canvas-wrap">
             <canvas id="cropCanvas"></canvas>
@@ -1016,7 +1348,10 @@
         <div style="display:flex; gap:10px; justify-content:flex-end; align-items:center;">
             <span id="cropSelectionInfo" style="font-size:0.78rem; color:var(--text-muted); flex:1;"></span>
             <button class="btn-reset" onclick="cancelCrop()">İptal</button>
-            <button class="btn-generate" id="btnCropConfirm" onclick="confirmCrop()" disabled style="flex:none; padding:10px 20px;">✓ Kırp ve Ekle</button>
+            <button class="btn-generate" id="btnCropConfirm" onclick="confirmCrop()" disabled style="flex:none; padding:10px 20px; display:flex; align-items:center; gap:6px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Kırp ve Ekle
+            </button>
         </div>
     </div>
 </div>
@@ -1024,10 +1359,13 @@
 <!-- ── MODAL: Senaryo Kaydet ── -->
 <div id="saveModal" class="ai-modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:420px; width:100%;">
-        <div style="font-weight:600; font-size:1rem;">💾 Senaryoyu Kaydet</div>
+        <div style="font-weight:600; font-size:1rem; display:flex; align-items:center; gap:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ai-green);"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Senaryoyu Kaydet
+        </div>
         <div style="font-size:0.85rem; color:var(--text-muted);">Senaryo adımları ve üretilen script Git workspace'e kaydedilecek.</div>
         <div id="saveModalHint" style="display:none; font-size:0.8rem; color:#f59e0b; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:6px; padding:8px 12px;">
-            ✏️ Yüklenen senaryo düzenleniyor. Adı <strong>aynı tutarsanız</strong> üzerine yazılır; değiştirirseniz yeni senaryo oluşturulur.
+            Yüklenen senaryo düzenleniyor. Adı <strong>aynı tutarsanız</strong> üzerine yazılır; değiştirirseniz yeni senaryo oluşturulur.
         </div>
         <div class="form-group">
             <label class="form-label">Senaryo Adı</label>
@@ -1047,11 +1385,14 @@
 <div id="scenariosModal" class="ai-modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:540px; width:100%;">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-            <div style="font-weight:600; font-size:1rem;">
-                📂 Kaydedilmiş Senaryolar
+            <div style="font-weight:600; font-size:1rem; display:flex; align-items:center; gap:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.7;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                Kaydedilmiş Senaryolar
                 <span id="scenarioModalPlatLabel" style="margin-left:8px; font-size:0.78rem; font-weight:400; opacity:0.65;"></span>
             </div>
-            <button class="step-del-btn" onclick="closeScenariosModal()" style="font-size:1.2rem; opacity:0.7;">✕</button>
+            <button onclick="closeScenariosModal()" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:4px; border-radius:6px; display:flex; align-items:center; transition:color 150ms;" aria-label="Kapat">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
         </div>
         <div id="scenariosListBody" class="scenario-list-body">
             <div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:24px;">Yükleniyor...</div>
@@ -1673,12 +2014,19 @@
         return base;
     }
 
+    function toggleCollapseSection(id) {
+        document.getElementById(id).classList.toggle("open");
+    }
+    function openCollapseSection(id) {
+        document.getElementById(id).classList.add("open");
+    }
+
     function setGeneratingUI(loading) {
         const btn     = document.getElementById("btnGenerate");
         const spinner = document.getElementById("genSpinner");
         const text    = document.getElementById("genBtnText");
         spinner.style.display = loading ? "block" : "none";
-        text.textContent      = loading ? "Üretiliyor..." : "✨ Script Üret";
+        text.textContent      = loading ? "Üretiliyor..." : "Script Üret";
         btn.disabled          = loading;
     }
 
@@ -1701,6 +2049,7 @@
         document.getElementById("toggleScript").style.display = "inline";
         document.getElementById("btnCopy").style.display      = "inline-block";
         document.getElementById("btnEdit").style.display      = "inline-block";
+        openCollapseSection("scriptSection");
     }
 
     function resetOutput() {
@@ -1849,10 +2198,11 @@
         const text    = document.getElementById("execBtnText");
         const timer   = document.getElementById("execTimer");
         spinner.style.display = loading ? "block" : "none";
-        text.textContent      = loading ? "Çalışıyor..." : "▶ Çalıştır";
+        text.textContent      = loading ? "Çalışıyor..." : "Çalıştır";
         btn.disabled          = loading;
         btnStop.style.display = loading ? "inline-block" : "none";
         if (loading) {
+            openCollapseSection("terminalSection");
             let secs = 0;
             timer.style.display = "inline";
             timer.textContent   = "0:00";

@@ -2722,7 +2722,9 @@ async def execute_script(
     started_at = _datetime.datetime.utcnow().isoformat()
     step_outcomes: dict[int, str] = {}   # idx -> "pass" | "fail"
     terminal_lines: list[str] = []        # tam terminal çıktısı
-    stop_file  = tempfile.mktemp(suffix=".stop", prefix=f"ai_stop_{run_id}_")
+    _stop_fd, stop_file = tempfile.mkstemp(suffix=".stop", prefix=f"ai_stop_{run_id}_")
+    os.close(_stop_fd)
+    os.unlink(stop_file)  # Dosya yokluğu = devam; varlığı = dur sinyali
     _stop_files[run_id] = stop_file
 
     async def stream():

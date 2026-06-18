@@ -538,7 +538,10 @@ class AppiumService:
         ADB ile UI dump alıp metin koordinatını bulup tıkla.
         SADECE metin eşleşmesi - tahmin yok!
         """
-        import xml.etree.ElementTree as ET
+        try:
+            import defusedxml.ElementTree as ET
+        except ImportError:
+            import xml.etree.ElementTree as ET
         import re
         
         xml_content = None

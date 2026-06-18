@@ -465,16 +465,20 @@
                 stepsEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">Adım detayı yok.</div>';
             }
 
-            // Terminal log (sadece hata varsa göster)
+            // Terminal log — hata varsa otomatik açık, başarılıysa kapalı
             const termSec = document.getElementById("terminalSection");
-            if (d.terminal_log && (d.failed > 0 || d.exit_code !== 0)) {
-                const logId = "termLog_" + d.run_id;
+            if (d.terminal_log) {
+                const logId   = "termLog_" + d.run_id;
+                const hasFail = d.failed > 0 || d.exit_code !== 0;
+                const openCls = hasFail ? " open" : "";
+                const arrow   = hasFail ? "&#9650; Gizle" : "&#9660; Göster";
+                const color   = hasFail ? "color:#f87171;" : "";
                 termSec.innerHTML = `
-                    <div class="terminal-toggle" onclick="toggleTerminal('${logId}')">
+                    <div class="terminal-toggle" onclick="toggleTerminal('${logId}')" style="${color}">
                         <span>&#128196;</span> Terminal Logu
-                        <span style="margin-left:auto;font-size:0.75rem;" id="termArrow_${logId}">&#9660; Goster</span>
+                        <span style="margin-left:auto;font-size:0.75rem;" id="termArrow_${logId}">${arrow}</span>
                     </div>
-                    <div class="terminal-wrap" id="${logId}">
+                    <div class="terminal-wrap${openCls}" id="${logId}">
                         <div class="terminal-block">${escHtml(d.terminal_log)}</div>
                     </div>`;
             } else {

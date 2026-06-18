@@ -5,12 +5,16 @@ Kullanıcıların repository'leri clone etmesi, commit/push yapması.
 ✅ UPDATED: editor_type field eklendi (4 endpoint)
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from database import get_db
 from models.db_models import Repository, UserWorkspace, User, Scenario
@@ -571,11 +575,12 @@ async def read_workspace_file(
     # Security: Path traversal attack önleme
     try:
         file_path = file_path.resolve()
-        if not str(file_path).startswith(str(local_path.resolve())):
-            raise HTTPException(403, detail="Geçersiz dosya yolu")
-    except:
+        local_resolved = local_path.resolve()
+    except OSError:
         raise HTTPException(403, detail="Geçersiz dosya yolu")
-    
+    if not str(file_path).startswith(str(local_resolved)):
+        raise HTTPException(403, detail="Geçersiz dosya yolu")
+
     if not file_path.exists():
         raise HTTPException(404, detail="Dosya bulunamadı")
     
@@ -629,11 +634,12 @@ async def write_workspace_file(
     # Security: Path traversal attack önleme
     try:
         file_path = file_path.resolve()
-        if not str(file_path).startswith(str(local_path.resolve())):
-            raise HTTPException(403, detail="Geçersiz dosya yolu")
-    except:
+        local_resolved = local_path.resolve()
+    except OSError:
         raise HTTPException(403, detail="Geçersiz dosya yolu")
-    
+    if not str(file_path).startswith(str(local_resolved)):
+        raise HTTPException(403, detail="Geçersiz dosya yolu")
+
     # Parent klasörü oluştur
     file_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -685,14 +691,15 @@ async def delete_workspace_file(
     # Security check
     try:
         target_path = target_path.resolve()
-        if not str(target_path).startswith(str(local_path.resolve())):
-            raise HTTPException(403, detail="Geçersiz dosya yolu")
-    except:
+        local_resolved = local_path.resolve()
+    except OSError:
         raise HTTPException(403, detail="Geçersiz dosya yolu")
-    
+    if not str(target_path).startswith(str(local_resolved)):
+        raise HTTPException(403, detail="Geçersiz dosya yolu")
+
     if not target_path.exists():
         raise HTTPException(404, detail="Dosya/klasör bulunamadı")
-    
+
     try:
         import shutil
         if target_path.is_dir():
@@ -743,11 +750,12 @@ async def rename_workspace_file(
     # Security check
     try:
         old_path = old_path.resolve()
-        if not str(old_path).startswith(str(local_path.resolve())):
-            raise HTTPException(403, detail="Geçersiz dosya yolu")
-    except:
+        local_resolved = local_path.resolve()
+    except OSError:
         raise HTTPException(403, detail="Geçersiz dosya yolu")
-    
+    if not str(old_path).startswith(str(local_resolved)):
+        raise HTTPException(403, detail="Geçersiz dosya yolu")
+
     if not old_path.exists():
         raise HTTPException(404, detail="Dosya/klasör bulunamadı")
     
@@ -859,9 +867,10 @@ async def create_workspace_folder(
     # Security check
     try:
         folder_path = folder_path.resolve()
-        if not str(folder_path).startswith(str(local_path.resolve())):
-            raise HTTPException(403, detail="Geçersiz klasör yolu")
-    except:
+        local_resolved = local_path.resolve()
+    except OSError:
+        raise HTTPException(403, detail="Geçersiz klasör yolu")
+    if not str(folder_path).startswith(str(local_resolved)):
         raise HTTPException(403, detail="Geçersiz klasör yolu")
     
     if folder_path.exists():
@@ -1064,5 +1073,5 @@ Son güncelleme: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
-        print(f"Sync error: {error_detail}")
+        logger.error("Sync error: %s", error_detail)
         raise HTTPException(500, detail=f"Sync hatası: {str(e)}")

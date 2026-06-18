@@ -7,12 +7,8 @@ from typing import Optional, List, Dict, Any
 import requests
 import asyncio
 import base64
-import urllib3
 import subprocess
 import os
-
-# SSL uyarılarını kapat
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 router = APIRouter(prefix="/api/farm", tags=["farm"])
 
@@ -151,11 +147,14 @@ async def get_remote_ios_devices(config: iOSServerConfig):
     """Uzak Mac sunucudaki iOS cihazları listele (SSH üzerinden)"""
     try:
         # SSH ile uzak Mac'teki cihazları sorgula
-        ssh_cmd = f"ssh {config.username}@{config.host} 'idevice_id -l'" if config.username else f"ssh {config.host} 'idevice_id -l'"
-        
+        if config.username:
+            ssh_cmd = ["ssh", f"{config.username}@{config.host}", "idevice_id -l"]
+        else:
+            ssh_cmd = ["ssh", config.host, "idevice_id -l"]
+
         result = subprocess.run(
             ssh_cmd,
-            shell=True,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=15
