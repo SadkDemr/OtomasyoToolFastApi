@@ -73,6 +73,18 @@ echo Durdurmak icin Ctrl+C
 echo ========================================
 echo.
 
-python main.py
+REM Log klasoru olustur
+if not exist "logs" mkdir logs
+
+REM Timestamp ile log dosyasi adi
+for /f "tokens=2 delims==" %%i in ('wmic os get localdatetime /value') do set DT=%%i
+set LOGFILE=logs\server_%DT:~0,8%_%DT:~8,6%.log
+
+echo Loglar: %LOGFILE%
+echo.
+
+REM Konsola VE log dosyasina yaz (PowerShell Tee-Object)
+REM UTF-8 encoding: emoji ve Turkce karakterlerin log dosyasina dogru yazilmasi icin
+powershell -NoProfile -NonInteractive -Command "& { $env:PYTHONUTF8='1'; $env:PYTHONIOENCODING='utf-8'; python main.py 2>&1 } | Tee-Object -FilePath '%LOGFILE%' -Append"
 
 pause

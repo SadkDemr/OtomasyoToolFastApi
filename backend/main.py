@@ -280,7 +280,7 @@ async def run_stats(
 @app.on_event("startup")
 async def startup_event():
     print("="*50)
-    print("--- 🔄 SİSTEM BAŞLATILIYOR ---")
+    print("--- SISTEM BASLATILIYOR ---")
     init_db()
     print("Swagger: http://localhost:8000/docs")
     print("Web UI: http://localhost:8000/ui")
