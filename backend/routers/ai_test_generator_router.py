@@ -1410,6 +1410,27 @@ except Exception:
     print("[DESKTOP] pywinauto kullanılamıyor — pencere kontrolü devre dışı")
 
 
+def _ollama_url():
+    try:
+        import json as _js2, pathlib as _pl2
+        _cp2 = _pl2.Path(_AI_CONFIG_PATH) if "_AI_CONFIG_PATH" in globals() else None
+        if _cp2 and _cp2.exists():
+            return _js2.loads(_cp2.read_text(encoding="utf-8")).get("ollama_url", "http://localhost:11434/api/generate")
+    except Exception:
+        pass
+    return "http://localhost:11434/api/generate"
+
+def _ollama_model():
+    try:
+        import json as _js2, pathlib as _pl2
+        _cp2 = _pl2.Path(_AI_CONFIG_PATH) if "_AI_CONFIG_PATH" in globals() else None
+        if _cp2 and _cp2.exists():
+            return _js2.loads(_cp2.read_text(encoding="utf-8")).get("ollama_model", "gemma3:4b")
+    except Exception:
+        pass
+    return "gemma3:4b"
+
+
 def _screenshot_b64():
     shot = _pag.screenshot()
     buf  = _io.BytesIO()
