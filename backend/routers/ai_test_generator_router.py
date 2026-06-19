@@ -1402,11 +1402,12 @@ except Exception:
     print("[DESKTOP] pytesseract kullanılamıyor — OCR devre dışı")
 
 try:
-    import uiautomation as _uia
+    from pywinauto import Application as _PwApp
+    from pywinauto.findwindows import ElementNotFoundError as _PwNotFound
     _PW_OK = True
 except Exception:
     _PW_OK = False
-    print("[DESKTOP] uiautomation kullanılamıyor — pencere kontrolü devre dışı")
+    print("[DESKTOP] pywinauto kullanılamıyor — pencere kontrolü devre dışı")
 
 
 def _ollama_url():
@@ -1484,51 +1485,58 @@ def _vision_find_desktop(search_text):
 
 
 def _get_active_window():
+    """Aktif pencereyi pywinauto ile döndür."""
     if not _PW_OK:
         return None
     try:
-        return _uia.GetForegroundControl()
+        import ctypes
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        return _PwApp(backend="uia").connect(handle=hwnd).top_window()
     except Exception:
         return None
 
 
 def _safe_click_desktop(target, window_title=""):
     """
-    Desktop tıklama — 3 strateji:
-    1. uiautomation UIA
-    2. pytesseract OCR (kuruluysa)
-    3. Vision AI / locateOnScreen
+    Desktop tıklama — 4 strateji:
+    1. pywinauto uia backend
+    2. pywinauto win32 backend (Java/Delphi/özel UI için)
+    3. pytesseract OCR (kuruluysa)
+    4. Vision AI / locateOnScreen
     """
     print(f"[CLICK] '{target}' aranıyor...")
 
-    def _uia_try(action="click"):
+    def _pw_try(backend):
         try:
             if window_title:
-                _win = _uia.WindowControl(searchDepth=1, RegexName=f".*{window_title}.*")
-                if not _win.Exists(3, 0.5):
-                    return False
+                _win = _PwApp(backend=backend).connect(title_re=f".*{window_title}.*", timeout=3).top_window()
             else:
                 _win = _get_active_window()
-                if not _win:
-                    return False
+            if not _win:
+                return False
             for _ctrl in [
-                _win.Control(searchDepth=10, Name=target),
-                _win.Control(searchDepth=10, RegexName=f".*{_re3.escape(target)}.*"),
+                lambda: _win.child_window(title=target, found_index=0),
+                lambda: _win.child_window(title_re=f".*{target}.*", found_index=0),
             ]:
-                if _ctrl.Exists(1, 0.3):
-                    try: _ctrl.SetFocus()
-                    except Exception: pass
-                    if action == "click": _ctrl.Click()
-                    elif action == "doubleclick": _ctrl.DoubleClick()
-                    elif action == "rightclick": _ctrl.RightClick()
-                    print(f"[OK] uiautomation {action}: '{target}'")
-                    return True
+                try:
+                    _el = _ctrl()
+                    if _el.exists(timeout=1):
+                        _el.set_focus()
+                        _el.click_input()
+                        print(f"[OK] pywinauto({backend}): '{target}'")
+                        return True
+                except Exception:
+                    continue
         except Exception as _e:
-            print(f"[CLICK] uiautomation başarısız: {_e}")
+            print(f"[CLICK] pywinauto({backend}) başarısız: {_e}")
         return False
 
-    # 1. uiautomation UIA ──────────────────────────────────────────────────────
-    if _PW_OK and _uia_try("click"):
+    # 1. pywinauto uia ─────────────────────────────────────────────────────────
+    if _PW_OK and _pw_try("uia"):
+        return True
+
+    # 2. pywinauto win32 ───────────────────────────────────────────────────────
+    if _PW_OK and _pw_try("win32"):
         return True
 
     # 3. pytesseract OCR ───────────────────────────────────────────────────────
@@ -1584,25 +1592,23 @@ def _safe_double_click_desktop(target, window_title=""):
     """Desktop çift tıklama — uia → win32 → OCR → vision."""
     print(f"[DBLCLICK] '{target}' aranıyor...")
 
-    def _uia_dbl():
+    def _pw_dbl(backend):
         try:
-            if window_title:
-                _win = _uia.WindowControl(searchDepth=1, RegexName=f".*{window_title}.*")
-                if not _win.Exists(3, 0.5): return False
-            else:
-                _win = _get_active_window()
-                if not _win: return False
-            for _ctrl in [_win.Control(searchDepth=10, Name=target), _win.Control(searchDepth=10, RegexName=f".*{_re3.escape(target)}.*")]:
-                if _ctrl.Exists(1, 0.3):
-                    try: _ctrl.SetFocus()
-                    except Exception: pass
-                    _ctrl.DoubleClick()
-                    print(f"[OK] uiautomation çift tıkla: '{target}'"); return True
+            _win = _PwApp(backend=backend).connect(title_re=f".*{window_title}.*", timeout=3).top_window() if window_title else _get_active_window()
+            if not _win: return False
+            for _ctrl in [lambda: _win.child_window(title=target, found_index=0), lambda: _win.child_window(title_re=f".*{target}.*", found_index=0)]:
+                try:
+                    _el = _ctrl()
+                    if _el.exists(timeout=1):
+                        _el.set_focus(); _el.double_click_input()
+                        print(f"[OK] pywinauto({backend}) çift tıkla: '{target}'"); return True
+                except Exception: continue
         except Exception as _e:
-            print(f"[DBLCLICK] uiautomation başarısız: {_e}")
+            print(f"[DBLCLICK] pywinauto({backend}) başarısız: {_e}")
         return False
 
-    if _PW_OK and _uia_dbl(): return True
+    if _PW_OK and _pw_dbl("uia"): return True
+    if _PW_OK and _pw_dbl("win32"): return True
 
     if _TESS_OK:
         try:
@@ -1627,25 +1633,23 @@ def _safe_right_click_desktop(target, window_title=""):
     """Desktop sağ tıklama — uia → win32 → OCR → vision."""
     print(f"[RCLICK] '{target}' aranıyor...")
 
-    def _uia_right():
+    def _pw_right(backend):
         try:
-            if window_title:
-                _win = _uia.WindowControl(searchDepth=1, RegexName=f".*{window_title}.*")
-                if not _win.Exists(3, 0.5): return False
-            else:
-                _win = _get_active_window()
-                if not _win: return False
-            for _ctrl in [_win.Control(searchDepth=10, Name=target), _win.Control(searchDepth=10, RegexName=f".*{_re3.escape(target)}.*")]:
-                if _ctrl.Exists(1, 0.3):
-                    try: _ctrl.SetFocus()
-                    except Exception: pass
-                    _ctrl.RightClick()
-                    print(f"[OK] uiautomation sağ tıkla: '{target}'"); return True
+            _win = _PwApp(backend=backend).connect(title_re=f".*{window_title}.*", timeout=3).top_window() if window_title else _get_active_window()
+            if not _win: return False
+            for _ctrl in [lambda: _win.child_window(title=target, found_index=0), lambda: _win.child_window(title_re=f".*{target}.*", found_index=0)]:
+                try:
+                    _el = _ctrl()
+                    if _el.exists(timeout=1):
+                        _el.set_focus(); _el.right_click_input()
+                        print(f"[OK] pywinauto({backend}) sağ tıkla: '{target}'"); return True
+                except Exception: continue
         except Exception as _e:
-            print(f"[RCLICK] uiautomation başarısız: {_e}")
+            print(f"[RCLICK] pywinauto({backend}) başarısız: {_e}")
         return False
 
-    if _PW_OK and _uia_right(): return True
+    if _PW_OK and _pw_right("uia"): return True
+    if _PW_OK and _pw_right("win32"): return True
 
     if _TESS_OK:
         try:
@@ -1685,9 +1689,9 @@ def _safe_wait_for_desktop(target, timeout=10):
             try:
                 _win = _get_active_window()
                 if _win:
-                    _el = _win.Control(searchDepth=10, RegexName=f".*{_re3.escape(target)}.*")
-                    if _el.Exists(1, 0.3):
-                        print(f"[OK] uiautomation görüldü: \'{target}\'")
+                    _el = _win.child_window(title_re=f".*{target}.*", found_index=0)
+                    if _el.exists(timeout=1):
+                        print(f"[OK] pywinauto görüldü: \'{target}\'")
                         return True
             except Exception:
                 pass
@@ -1708,14 +1712,14 @@ def _safe_assert_desktop(target):
     """Ekranda element / metin doğrula. Bulamazsa AssertionError fırlatır."""
     print(f"[ASSERT] \'{target}\' kontrol ediliyor...")
 
-    # uiautomation
+    # pywinauto
     if _PW_OK:
         try:
             _win = _get_active_window()
             if _win:
-                _el = _win.Control(searchDepth=10, RegexName=f".*{_re3.escape(target)}.*")
-                if _el.Exists(1, 0.3):
-                    print(f"[OK] uiautomation: \'{target}\'"); return
+                _el = _win.child_window(title_re=f".*{target}.*", found_index=0)
+                if _el.exists(timeout=1):
+                    print(f"[OK] pywinauto: \'{target}\'"); return
         except Exception:
             pass
 
