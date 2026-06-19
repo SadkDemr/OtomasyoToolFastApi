@@ -1742,31 +1742,63 @@ def _safe_assert_desktop(target):
     raise AssertionError(f"[FAIL] \'{target}\' ekranda bulunamadi")
 
 def _refocus_window():
-    """Her adım öncesi pencereyi öne getirir — başka test pencereleri odağı çalmışsa düzeltir."""
-    if not _WINDOW_TITLE:
-        return
-    # Önce win32gui ile dene (pywinauto'dan daha hızlı ve güvenilir)
-    try:
-        import win32gui as _wg, win32con as _wc
-        _found_hwnd = None
-        def _cb(hwnd, _):
-            nonlocal _found_hwnd
-            t = _wg.GetWindowText(hwnd)
-            if _WINDOW_TITLE.lower() in t.lower() and _wg.IsWindowVisible(hwnd):
-                _found_hwnd = hwnd
-                return False
-            return True
-        _wg.EnumWindows(_cb, None)
-        if _found_hwnd:
-            _wg.ShowWindow(_found_hwnd, _wc.SW_RESTORE)
-            _wg.SetForegroundWindow(_found_hwnd)
-            return
-    except Exception:
-        pass
-    # Fallback: pywinauto
-    if _PW_OK:
+    """Her adım öncesi pencereyi öne getirir — başlık veya süreç adıyla bulur."""
+    import os as _os_rf
+    _exe_name = _os_rf.path.basename(_APP_PATH).lower() if "_APP_PATH" in globals() and _APP_PATH else ""
+
+    def _bring_hwnd(hwnd):
         try:
-            _PwApp(backend="uia").connect(title_re=".*" + _WINDOW_TITLE + ".*", timeout=3).top_window().set_focus()
+            import win32gui as _wg_r, win32con as _wc_r
+            _wg_r.ShowWindow(hwnd, _wc_r.SW_RESTORE)
+            _wg_r.SetForegroundWindow(hwnd)
+            return True
+        except Exception:
+            return False
+
+    # 1. Pencere başlığıyla bul ──────────────────────────────────────────────
+    if _WINDOW_TITLE:
+        try:
+            import win32gui as _wg, win32con as _wc
+            _found_hwnd = None
+            def _cb(hwnd, _):
+                nonlocal _found_hwnd
+                t = _wg.GetWindowText(hwnd)
+                if _WINDOW_TITLE.lower() in t.lower() and _wg.IsWindowVisible(hwnd):
+                    _found_hwnd = hwnd
+                    return False
+                return True
+            _wg.EnumWindows(_cb, None)
+            if _found_hwnd:
+                _wg.ShowWindow(_found_hwnd, _wc.SW_RESTORE)
+                _wg.SetForegroundWindow(_found_hwnd)
+                return
+        except Exception:
+            pass
+        if _PW_OK:
+            try:
+                _PwApp(backend="uia").connect(title_re=".*" + _WINDOW_TITLE + ".*", timeout=3).top_window().set_focus()
+                return
+            except Exception:
+                pass
+
+    # 2. Süreç adıyla pencere bul (window_title boşsa) ──────────────────────
+    if _exe_name:
+        try:
+            import win32gui as _wg2, win32process as _wp2, win32con as _wc2
+            import psutil as _psu_rf
+            _pids = {p.pid for p in _psu_rf.process_iter(["name"]) if p.info["name"].lower() == _exe_name}
+            _wins = []
+            def _cb2(hwnd, _):
+                if _wg2.IsWindowVisible(hwnd) and _wg2.GetWindowText(hwnd):
+                    _, _pid = _wp2.GetWindowThreadProcessId(hwnd)
+                    if _pid in _pids:
+                        _wins.append(hwnd)
+                return True
+            _wg2.EnumWindows(_cb2, None)
+            if _wins:
+                _wg2.ShowWindow(_wins[0], _wc2.SW_RESTORE)
+                _wg2.SetForegroundWindow(_wins[0])
+                return
         except Exception:
             pass
 '''
@@ -2084,7 +2116,49 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
                 'else:',
                 f'    print("Başlatılıyor: {app_path_esc}")',
                 f'    {popen_line}',
-                '    time.sleep(3)',
+                '    # BOA penceresini bekle (max 30 saniye)',
+                '    _wait_start = time.time()',
+                '    _win_found = False',
+                f'    _wait_exe = "{os.path.basename(app_path_esc).lower()}"',
+                f'    _wait_title = "{window_title_esc}"',
+                '    while time.time() - _wait_start < 30:',
+                '        try:',
+                '            import win32gui as _wg_w, win32process as _wp_w, win32con as _wc_w',
+                '            # Süreç PID\'lerini bul',
+                '            _pids_w = set()',
+                '            try:',
+                '                import psutil as _psu_w',
+                '                _pids_w = {p.pid for p in _psu_w.process_iter(["name"]) if p.info["name"].lower() == _wait_exe}',
+                '            except ImportError:',
+                '                import subprocess as _sp_w',
+                '                _r_w = _sp_w.run(["tasklist", "/FI", f"IMAGENAME eq {_wait_exe}", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=5)',
+                '                for _ln_w in _r_w.stdout.splitlines():',
+                '                    _parts_w = _ln_w.strip(\'"\').split(\'","\')',
+                '                    if len(_parts_w) > 1:',
+                '                        try: _pids_w.add(int(_parts_w[1]))',
+                '                        except: pass',
+                '            if not _pids_w:',
+                '                time.sleep(1); continue',
+                '            _wins_w = []',
+                '            def _cb_w(hwnd, _):',
+                '                if _wg_w.IsWindowVisible(hwnd) and _wg_w.GetWindowText(hwnd):',
+                '                    _, _pid_w = _wp_w.GetWindowThreadProcessId(hwnd)',
+                '                    if _pid_w in _pids_w:',
+                '                        _t_w = _wg_w.GetWindowText(hwnd)',
+                '                        if not _wait_title or _wait_title.lower() in _t_w.lower():',
+                '                            _wins_w.append(hwnd)',
+                '                return True',
+                '            _wg_w.EnumWindows(_cb_w, None)',
+                '            if _wins_w:',
+                '                _wg_w.ShowWindow(_wins_w[0], _wc_w.SW_RESTORE)',
+                '                _wg_w.SetForegroundWindow(_wins_w[0])',
+                '                _win_found = True',
+                '                print(f"[OK] Pencere {time.time()-_wait_start:.1f}s sonra görüldü")',
+                '                break',
+                '        except Exception: pass',
+                '        time.sleep(1)',
+                '    if not _win_found: print("[WARN] Uygulama penceresi 30s içinde görünmedi, devam ediliyor")',
+                '    time.sleep(2)',
                 '',
             ]
         else:
