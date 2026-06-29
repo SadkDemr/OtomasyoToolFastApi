@@ -1973,7 +1973,7 @@
         document.getElementById("pointsList").style.display      = mode === "point" ? "flex" : "none";
         document.getElementById("cropModeHint").textContent = mode === "crop"
             ? "Tıkla ve sürükle → hedef alanı seç"
-            : "Tüm ekran görüntüsü yükle → tıklanacak noktaları işaretle. Her nokta etrafı otomatik kırpılır, çalışma anında görsel eşleşme ile tıklanır.";
+            : "Tüm sayfa ekran görüntüsü yükle → tıklanacak noktaları işaretle. Tam sayfa bağlamı ile doğru eleman seçilir, pencere konumu ve boyutuna göre normalize edilir.";
 
         const canvas = document.getElementById("cropCanvas");
         if (!_screenImg) return;
@@ -2142,30 +2142,23 @@
 
     window.confirmPoints = function() {
         if (_clickPoints.length === 0 || _captureTargetStepIdx < 0 || !_screenImg) return;
-        // Noktanın etrafında 150×150px (75px her yönde) bölge kırp.
-        // Koordinat saklamıyoruz — çalışma anında locateOnScreen ile ekranda bulunur.
-        const HALF = 75;
-        const newSteps = _clickPoints.map((pt, i) => {
-            const sx = Math.max(0, pt.ox - HALF);
-            const sy = Math.max(0, pt.oy - HALF);
-            const ex = Math.min(_screenImg.width,  pt.ox + HALF);
-            const ey = Math.min(_screenImg.height, pt.oy + HALF);
-            const sw = ex - sx, sh = ey - sy;
-            const tmp = document.createElement("canvas");
-            tmp.width  = sw;
-            tmp.height = sh;
-            tmp.getContext("2d").drawImage(_screenImg, sx, sy, sw, sh, 0, 0, sw, sh);
-            const b64 = tmp.toDataURL("image/png").replace("data:image/png;base64,", "");
-            return {
-                type:    "image",
-                content: `Nokta ${i + 1} tıkla`,
-                b64,
-                action:  "click",
-                click_x: -1,   // koordinat yok — locateOnScreen kullanılır
-                click_y: -1,
-                status:  null,
-            };
-        });
+        // Tam ekranı sakla — kırpma yok.
+        // click_x/click_y: orijinal görseldeki piksel koordinatı (normalize runtime'da hesaplanır).
+        const fullCanvas = document.createElement("canvas");
+        fullCanvas.width  = _screenImg.width;
+        fullCanvas.height = _screenImg.height;
+        fullCanvas.getContext("2d").drawImage(_screenImg, 0, 0);
+        const fullB64 = fullCanvas.toDataURL("image/png").replace("data:image/png;base64,", "");
+
+        const newSteps = _clickPoints.map((pt, i) => ({
+            type:    "image",
+            content: `Nokta ${i + 1} tıkla`,
+            b64:     fullB64,   // tam ekran — bağlam zenginliği sayesinde 5 aynı toggle'ı ayırt eder
+            action:  "click",
+            click_x: pt.ox,    // orijinal görsel piksel X
+            click_y: pt.oy,    // orijinal görsel piksel Y
+            status:  null,
+        }));
         steps.splice(_captureTargetStepIdx, 1, ...newSteps);
         document.getElementById("cropModal").style.display = "none";
         _captureTargetStepIdx = -1;
