@@ -18,7 +18,7 @@ from models.schemas import UserRegister
 # JWT Ayarları
 SECRET_KEY = "test-platform-secret-key-change-in-production-2024"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
+ACCESS_TOKEN_EXPIRE_HOURS = 168  # 7 gün
 
 
 class AuthService:

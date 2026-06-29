@@ -83,6 +83,9 @@ class StepItem(BaseModel):
     # Değişken sistemi
     var_name:      str = ""       # dolu ise sonuç _VARS["var_name"]'e kaydedilir
     json_field:    str = ""       # API yanıtından çekilecek alan yolu: "id" veya "user.name"
+    # Koordinat tıklama (nokta işaretle modu)
+    click_x:       int = -1       # >= 0 ise locateOnScreen yerine doğrudan koordinat kullanılır
+    click_y:       int = -1
 
 class GenerateRequest(BaseModel):
     test_case:    str         = ""   # geriye dönük uyumluluk
@@ -1431,17 +1434,23 @@ def _ollama_model():
     return "gemma3:4b"
 
 
-def _screenshot_b64():
-    shot = _pag.screenshot()
+def _screenshot_b64(region=None):
+    """Ekran (veya belirtilen bölge) fotoğrafı → base64 PNG."""
+    shot = _pag.screenshot(region=region) if region else _pag.screenshot()
     buf  = _io.BytesIO()
     shot.save(buf, format="PNG")
     return _b64.b64encode(buf.getvalue()).decode()
 
 
 def _vision_find_desktop(search_text):
-    """Gemini veya Ollama ile ekranda koordinat bul. (x, y) veya (None, None) döner."""
+    """Gemini veya Ollama ile pencere icinde koordinat bul. (x, y) veya (None, None) doner.
+    _WINDOW_TITLE varsa yalnizca o pencerenin kroplamasini AI'ye gonderir; donus koordinatlari
+    pencere orijinine gore offsetlenir — pencere disina tiklamaz."""
     try:
-        shot_b64 = _screenshot_b64()
+        _region = _get_window_region()  # (wx, wy, ww, wh) veya None
+        _wx, _wy = (_region[0], _region[1]) if _region else (0, 0)
+        shot_b64 = _screenshot_b64(region=_region)  # sadece pencere alanini cek
+
         try:
             import json as _js, pathlib as _pl
             cfg = {}
@@ -1452,8 +1461,9 @@ def _vision_find_desktop(search_text):
         except Exception:
             gemini_key = ""
 
-        _prompt = (f"Windows masaüstü ekranında \'{search_text}\' yazan veya "
-                   f"gösteren tıklanabilir elementi bul. Yanıtı sadece: x=NNN y=NNN")
+        _prompt = (f"Bu ekran goruntusunde '{search_text}' yazan veya gosteren "
+                   f"tiklanabilir elementi bul. Yaniti sadece: x=NNN y=NNN "
+                   f"(koordinatlar bu goruntunun sol ust kosesindendir)")
 
         if gemini_key:
             resp = _req.post(
@@ -1475,13 +1485,23 @@ def _vision_find_desktop(search_text):
         mx = _re3.search(r"x[=:\s]*(\d+)", answer, _re3.IGNORECASE)
         my = _re3.search(r"y[=:\s]*(\d+)", answer, _re3.IGNORECASE)
         if mx and my:
-            x, y = int(mx.group(1)), int(my.group(1))
-            print(f"[VISION] Koordinat: ({x}, {y})")
+            # Krop koordinatlarindan ekran koordinatina donustur
+            x, y = int(mx.group(1)) + _wx, int(my.group(1)) + _wy
+            print(f"[VISION] Koordinat (pencere ofseti {_wx},{_wy}): ({x}, {y})")
             return x, y
-        print(f"[VISION] Koordinat bulunamadı — yanıt: {answer[:80]}")
+        print(f"[VISION] Koordinat bulunamadi — yanit: {answer[:80]}")
     except Exception as _ve:
         print(f"[VISION] Hata: {_ve}")
     return None, None
+
+
+def _in_window(x, y):
+    """Koordinatlar pencere siniri icinde mi? _WINDOW_TITLE yoksa her zaman True."""
+    _r = _get_window_region()
+    if not _r:
+        return True
+    _wx, _wy, _ww, _wh = _r
+    return _wx <= x <= _wx + _ww and _wy <= y <= _wy + _wh
 
 
 def _get_active_window():
@@ -1539,40 +1559,46 @@ def _safe_click_desktop(target, window_title=""):
     if _PW_OK and _pw_try("win32"):
         return True
 
-    # 3. pytesseract OCR ───────────────────────────────────────────────────────
+    # 3. pytesseract OCR — yalnizca pencere bolgesi ───────────────────────────
     if _TESS_OK:
         try:
-            shot = _pag.screenshot()
+            _ocr_region = _get_window_region()
+            _ocr_ox, _ocr_oy = (_ocr_region[0], _ocr_region[1]) if _ocr_region else (0, 0)
+            shot = _pag.screenshot(region=_ocr_region) if _ocr_region else _pag.screenshot()
             data = _tess.image_to_data(shot, lang="tur+eng", output_type=_tess.Output.DICT)
             _tl  = target.lower()
             for _i, _w in enumerate(data["text"]):
                 if _w and _tl in _w.lower() and data["conf"][_i] > 30:
-                    _cx = data["left"][_i] + data["width"][_i] // 2
-                    _cy = data["top"][_i]  + data["height"][_i] // 2
-                    _pag.click(_cx, _cy)
-                    print(f"[OK] OCR: '{_w}' @ ({_cx},{_cy})")
-                    return True
+                    _cx = data["left"][_i] + data["width"][_i] // 2 + _ocr_ox
+                    _cy = data["top"][_i]  + data["height"][_i] // 2 + _ocr_oy
+                    if _in_window(_cx, _cy):
+                        _pag.click(_cx, _cy)
+                        print(f"[OK] OCR: '{_w}' @ ({_cx},{_cy})")
+                        return True
         except Exception as _e:
-            print(f"[CLICK] OCR başarısız: {_e}")
+            print(f"[CLICK] OCR basarisiz: {_e}")
 
-    # 4. locateOnScreen / Vision AI ────────────────────────────────────────────
+    # 4. locateOnScreen / Vision AI — pencere ile sinirli ────────────────────
     import os as _os2
     if _os2.path.isfile(target):
         try:
-            loc = _pag.locateCenterOnScreen(target, confidence=0.8)
-            if loc:
+            _ls_region = _get_window_region()
+            loc = _pag.locateCenterOnScreen(target, confidence=0.8, region=_ls_region)
+            if loc and _in_window(loc.x, loc.y):
                 _pag.click(loc)
                 print(f"[OK] locateOnScreen: {target}")
                 return True
         except Exception: pass
 
     _vx, _vy = _vision_find_desktop(target)
-    if _vx and _vy:
+    if _vx and _vy and _in_window(_vx, _vy):
         _pag.click(_vx, _vy)
         print(f"[OK] Vision AI: '{target}' @ ({_vx},{_vy})")
         return True
+    elif _vx and _vy:
+        print(f"[HATA] Vision AI koordinati ({_vx},{_vy}) pencere disinda — tiklanmadi.")
 
-    raise Exception(f"Element bulunamadı: '{target}'")
+    raise Exception(f"Element bulunamadi: '{target}'")
 
 
 def _safe_type_desktop(text):
@@ -1612,21 +1638,24 @@ def _safe_double_click_desktop(target, window_title=""):
 
     if _TESS_OK:
         try:
-            shot = _pag.screenshot()
+            _ocr_region = _get_window_region()
+            _ocr_ox, _ocr_oy = (_ocr_region[0], _ocr_region[1]) if _ocr_region else (0, 0)
+            shot = _pag.screenshot(region=_ocr_region) if _ocr_region else _pag.screenshot()
             data = _tess.image_to_data(shot, lang="tur+eng", output_type=_tess.Output.DICT)
             for _i, _w in enumerate(data["text"]):
                 if _w and target.lower() in _w.lower() and data["conf"][_i] > 30:
-                    _cx = data["left"][_i] + data["width"][_i] // 2
-                    _cy = data["top"][_i]  + data["height"][_i] // 2
-                    _pag.doubleClick(_cx, _cy)
-                    print(f"[OK] OCR çift tıkla: '{_w}' @ ({_cx},{_cy})"); return True
+                    _cx = data["left"][_i] + data["width"][_i] // 2 + _ocr_ox
+                    _cy = data["top"][_i]  + data["height"][_i] // 2 + _ocr_oy
+                    if _in_window(_cx, _cy):
+                        _pag.doubleClick(_cx, _cy)
+                        print(f"[OK] OCR cift tikla: '{_w}' @ ({_cx},{_cy})"); return True
         except Exception as _e:
-            print(f"[DBLCLICK] OCR başarısız: {_e}")
+            print(f"[DBLCLICK] OCR basarisiz: {_e}")
 
     _vx, _vy = _vision_find_desktop(target)
-    if _vx and _vy:
-        _pag.doubleClick(_vx, _vy); print(f"[OK] Vision çift tıkla: '{target}' @ ({_vx},{_vy})"); return True
-    raise Exception(f"Element bulunamadı (çift tıkla): '{target}'")
+    if _vx and _vy and _in_window(_vx, _vy):
+        _pag.doubleClick(_vx, _vy); print(f"[OK] Vision cift tikla: '{target}' @ ({_vx},{_vy})"); return True
+    raise Exception(f"Element bulunamadi (cift tikla): '{target}'")
 
 
 def _safe_right_click_desktop(target, window_title=""):
@@ -1653,21 +1682,24 @@ def _safe_right_click_desktop(target, window_title=""):
 
     if _TESS_OK:
         try:
-            shot = _pag.screenshot()
+            _ocr_region = _get_window_region()
+            _ocr_ox, _ocr_oy = (_ocr_region[0], _ocr_region[1]) if _ocr_region else (0, 0)
+            shot = _pag.screenshot(region=_ocr_region) if _ocr_region else _pag.screenshot()
             data = _tess.image_to_data(shot, lang="tur+eng", output_type=_tess.Output.DICT)
             for _i, _w in enumerate(data["text"]):
                 if _w and target.lower() in _w.lower() and data["conf"][_i] > 30:
-                    _cx = data["left"][_i] + data["width"][_i] // 2
-                    _cy = data["top"][_i]  + data["height"][_i] // 2
-                    _pag.rightClick(_cx, _cy)
-                    print(f"[OK] OCR sağ tıkla: '{_w}' @ ({_cx},{_cy})"); return True
+                    _cx = data["left"][_i] + data["width"][_i] // 2 + _ocr_ox
+                    _cy = data["top"][_i]  + data["height"][_i] // 2 + _ocr_oy
+                    if _in_window(_cx, _cy):
+                        _pag.rightClick(_cx, _cy)
+                        print(f"[OK] OCR sag tikla: '{_w}' @ ({_cx},{_cy})"); return True
         except Exception as _e:
-            print(f"[RCLICK] OCR başarısız: {_e}")
+            print(f"[RCLICK] OCR basarisiz: {_e}")
 
     _vx, _vy = _vision_find_desktop(target)
-    if _vx and _vy:
-        _pag.rightClick(_vx, _vy); print(f"[OK] Vision sağ tıkla: '{target}' @ ({_vx},{_vy})"); return True
-    raise Exception(f"Element bulunamadı (sağ tıkla): '{target}'")
+    if _vx and _vy and _in_window(_vx, _vy):
+        _pag.rightClick(_vx, _vy); print(f"[OK] Vision sag tikla: '{target}' @ ({_vx},{_vy})"); return True
+    raise Exception(f"Element bulunamadi (sag tikla): '{target}'")
 
 
 def _safe_menu_click_desktop(items, window_title=""):
@@ -1697,14 +1729,18 @@ def _safe_wait_for_desktop(target, timeout=10):
                 pass
         if _TESS_OK:
             try:
-                _txt = _tess.image_to_string(_pag.screenshot(), lang="tur+eng")
-                if target.lower() in _txt.lower():
-                    print(f"[OK] OCR görüldü: \'{target}\'")
+                _wait_region = _get_window_region()
+                _wtxt = _tess.image_to_string(
+                    _pag.screenshot(region=_wait_region) if _wait_region else _pag.screenshot(),
+                    lang="tur+eng"
+                )
+                if target.lower() in _wtxt.lower():
+                    print(f"[OK] OCR goruldu: \'{target}\'")
                     return True
             except Exception:
                 pass
         _tw.sleep(1)
-    print(f"[WARN] \'{target}\' {timeout}s içinde görünmedi")
+    print(f"[WARN] \'{target}\' {timeout}s icinde gorunmedi")
     return False
 
 
@@ -2207,6 +2243,7 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
     """Görsel adımı için Python kodu üretir. base64 scripte gömülür."""
     b64  = item.image_b64
     desc = item.content or f"Görsel adım {idx+1}"
+
     if platform == "desktop":
         if item.action == "assert":
             return (

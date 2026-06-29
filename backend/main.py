@@ -290,17 +290,13 @@ async def run_stats(
 
 
 if __name__ == "__main__":
-    import uvicorn
+    import uvicorn, os as _os_main
+    # Geliştirme modunda auto-reload istiyorsanız: DEV_RELOAD=1 python main.py
+    # Prodüksiyonda reload=False — senaryo script.py kaydedince sunucu düşmesin
+    _dev_reload = _os_main.environ.get("DEV_RELOAD", "0") == "1"
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
-        reload_excludes=[
-            "workspaces/*",
-            "local_run_logs/*",
-            "*.db",
-            "*.db-wal",
-            "*.db-shm",
-        ],
+        reload=_dev_reload,
     )
