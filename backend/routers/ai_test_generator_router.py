@@ -68,7 +68,7 @@ _ROUTER_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ─── Pydantic ─────────────────────────────────────────────────────────────────
 
 class StepItem(BaseModel):
-    type:          str = "text"   # "text" | "image" | "sql" | "api"
+    type:          str = "text"   # "text" | "image" | "sql" | "api" | "comment"
     content:       str = ""
     image_b64:     str = ""
     action:        str = "click"  # image: click/double_click/right_click/assert | sql: query_print/execute | api: print/execute/store
@@ -2762,6 +2762,8 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
         elif item.type == "api":
             code = "_check_stop()\n" + _api_step_code(item, idx)
             code_lines.append(("rule", item.content or f"API {idx+1}", code))
+        elif item.type == "comment":
+            code_lines.append(("comment", item.content or f"Yorum {idx+1}", f"# [YORUM] {item.content}"))
         else:
             step = item.content
             parsed = rule_fn(step)
@@ -2791,7 +2793,7 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
     # Birleştir + rapor oluştur
     final_lines = []
     for idx, (kind, step, rule_code) in enumerate(code_lines):
-        if kind in ("rule", "image"):
+        if kind in ("rule", "image", "comment"):
             final_lines.append(rule_code)
             report.append({"step": step, "method": kind, "code": rule_code, "index": idx})
         else:
