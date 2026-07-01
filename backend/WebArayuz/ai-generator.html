@@ -1752,7 +1752,7 @@
 
         if (s.type === "text") {
             contentHtml = `<input class="step-content-input" type="text" value="${escHtml(s.content)}"
-                placeholder='Adım açıklaması...  (değişken için: {{değişkenAdı}} yaz)' oninput="updateStepContent(${i}, this.value)">`;
+                placeholder='Adım açıklaması...  (değişken: {{ad}} yaz / "hedef" oku {{ad}})' oninput="updateStepContent(${i}, this.value)">`;
 
         } else if (s.type === "image") {
             const imgActionOpts = [
@@ -1794,6 +1794,7 @@
                     placeholder="Bağlantı: sqlite:///dosya.db  veya  DRIVER={ODBC Driver 17 for SQL Server};SERVER=...;DATABASE=...;Trusted_Connection=yes"
                     oninput="updateStepField(${i}, 'db_connection', this.value)">
                 <textarea class="step-ext-textarea" placeholder="SQL sorgusu..."
+                    title="İçinde {{değişken}} kullanabilirsiniz — önceki adımlarda kaydedilen değerlerle değiştirilir."
                     oninput="updateStepField(${i}, 'sql_query', this.value)">${escText(s.sql_query||'')}</textarea>
             </div>`;
 
