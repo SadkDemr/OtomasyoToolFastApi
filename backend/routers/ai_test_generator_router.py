@@ -251,6 +251,10 @@ def _rule_mobile(step: str) -> list[str] | None:
             return [f'# {s}', f"_safe_click(driver, {repr(full_t)}, {repr(key_t)})", 'time.sleep(0.8)']
         return [f'# {s}', f"_safe_click(driver, {repr(full_t)})", 'time.sleep(0.8)']
 
+    # ── "Uygulama açılır" — uygulama zaten başlatıldı, sadece yorum ─────────
+    if re.search(r'^uygulama\s+a[çc][ıi]l[ıi]r\.?\s*$', sl):
+        return [f'# {s}']
+
     # ── "X açılır" - bileşen/ekran açılır (click to open) ────────────────────
     _AC = re.search(r'^(.+?)\s+a[çc][ıi]l[ıi]r\.?\s*$', s, re.IGNORECASE)
     if _AC:
@@ -306,7 +310,7 @@ def _rule_mobile(step: str) -> list[str] | None:
         ]
 
     # ── Doğrulama / Görme — ÖNCE kontrol et (gir/giriş çakışmasını önle) ─────
-    ASSERT_WORDS = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|check|var m[iı]|bekleniyor)'
+    ASSERT_WORDS = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|check|var m[iı]|bekleniyor)'
     if re.search(ASSERT_WORDS, sl) and quoted:
         text = quoted[0]
         return [
@@ -366,6 +370,11 @@ def _rule_mobile(step: str) -> list[str] | None:
         m = re.search(r'(\d+)', s)
         secs = m.group(1) if m else '2'
         return [f'# {s}', f'time.sleep({secs})']
+
+    # ── Tırnaksız doğrulama/durum (görülür, açıldı, kapandı — quoted olmadan) ─
+    ASSERT_WORDS = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|check|var m[iı]|bekleniyor)'
+    if re.search(ASSERT_WORDS, sl) and not quoted:
+        return [f'# {s}  # assertion: eleman metni belirtilmemiş, manuel doğrula']
 
     return None  # Tanınmadı → LLM
 
@@ -442,7 +451,7 @@ def _rule_web(step: str) -> list[str] | None:
 
     CLICK_WORDS  = r'(?:t[iı]kla|tikla|click|tap)'
     INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b)'
-    ASSERT_WORDS = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
+    ASSERT_WORDS = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
     NAV_WORDS    = r'(?:git\b|navigate|a[cç]\b|open\b|ziyaret|url|adres)'
 
     # ── URL / Navigasyon ─────────────────────────────────────────────────
@@ -513,6 +522,10 @@ def _rule_web(step: str) -> list[str] | None:
         secs = m.group(1) if m else '2'
         return [f'# {s}', f'time.sleep({secs})']
 
+    # ── Tırnaksız doğrulama/durum (görülür, açıldı — quoted olmadan) ─────────
+    if re.search(ASSERT_WORDS, sl) and not quoted:
+        return [f'# {s}  # assertion: eleman metni belirtilmemiş, manuel doğrula']
+
     return None
 
 
@@ -534,7 +547,7 @@ def _rule_desktop(step: str) -> list[str] | None:
     DOUBLE_CLICK_WORDS = r'(?:çift\s*t[iı]kla|double[\s_]click)'
     RIGHT_CLICK_WORDS  = r'(?:sağ\s*t[iı]kla|right[\s_]click)'
     INPUT_WORDS        = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b)'
-    ASSERT_WORDS       = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|görünmeli|bekleniyor)'
+    ASSERT_WORDS       = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|görünmeli|bekleniyor)'
 
     # ── Kısayol tuşu: "Ctrl+S" bas ───────────────────────────────────────────
     hk = re.match(r'^["\']([^"\']+)["\']\s*(?:bas|kısayol|hotkey|tu[sş])$', s, re.IGNORECASE)
@@ -620,6 +633,10 @@ def _rule_desktop(step: str) -> list[str] | None:
             f'        print("[OK] Pencere odaklandı: {title}")',
             f'    except Exception as _fe: print(f"[WARN] Pencere bulunamadı: {{_fe}}")',
         ]
+
+    # ── Tırnaksız doğrulama/durum (görülür, açıldı — quoted olmadan) ─────────
+    if re.search(ASSERT_WORDS, sl) and not quoted:
+        return [f'# {s}  # assertion: eleman metni belirtilmemiş, manuel doğrula']
 
     return None
 
@@ -2852,6 +2869,132 @@ async def parse_file_upload(
 
     except Exception as e:
         raise HTTPException(400, f"Dosya okunamadı: {str(e)}")
+
+
+# ── ADO Excel Parser Helpers ──────────────────────────────────────────────────
+
+_ADO_CMD_WORDS = [
+    "görülür", "görüntülenir", "görünür", "gör",
+    "tıklanır", "tıkla", "açılır", "kapanır",
+    "girilir", "seçilir", "gelir", "kapat",
+    "kaydedilir", "karşılaştırılır", "doğrulanır", "beklenir",
+]
+
+def _ado_cmd_word(text: str) -> str:
+    stripped = text.strip().rstrip(".")
+    lower = stripped.lower()
+    for cw in _ADO_CMD_WORDS:
+        if lower.endswith(cw):
+            return cw
+    return ""
+
+def _ado_parse_expected(expected: str) -> list:
+    text = (expected or "").strip()
+    if not text:
+        return []
+
+    cmd = _ado_cmd_word(text)
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+    def _normalize_line(line: str) -> str:
+        # Satır sonu ayraçları temizle: virgül, noktalı virgül, "ve"
+        line = re.sub(r"[,;]\s*$", "", line).strip()
+        line = re.sub(r"\s+ve\s*$", "", line, flags=re.IGNORECASE).strip()
+        if cmd:
+            # "geldiği {cmd}" veya sadece "{cmd}" varsa sona sıfırla
+            line = re.sub(r"\s+geldi[gğ]i\s+" + re.escape(cmd) + r"\s*\.?\s*$", "", line, flags=re.IGNORECASE).strip()
+            line = re.sub(r"\s+" + re.escape(cmd) + r"\s*\.?\s*$", "", line, flags=re.IGNORECASE).strip()
+        return line
+
+    # Tek satır → tek adım
+    if len(lines) <= 1:
+        single = _normalize_line(text.strip())
+        return [single + (f" {cmd}." if cmd else ("." if not single.endswith(".") else ""))]
+
+    # Çok satır → her satır ayrı adım
+    result = []
+    for line in lines:
+        line = _normalize_line(line)
+        if line:
+            result.append(line + (f" {cmd}." if cmd else ("." if not line.endswith(".") else "")))
+    return result
+
+
+@router.post("/parse-excel-ado")
+async def parse_excel_ado(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Azure DevOps Excel export (.xlsx) parse eder.
+    Döndürür: { test_cases: [{ title, steps: [str] }] }
+    """
+    contents = await file.read()
+    fname = (file.filename or "").lower()
+    if not (fname.endswith(".xlsx") or fname.endswith(".xls")):
+        raise HTTPException(400, "Sadece .xlsx / .xls dosyaları desteklenir.")
+
+    try:
+        import io as _io
+        import openpyxl as _xl
+
+        wb = _xl.load_workbook(_io.BytesIO(contents), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+
+        # Başlık satırını bul
+        col_map = {}
+        header_row_idx = None
+        for ri, row in enumerate(rows):
+            cells = [str(c).strip() if c is not None else "" for c in row]
+            if "Work Item Type" in cells and "Step Action" in cells:
+                header_row_idx = ri
+                col_map = {v: i for i, v in enumerate(cells) if v}
+                break
+
+        if header_row_idx is None:
+            raise HTTPException(400, "ADO başlık satırı bulunamadı.")
+
+        ci_type     = col_map.get("Work Item Type", 2)
+        ci_title    = col_map.get("Title", 3)
+        ci_step     = col_map.get("Test Step", 4)
+        ci_action   = col_map.get("Step Action", 5)
+        ci_expected = col_map.get("Step Expected", 6)
+
+        def _cell(row, i):
+            return str(row[i]).strip() if len(row) > i and row[i] is not None else ""
+
+        test_cases = []
+        current_tc = None
+
+        for row in rows[header_row_idx + 1:]:
+            wtype  = _cell(row, ci_type)
+            title  = _cell(row, ci_title)
+            action = _cell(row, ci_action)
+            exp    = _cell(row, ci_expected)
+            has_step = len(row) > ci_step and row[ci_step] is not None
+
+            if wtype == "Test Case" and title:
+                current_tc = {"title": title, "steps": []}
+                test_cases.append(current_tc)
+            elif has_step and current_tc is not None:
+                if action:
+                    a = action.rstrip(".")
+                    current_tc["steps"].append(a + ".")
+                if exp:
+                    current_tc["steps"].extend(_ado_parse_expected(exp))
+
+        wb.close()
+
+        if not test_cases:
+            raise HTTPException(400, "Excel'de test case bulunamadı.")
+
+        return {"test_cases": test_cases}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Excel parse hatası: {str(e)}")
 
 
 @router.get("/status")

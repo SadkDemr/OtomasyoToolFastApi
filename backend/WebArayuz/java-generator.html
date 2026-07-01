@@ -529,17 +529,56 @@ Telefon alanına "05001234567" yaz
         updateGenerateBtn();
     };
 
-    async function readFile(file) {
-        const name    = file.name.toLowerCase();
-        const isExcel = name.endsWith(".xlsx") || name.endsWith(".xls");
-        const isCsv   = name.endsWith(".csv");
+    const _JAVA_API = `${window.location.protocol}//${window.location.hostname}:8000/api`;
 
-        if (isExcel || isCsv) {
+    async function readFile(file) {
+        const fname   = file.name.toLowerCase();
+        const isExcel = fname.endsWith(".xlsx") || fname.endsWith(".xls");
+        const isCsv   = fname.endsWith(".csv");
+
+        if (isExcel) {
+            Toast.info("Excel parse ediliyor...");
+            try {
+                const fd = new FormData();
+                fd.append("file", file);
+                const adoResp = await fetch(`${_JAVA_API}/ai-gen/parse-excel-ado`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                    body: fd
+                });
+                if (adoResp.status === 401) { Auth.logout(); return; }
+                if (adoResp.ok) {
+                    const data = await adoResp.json();
+                    const tcs = data.test_cases || [];
+                    if (tcs.length === 1) {
+                        _javaImportAdoTC(tcs[0]);
+                    } else if (tcs.length > 1) {
+                        _javaOpenAdoModal(tcs);
+                    }
+                    return;
+                }
+                // ADO değilse fallback
+                const fd2 = new FormData();
+                fd2.append("file", file);
+                const resp2 = await fetch(`${_JAVA_API}/ai-gen/parse-file`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                    body: fd2
+                });
+                if (resp2.status === 401) { Auth.logout(); return; }
+                if (!resp2.ok) { const e = await resp2.json(); throw new Error(e.detail || "Parse hatası"); }
+                const data2 = await resp2.json();
+                setTestCase(data2.text, file.name, `${data2.lines} satır`);
+                Toast.success(`"${file.name}" yüklendi (${data2.lines} satır)`);
+            } catch (err) {
+                Toast.error("Dosya okunamadı: " + err.message);
+            }
+        } else if (isCsv) {
             Toast.info("Dosya parse ediliyor...");
             try {
                 const fd = new FormData();
                 fd.append("file", file);
-                const resp = await fetch(`${window.location.protocol}//${window.location.hostname}:8000/api/ai-gen/parse-file`, {
+                const resp = await fetch(`${_JAVA_API}/ai-gen/parse-file`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${Auth.getToken()}` },
                     body: fd
@@ -563,6 +602,34 @@ Telefon alanına "05001234567" yaz
             reader.readAsText(file, "UTF-8");
         }
     }
+
+    function _javaImportAdoTC(tc) {
+        const text = tc.steps.join("\n");
+        setTestCase(text, tc.title, `${tc.steps.length} adım`);
+    }
+
+    function _javaOpenAdoModal(testCases) {
+        const overlay = document.getElementById("javaAdoModal");
+        const body    = document.getElementById("javaAdoBody");
+        body.innerHTML = testCases.map((tc, i) => `
+            <div class="java-ado-item" onclick="window._javaPickTC(${i})">
+                <div class="java-ado-title">${(tc.title||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>
+                <div class="java-ado-meta">${tc.steps.length} adım</div>
+            </div>`).join("");
+        overlay.style.display = "flex";
+        window._javaTCs = testCases;
+    }
+
+    window._javaPickTC = function(i) {
+        const tc = (window._javaTCs || [])[i];
+        if (!tc) return;
+        document.getElementById("javaAdoModal").style.display = "none";
+        _javaImportAdoTC(tc);
+    };
+
+    window._javaCloseAdoModal = function() {
+        document.getElementById("javaAdoModal").style.display = "none";
+    };
 
     function setTestCase(text, name, info) {
         document.getElementById("testCaseInput").value = text;
@@ -785,5 +852,32 @@ Telefon alanına "05001234567" yaz
     setInterval(checkOllamaStatus, 30000);
 })();
 </script>
+
+<!-- ── MODAL: ADO Test Case Seçimi ── -->
+<div id="javaAdoModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:14px; padding:24px; max-width:560px; width:90%; max-height:80vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+            <div style="font-weight:600; font-size:1rem; display:flex; align-items:center; gap:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Excel'den Test Case Seç
+            </div>
+            <button onclick="window._javaCloseAdoModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;border-radius:6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:12px;">İçe aktarmak istediğiniz test case'i seçin:</div>
+        <div id="javaAdoBody" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+</div>
+<style>
+.java-ado-item {
+    padding: 12px 16px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--border-color); background: var(--bg-primary);
+    transition: border-color 150ms, background 150ms;
+}
+.java-ado-item:hover { border-color: var(--accent-primary); background: var(--bg-tertiary); }
+.java-ado-title { font-size: 0.88rem; font-weight: 500; color: var(--text-primary); }
+.java-ado-meta  { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+</style>
 </body>
 </html>

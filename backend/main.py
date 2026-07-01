@@ -164,21 +164,26 @@ async def scenarios_overview(current_user=Depends(_get_user)):
                     "scenarios": {"web": [], "mobile": [], "desktop": []},
                 }
 
-            scenarios_dir = Path(ws.local_path) / "scenarios"
-            if not scenarios_dir.exists():
+            ai_scenarios_dir = Path(ws.local_path) / "ai_scenarios"
+            if not ai_scenarios_dir.exists():
                 continue
 
-            for f in sorted(scenarios_dir.glob("*.json")):
+            for folder in sorted(ai_scenarios_dir.iterdir()):
+                if not folder.is_dir():
+                    continue
+                steps_file = folder / "steps.json"
+                if not steps_file.exists():
+                    continue
                 try:
-                    data = _json.loads(f.read_text(encoding="utf-8"))
-                    plat = data.get("type", "web")
+                    data = _json.loads(steps_file.read_text(encoding="utf-8"))
+                    plat = data.get("platform", "web")
                     if plat not in ("web", "mobile", "desktop"):
                         plat = "web"
                     user_data[uid]["scenarios"][plat].append({
-                        "id":         data.get("id"),
-                        "name":       data.get("name", f.stem),
-                        "folder":     data.get("folder"),
-                        "updated_at": data.get("updated_at"),
+                        "id":         folder.name,
+                        "name":       data.get("name", folder.name),
+                        "folder":     folder.name,
+                        "updated_at": None,
                         "workspace":  ws.repository.name if ws.repository else "",
                     })
                 except Exception:

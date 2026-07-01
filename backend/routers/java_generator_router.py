@@ -80,7 +80,7 @@ def _rule_java(step: str) -> list[str] | None:
 
     CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun)'
     INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
-    ASSERT_WORDS = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
+    ASSERT_WORDS = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
 
     # ── Pasif Türkçe: "X butonuna tıklanır" ──────────────────────────────────
     _PC = re.search(
@@ -94,6 +94,10 @@ def _rule_java(step: str) -> list[str] | None:
             f'// {s}',
             f"driver.findElement(By.xpath(\"//*[@text='{text}']\")).click();",
         ]
+
+    # ── "Uygulama açılır" — uygulama zaten başlatıldı, sadece yorum ─────────
+    if re.search(r'^uygulama\s+a[çc][ıi]l[ıi]r\.?\s*$', sl):
+        return [f'// {s}']
 
     # ── "X açılır" ───────────────────────────────────────────────────────────
     _AC = re.search(r'^(.+?)\s+a[çc][ıi]l[ıi]r\.?\s*$', s, re.IGNORECASE)
@@ -175,6 +179,14 @@ def _rule_java(step: str) -> list[str] | None:
         ms = int(m.group(1)) * 1000 if m else 2000
         return [f'// {s}', f'Thread.sleep({ms});']
 
+    # ── Klavye kapat ──────────────────────────────────────────────────────────
+    if re.search(r'klavye\s*kapat|klavyeyi\s*kapat|kapat.*klavye|hide.*keyboard|klavye.*kapand', sl):
+        return [f'// {s}', 'try { driver.hideKeyboard(); } catch (Exception ignored) {}', 'Thread.sleep(500);']
+
+    # ── Tırnaksız doğrulama/durum (görülür, açıldı, kapandı — quoted olmadan) ─
+    if re.search(ASSERT_WORDS, sl) and not quoted:
+        return [f'// {s}  // assertion: eleman metni belirtilmemiş, manuel doğrula']
+
     return None  # Tanınmadı → LLM
 
 
@@ -187,7 +199,7 @@ def _rule_ios(step: str) -> list[str] | None:
 
     CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun)'
     INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
-    ASSERT_WORDS = r'(?:g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
+    ASSERT_WORDS = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
 
     def _ixp(text: str) -> str:
         t = _jxs(text)
@@ -207,6 +219,10 @@ def _rule_ios(step: str) -> list[str] | None:
             f'// {s}',
             f'wait.until(ExpectedConditions.elementToBeClickable(AppiumBy.xpath("{_ixp(text)}"))).click();',
         ]
+
+    # ── "Uygulama açılır" — uygulama zaten başlatıldı, sadece yorum ─────────
+    if re.search(r'^uygulama\s+a[çc][ıi]l[ıi]r\.?\s*$', sl):
+        return [f'// {s}']
 
     # ── "X açılır" ───────────────────────────────────────────────────────────
     _AC = re.search(r'^(.+?)\s+a[çc][ıi]l[ıi]r\.?\s*$', s, re.IGNORECASE)
@@ -290,6 +306,14 @@ def _rule_ios(step: str) -> list[str] | None:
         m  = re.search(r'(\d+)', s)
         ms = int(m.group(1)) * 1000 if m else 2000
         return [f'// {s}', f'Thread.sleep({ms});']
+
+    # ── Klavye kapat ──────────────────────────────────────────────────────────
+    if re.search(r'klavye\s*kapat|klavyeyi\s*kapat|kapat.*klavye|hide.*keyboard|klavye.*kapand', sl):
+        return [f'// {s}', 'try { driver.hideKeyboard(); } catch (Exception ignored) {}', 'Thread.sleep(500);']
+
+    # ── Tırnaksız doğrulama/durum (görülür, açıldı, kapandı — quoted olmadan) ─
+    if re.search(ASSERT_WORDS, sl) and not quoted:
+        return [f'// {s}  // assertion: eleman metni belirtilmemiş, manuel doğrula']
 
     return None  # Tanınmadı → LLM
 
@@ -458,7 +482,8 @@ Java code (one block per step, separated by blank lines):"""
             code_only = "\n".join(
                 l for l in blocks[i].splitlines()
                 if l.strip().startswith("//") or
-                   re.match(r'^\s*(driver|Thread|assert|WebElement|\{)', l.strip())
+                   re.match(r'^\s*(driver|Thread|assert|wait|try|catch|new\s|WebElement|Map|ImmutableMap|\{|\})', l.strip()) or
+                   (l.strip().endswith(';') and not re.match(r'^[A-Z][a-z]', l.strip()))
             )
             result[step] = code_only if code_only else f"// TODO: {step}\nThread.sleep(1000);"
         else:
@@ -503,7 +528,8 @@ Java code (one block per step, separated by blank lines):"""
             code_only = "\n".join(
                 l for l in blocks[i].splitlines()
                 if l.strip().startswith("//") or
-                   re.match(r'^\s*(driver|Thread|assert|wait|WebElement|Map|\{)', l.strip())
+                   re.match(r'^\s*(driver|Thread|assert|wait|try|catch|new\s|WebElement|Map|ImmutableMap|\{|\})', l.strip()) or
+                   (l.strip().endswith(';') and not re.match(r'^[A-Z][a-z]', l.strip()))
             )
             result[step] = code_only if code_only else f"// TODO: {step}\nThread.sleep(1000);"
         else:
