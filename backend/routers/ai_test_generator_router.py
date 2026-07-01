@@ -244,6 +244,7 @@ def _rule_mobile(step: str) -> list[str] | None:
         return [
             f'# "{hint}" oku {{{{ {vn} }}}}',
             f"_VARS[{repr(vn)}] = _safe_read(driver, {repr(hint)})",
+            f"if not _VARS[{repr(vn)}]: raise ValueError(f'Deger okunamadi: {hint}')",
             f"print(f'[OKU→_VARS] {vn} = {{_VARS[{repr(vn)}]}}')",
         ]
 
@@ -411,6 +412,7 @@ def _rule_web(step: str) -> list[str] | None:
         return [
             f'# "{hint}" oku {{{{ {vn} }}}}',
             f"_VARS[{repr(vn)}] = _safe_read_web(driver, {repr(hint)})",
+            f"if not _VARS[{repr(vn)}]: raise ValueError(f'Deger okunamadi: {hint}')",
             f"print(f'[OKU→_VARS] {vn} = {{_VARS[{repr(vn)}]}}')",
         ]
 
@@ -1332,7 +1334,7 @@ def _safe_read_web(driver, hint):
     """Hedef metni içeren elementin görünen değerini okur (contains eşleşmesi)."""
     from selenium.webdriver.common.by import By
     for xp in [
-        f'//*[contains(normalize-space(.),"{hint}")]',
+        f'//*[contains(normalize-space(.),"{hint}")][not(.//*[contains(normalize-space(.),"{hint}")])]',
         f'//*[contains(@value,"{hint}")]',
         f'//*[contains(@placeholder,"{hint}")]',
     ]:
