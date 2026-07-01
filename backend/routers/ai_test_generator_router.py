@@ -244,7 +244,7 @@ def _rule_mobile(step: str) -> list[str] | None:
         return [
             f'# "{hint}" oku {{{{ {vn} }}}}',
             f"_VARS[{repr(vn)}] = _safe_read(driver, {repr(hint)})",
-            f"if not _VARS[{repr(vn)}]: raise ValueError(f'Deger okunamadi: {hint}')",
+            f"if not _VARS[{repr(vn)}]: raise ValueError({repr('Deger okunamadi: ' + hint)})",
             f"print(f'[OKU→_VARS] {vn} = {{_VARS[{repr(vn)}]}}')",
         ]
 
@@ -412,7 +412,7 @@ def _rule_web(step: str) -> list[str] | None:
         return [
             f'# "{hint}" oku {{{{ {vn} }}}}',
             f"_VARS[{repr(vn)}] = _safe_read_web(driver, {repr(hint)})",
-            f"if not _VARS[{repr(vn)}]: raise ValueError(f'Deger okunamadi: {hint}')",
+            f"if not _VARS[{repr(vn)}]: raise ValueError({repr('Deger okunamadi: ' + hint)})",
             f"print(f'[OKU→_VARS] {vn} = {{_VARS[{repr(vn)}]}}')",
         ]
 
