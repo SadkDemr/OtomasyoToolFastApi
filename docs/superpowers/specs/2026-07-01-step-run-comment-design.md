@@ -156,6 +156,45 @@ bir slot kaplar) ama koşum sırasında "çalıştırılan adım" olarak görün
 soluk/italik gösterilir, aksiyon dropdown'u yok, Bölüm A'daki "Adımı Çalıştır" butonu da yok
 (çalıştırılacak bir şey olmadığı için gösterilmez).
 
+## Bölüm B2: Mevcut Adımı Devre Dışı Bırakma (2026-07-01 eklendi)
+
+### Problem
+
+Bölüm B'deki bağımsız "Yorum" adımı sadece kendi başına bir NOT satırıdır. Kullanıcının asıl
+istediği farklı: **var olan bir senaryo adımını (metin/görsel/SQL/API, herhangi bir tip) koddaki
+`//` yorum satırı gibi geçici olarak devre dışı bırakmak** — adım silinmez, içeriği/ayarları
+korunur, sadece koşum sırasında atlanır; istendiğinde tek tıkla tekrar aktif edilir.
+
+### Çözüm
+
+`StepItem`'a yeni bir alan: `disabled: bool = False`. Herhangi bir adım tipine uygulanabilir.
+
+**Backend (`_generate_steps`):** adım döngüsünün EN BAŞINA, tip dispatch'inden ÖNCE bir kontrol
+eklenir:
+
+```python
+for idx, item in enumerate(structured):
+    if item.disabled:
+        _label = item.content or f"Adım {idx+1}"
+        code_lines.append(("comment", _label, f"# [DEVRE DIŞI] {_label}"))
+        continue
+    if item.type == "image":
+        ...
+```
+
+Bu, Bölüm B'de zaten eklenmiş olan `"comment"` kind işlemesini (`if kind in ("rule", "image",
+"comment"):` — merge döngüsünde STEP_START/STEP_DONE üretmeyen yol) yeniden kullanır, merge
+döngüsünde EK bir değişiklik gerekmez. `disabled=True` olan bir adımın `type`'ı ne olursa olsun
+(sql/api/image/text) tip-özel kod üretimi (`_sql_step_code` vb.) hiç ÇAĞRILMAZ — `continue` ile
+o adım için döngü erken sonlanır.
+
+**Frontend:** Her çalıştırılabilir adımın satırına bir devre dışı bırakma toggle butonu eklenir
+(ör. `🚫`/`▶️` ikonu, `onclick="toggleStepDisabled(${i})"`). `disabled=true` olan bir adım
+satırda soluk/üstü çizili gösterilir (ör. `.step-item.disabled { opacity: 0.5; text-decoration:
+line-through; }`) AMA input alanları KİLİTLENMEZ/GİZLENMEZ — kullanıcı içeriği görebilir, isterse
+düzenleyebilir, "▶️" ile tekrar aktif edebilir. Yorum (`type="comment"`) adımlarına bu toggle
+buton gösterilmez (zaten çalışmayan bir adım, devre dışı bırakmanın anlamı yok).
+
 ## Etkilenen Dosyalar
 
 - `backend/routers/ai_test_generator_router.py`:
@@ -164,10 +203,12 @@ soluk/italik gösterilir, aksiyon dropdown'u yok, Bölüm A'daki "Adımı Çalı
   - `_build_web_template`/`_build_mobile_template`'e `session_mode` parametresi
   - `_generate_steps()`'e `type == "comment"` dalı
   - `StepItem.type` docstring'ine `"comment"` eklenmesi
+  - `StepItem.disabled: bool = False` yeni alan + `_generate_steps()`'in başına devre dışı kontrolü
 - `backend/WebArayuz/ai-generator.html`:
   - Adım başına "▶ Adımı Çalıştır" butonu
   - "Oturumu Başlat/Bitir" kontrolleri + durum göstergesi (Web/Mobil)
   - "+" menüsüne "💬 Yorum" seçeneği + yorum adımı render stili
+  - Adım başına devre dışı bırakma toggle butonu (🚫/▶️) + `.step-item.disabled` stili
 
 ## Kapsam Dışı
 
