@@ -1069,6 +1069,10 @@
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
                             API
                         </button>
+                        <button class="btn-add-step comment-btn" onclick="addCommentStep()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            Yorum
+                        </button>
                     </div>
 
                     <!-- Step Listesi -->
@@ -1702,6 +1706,12 @@
         updateGenerateBtn();
     };
 
+    window.addCommentStep = function() {
+        steps.push({ type: "comment", content: "", status: null });
+        renderStepList();
+        updateGenerateBtn();
+    };
+
     window.retakeImage = function(idx) {
         _captureTargetStepIdx = idx;
         startImageCapture(idx);
@@ -1741,10 +1751,11 @@
         const statusIcon  = s.status === "running" ? "⟳" : s.status === "done" ? "✓" : s.status === "fail" ? "✕" : "·";
 
         const TYPE_META = {
-            text:  { label: "Metin",  cls: "text" },
-            image: { label: "Görsel", cls: "image" },
-            sql:   { label: "SQL",    cls: "sql" },
-            api:   { label: "API",    cls: "api" },
+            text:    { label: "Metin",  cls: "text" },
+            image:   { label: "Görsel", cls: "image" },
+            sql:     { label: "SQL",    cls: "sql" },
+            api:     { label: "API",    cls: "api" },
+            comment: { label: "Yorum",  cls: "comment" },
         };
         const meta    = TYPE_META[s.type] || TYPE_META.text;
         let extraClass = "";
@@ -1753,6 +1764,10 @@
         if (s.type === "text") {
             contentHtml = `<input class="step-content-input" type="text" value="${escHtml(s.content)}"
                 placeholder='Adım açıklaması...  (değişken: {{ad}} yaz / "hedef" oku {{ad}})' oninput="updateStepContent(${i}, this.value)">`;
+
+        } else if (s.type === "comment") {
+            contentHtml = `<input class="step-content-input" type="text" style="font-style:italic; opacity:0.75;"
+                value="${escHtml(s.content)}" placeholder="Yorum metni..." oninput="updateStepContent(${i}, this.value)">`;
 
         } else if (s.type === "image") {
             const imgActionOpts = [
