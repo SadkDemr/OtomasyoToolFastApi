@@ -74,11 +74,45 @@ ama headless kapalı + sonda quit yerine session bilgisi yazdırma. `"attach"` �
 
 ### Bilinen Risk / Doğrulama Gereken Varsayım
 
-Appium-Python-Client'ın (3.1.0) `webdriver.Remote` benzeri bir session-reconnect deseni
-destekleyip desteklemediği (Selenium'da kanıtlanmış bir teknik, Appium client'ı Selenium'un
-`RemoteWebDriver`'ından türediği için teorik olarak çalışmalı ama doğrulanmadı) — implementasyon
-planında ilk adım bunu küçük bir spike ile doğrulamak olmalı. Doğrulanamazsa Mobil için Bölüm A
-"sadece Desktop + Web" kapsamına daraltılabilir, Mobil ayrı ele alınır.
+**Spike sonucu (2026-07-01, Task 1 — `backend/services/session_reconnect.py`):**
+
+- **Web (Selenium 4.15.2): ✅ doğrulandı, ama teknikte kritik bir düzeltme gerekti.**
+  Brief'teki ilk taslak kod iki noktada başarısız oldu, ikisi de düzeltildi:
+  1. **`driver.quit()` çağrılmasa bile süreç normal şekilde sonlandığında tarayıcı KAPANIYOR.**
+     Kök neden: `selenium/webdriver/common/service.py`'deki `Service.__del__` — Python
+     interpreter kapanırken `Service` nesnesi GC edildiğinde `self.stop()` tetikleniyor, o da
+     chromedriver'ın `/shutdown` endpoint'ine HTTP isteği atıp chromedriver'ı (ve altındaki
+     chrome'u) sonlandırıyor. Bu, `driver.quit()` çağrılmasa da normal `sys.exit`/script sonu ile
+     otomatik olarak oluyor. **Çözüm:** "Oturum Başlat" script'i normal şekilde bitmemeli, en
+     sonda `os._exit(0)` çağırmalı — bu, `__del__` finalizer'larını ve interpreter shutdown
+     sırası yapılan temizliği atlar, chromedriver/chrome süreçleri hayatta kalır. Bu, session
+     reconnect özelliğinin implementasyonunda "Oturumu Başlat" endpoint'inin arkasındaki
+     subprocess/script'in nasıl sonlandırılacağı için bağlayıcı bir tasarım kısıtıdır.
+  2. Brief'teki `start_session` override'ı `self.capabilities = {}` atıyordu — Selenium
+     4.15.2'de `capabilities` salt-okunur bir property (gerçek depolama `self.caps`), bu satır
+     `AttributeError` fırlatıyordu. `self.caps = {}` olarak düzeltildi.
+  Kanıt: `spike_web_start3.py` (os._exit ile) session açtı, süreç bitti, `tasklist` çıktısında
+  aynı `chromedriver.exe` PID'i ve chrome.exe süreçleri canlı kaldı. İkinci, bağımsız bir Python
+  sürecinden `attach_selenium_session(EXECUTOR_URL, SESSION_ID)` ile bağlanıp
+  `document.title = 'attached-ok'` çalıştırıldı, `driver.title` geri okununca `attached-ok`
+  döndü — `tasklist` çıktısı bağlanma öncesi/sonrası AYNI chromedriver PID'ini ve chrome.exe
+  süreç kümesini gösterdi (yeni bir session/pencere AÇILMADI). `driver.quit()` ile üçüncü
+  script'ten kapatıldı, chrome.exe süreçleri sonlandı.
+- **Mobil (Appium-Python-Client 3.1.0): atlandı — ortam eksikliği.** Bu ortamda bağlı bir
+  Android cihaz/emulator (`adb devices` boş liste döndürdü) ve çalışan bir Appium sunucusu
+  (4723 portunda yanıt yok) bulunmuyor. `attach_appium_session` fonksiyonu aynı düzeltmeyle
+  (`self.caps = {}`) `session_reconnect.py`'a yazıldı ve Appium `WebDriver`'ın da (Selenium'un
+  `RemoteWebDriver`'ından türediği için) aynı `self.caps` deposunu kullandığı kaynak kod
+  incelemesiyle doğrulandı (`appium/webdriver/webdriver.py:337`), ama uçtan uca ÇALIŞTIRILARAK
+  kanıtlanmadı. **Mobil için bu varsayım hâlâ ampirik olarak doğrulanmamış durumda — gerçek
+  cihaz/emulator + Appium sunucusu olan bir ortamda Task 6 insan onayı öncesi tekrar
+  doğrulanmalı.** Web'de bulunan `os._exit(0)` gereksinimi muhtemelen Appium için de geçerli
+  olacaktır (aynı `Service` sınıfı Appium tarafında da kullanılıyor), bu implementasyon
+  planında varsayılmalı ama doğrulanmadan kesinleşmiş kabul edilmemeli.
+
+Sonuç: Bölüm A'nın Web kısmı bu teknikle ilerleyebilir, ancak "Oturum Başlat" implementasyonu
+`os._exit(0)` kısıtını hesaba katmalı. Mobil kısım için risk kapanmadı; Mobil ayrı ele alınabilir
+veya Task 6'da gerçek cihaz ortamında yeniden doğrulanmalıdır.
 
 ## Bölüm B: Yorum Adımı
 
