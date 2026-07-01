@@ -33,6 +33,52 @@ import datetime as _datetime
 router = APIRouter(prefix="/api/ai-gen", tags=["ai-generator"])
 
 _running_processes: dict[str, subprocess.Popen] = {}
+
+import time as _time_mod
+
+_active_sessions: dict[tuple[int, str], dict] = {}   # (user_id, platform) -> session info
+_SESSION_IDLE_TIMEOUT_SEC = 15 * 60
+
+
+def _touch_session(user_id: int, platform: str) -> None:
+    key = (user_id, platform)
+    if key in _active_sessions:
+        _active_sessions[key]["last_used_at"] = _time_mod.time()
+
+
+def _get_session(user_id: int, platform: str) -> dict | None:
+    return _active_sessions.get((user_id, platform))
+
+
+def _remove_session(user_id: int, platform: str) -> None:
+    _active_sessions.pop((user_id, platform), None)
+
+
+async def _session_idle_reaper():
+    """15 dakika boşta kalan oturumları otomatik kapatır (driver.quit())."""
+    while True:
+        await asyncio.sleep(60)
+        now = _time_mod.time()
+        for key in list(_active_sessions.keys()):
+            info = _active_sessions.get(key)
+            if not info:
+                continue
+            if now - info["last_used_at"] > _SESSION_IDLE_TIMEOUT_SEC:
+                user_id, platform = key
+                try:
+                    if platform == "mobile":
+                        from services.session_reconnect import attach_appium_session
+                        d = attach_appium_session(info["command_executor_url"], info["session_id"])
+                    else:
+                        from services.session_reconnect import attach_selenium_session
+                        d = attach_selenium_session(info["command_executor_url"], info["session_id"])
+                    d.quit()
+                except Exception as e:
+                    print(f"[SESSION-REAPER] Kapatma hatasi ({key}): {e}")
+                _remove_session(user_id, platform)
+                print(f"[SESSION-REAPER] Idle oturum kapatildi: user={user_id} platform={platform}")
+
+
 _stop_files:        dict[str, str]               = {}   # run_id → stop flag dosyası
 _desktop_lock:      asyncio.Lock                 = None # tek seferlik desktop kilidi (startup'ta init edilir)
 

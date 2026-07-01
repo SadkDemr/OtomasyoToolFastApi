@@ -37,12 +37,15 @@ from routers.ai_test_generator_router import router as ai_gen_router
 from routers.java_generator_router import router as java_gen_router
 # 🥒 BDD Generator
 from routers.bdd_generator_router import router as bdd_gen_router
+# 🔁 AI Test Generator - idle oturum reaper
+from routers.ai_test_generator_router import _session_idle_reaper
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("="*50)
     print("--- SISTEM BASLATILIYOR ---")
     init_db()
+    asyncio.create_task(_session_idle_reaper())
     print("Swagger: http://localhost:8000/docs")
     print("Web UI: http://localhost:8000/ui")
     print("="*50)
