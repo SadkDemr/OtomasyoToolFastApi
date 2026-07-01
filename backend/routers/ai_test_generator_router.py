@@ -1960,6 +1960,10 @@ time.sleep(3)
         "from selenium.webdriver.support import expected_conditions as EC",
         "import time, socket",
         "_VARS = {}  # adımlar arası değişken havuzu",
+        "def _sub_vars(_s):",
+        "    for _k, _v in _VARS.items():",
+        "        _s = _s.replace('{{' + _k + '}}', str(_v))",
+        "    return _s",
         "",
         STOP_HELPER,
         f'_DEVICE_ID = "{device}"  # ADB komutları için cihaz ID',
@@ -2088,6 +2092,10 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
         "from selenium.webdriver.support import expected_conditions as EC",
         "import time",
         "_VARS = {}  # adımlar arası değişken havuzu",
+        "def _sub_vars(_s):",
+        "    for _k, _v in _VARS.items():",
+        "        _s = _s.replace('{{' + _k + '}}', str(_v))",
+        "    return _s",
         "",
         driver_setup,
         "",
@@ -2152,6 +2160,10 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
         f'_WINDOW_TITLE   = "{window_title_esc}"',
         "_VARS = {}  # adımlar arası değişken havuzu",
+        "def _sub_vars(_s):",
+        "    for _k, _v in _VARS.items():",
+        "        _s = _s.replace('{{' + _k + '}}', str(_v))",
+        "    return _s",
         "",
         STOP_HELPER,
         IMAGE_HELPER,
@@ -2462,7 +2474,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
             f"    import sqlite3 as _sq_{idx}\n"
             f"    _db_{idx} = _sq_{idx}.connect({repr(db_path)})\n"
             f"    _cur_{idx} = _db_{idx}.cursor()\n"
-            f"    _cur_{idx}.execute({query_r})\n"
+            f"    _cur_{idx}.execute(_sub_vars({query_r}))\n"
             f"{result_code}\n"
             f"    _db_{idx}.close()\n"
             f"    print('STEP_DONE:{idx}')\n"
@@ -2499,7 +2511,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
             f"    import pyodbc as _pyodbc_{idx}\n"
             f"    _db_{idx} = _pyodbc_{idx}.connect({conn_r})\n"
             f"    _cur_{idx} = _db_{idx}.cursor()\n"
-            f"    _cur_{idx}.execute({query_r})\n"
+            f"    _cur_{idx}.execute(_sub_vars({query_r}))\n"
             f"{result_code}\n"
             f"    _db_{idx}.close()\n"
             f"    print('STEP_DONE:{idx}')\n"
@@ -2535,7 +2547,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
             f"    from sqlalchemy import create_engine as _ce_{idx}, text as _st_{idx}\n"
             f"    _eng_{idx} = _ce_{idx}({conn_r})\n"
             f"    with _eng_{idx}.connect() as _conn_{idx}:\n"
-            f"        _res_{idx} = _conn_{idx}.execute(_st_{idx}({query_r}))\n"
+            f"        _res_{idx} = _conn_{idx}.execute(_st_{idx}(_sub_vars({query_r})))\n"
             f"{result_code}\n"
             f"    print('STEP_DONE:{idx}')\n"
             f"except ImportError:\n"
