@@ -114,6 +114,29 @@ Sonuç: Bölüm A'nın Web kısmı bu teknikle ilerleyebilir, ancak "Oturum Baş
 `os._exit(0)` kısıtını hesaba katmalı. Mobil kısım için risk kapanmadı; Mobil ayrı ele alınabilir
 veya Task 6'da gerçek cihaz ortamında yeniden doğrulanmalıdır.
 
+**Task 1 review'ında bulunan, Task 5/7 implementasyonunu bağlayan iki ek risk (2026-07-01):**
+
+1. **Orphan `chromedriver.exe` sızıntısı — "Oturumu Bitir" chromedriver'ı gerçekten kapatmayabilir.**
+   `attach_selenium_session`/`attach_appium_session` ile bağlanan driver nesnesinin bir `Service`
+   nesnesi YOK (attach modu `Service` hiç oluşturmuyor). Bu yüzden bu driver'da `driver.quit()`
+   sadece `Command.QUIT` gönderip HTTP bağlantısını kapatıyor — `Service.stop()`/chromedriver'ın
+   `/shutdown` endpoint'ini ASLA çağırmıyor. Spike sırasında bu gözlemlendi (chromedriver.exe'yi
+   elle `Stop-Process` ile kapatmak gerekti). **Task 7'nin `/session/end` endpoint'i sadece
+   `session_mode="end"` script'i (attach + `driver.quit()`) çalıştırırsa, chromedriver.exe süreci
+   sonsuza kadar orphan kalır.** Task 7 implementasyonunda `/session/end`'in, `driver.quit()`'e ek
+   olarak chromedriver'ın `/shutdown` HTTP endpoint'ine de doğrudan istek atması (ya da
+   `command_executor_url + "/shutdown"`'a bir GET/POST göndermesi) gerekebilir — bu Task 7'ye
+   eklenmesi gereken bir adım, mevcut plandaki `session_end` taslağında YOK.
+2. **`os._exit(0)` + `subprocess.run(capture_output=True)` etkileşimi doğrulanmadı.** Spike, "Oturum
+   Başlat" script'ini `wmic process call create` ile (pipe yakalamadan, ayrık) başlattı — Task 7'nin
+   gerçek mekanizması (`subprocess.run([...], capture_output=True, text=True, ...)` ile
+   `SESSION_ID:`/`EXECUTOR_URL:` çıktısını `proc.stdout`'tan parse etme) hiç test edilmedi.
+   `os._exit()` stdio flush'ı atlıyor — plan zaten `PYTHONUNBUFFERED=1` kullanıyor (bu riski
+   muhtemelen azaltıyor) ama bu kombinasyon ampirik olarak KANITLANMADI. Task 5/7 implementasyonuna
+   başlamadan önce (ya da Task 7'nin ilk adımı olarak) `subprocess.run(capture_output=True)` +
+   `os._exit(0)` kombinasyonuyla stdout'un gerçekten eksiksiz/flush edilmiş geldiği küçük bir ek
+   doğrulama yapılmalı.
+
 ## Bölüm B: Yorum Adımı
 
 ### Problem
