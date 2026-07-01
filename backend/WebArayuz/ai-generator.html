@@ -787,6 +787,23 @@
             border-radius: 3px;
         }
         .step-del-btn:hover { opacity: 1; color: var(--danger); background: rgba(239,68,68,0.08); }
+        .step-item.disabled { opacity: 0.5; }
+        .step-item.disabled .step-content-input,
+        .step-item.disabled textarea { text-decoration: line-through; }
+        .step-toggle-btn {
+            padding: 2px 5px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.85rem;
+            opacity: 0.5;
+            flex-shrink: 0;
+            line-height: 1;
+            border-radius: 3px;
+        }
+        .step-toggle-btn:hover { opacity: 1; color: var(--ai-accent); background: rgba(99,102,241,0.08); }
+        .step-item.disabled .step-toggle-btn { opacity: 1; color: var(--ai-accent); }
 
         /* ── Modals ── */
         .ai-modal-overlay {
@@ -1623,6 +1640,13 @@
         updateGenerateBtn();
     };
 
+    window.toggleStepDisabled = function(idx) {
+        if (!steps[idx]) return;
+        steps[idx].disabled = !steps[idx].disabled;
+        renderStepList();
+        updateGenerateBtn();
+    };
+
     // ── Sürükle-Bırak ────────────────────────────────────────────────────────
     window.stepDragStart = function(e, idx) {
         _dragSrcIdx = idx;
@@ -1854,7 +1878,8 @@
             </div>`;
         }
 
-        return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}" id="step-row-${i}"
+        const disabledClass = s.disabled ? " disabled" : "";
+        return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}${disabledClass}" id="step-row-${i}"
             draggable="true"
             ondragstart="stepDragStart(event, ${i})"
             ondragend="stepDragEnd()">
@@ -1863,6 +1888,8 @@
             <span class="step-type-badge ${meta.cls}">${meta.label}</span>
             ${contentHtml}
             <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
+            <button class="step-toggle-btn" onclick="toggleStepDisabled(${i})"
+                title="${s.disabled ? 'Etkinleştir' : 'Devre dışı bırak (yorum satırına al)'}">${s.disabled ? "▶" : "⏸"}</button>
             <button class="step-del-btn" onclick="deleteStep(${i})" title="Sil">✕</button>
         </div>`;
     }
