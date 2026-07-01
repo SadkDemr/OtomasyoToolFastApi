@@ -115,6 +115,7 @@ _ROUTER_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class StepItem(BaseModel):
     type:          str = "text"   # "text" | "image" | "sql" | "api" | "comment"
+    disabled:      bool = False   # True ise adım çalıştırılmaz, "# [DEVRE DIŞI]" yorumuna döner
     content:       str = ""
     image_b64:     str = ""
     action:        str = "click"  # image: click/double_click/right_click/assert | sql: query_print/execute | api: print/execute/store
@@ -2912,6 +2913,10 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
     report       = []
 
     for idx, item in enumerate(structured):
+        if item.disabled:
+            label = item.content or f"Adım {idx+1}"
+            code_lines.append(("comment", label, f"# [DEVRE DIŞI] {label}"))
+            continue
         if item.type == "image":
             code = "_check_stop()\n" + _image_step_code(item, req.platform, idx)
             code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
