@@ -237,6 +237,16 @@ def _rule_mobile(step: str) -> list[str] | None:
         vn, xpath = _vm.group(1), (_vm.group(2) or '//android.widget.EditText[1]')
         return [f'# {{{{ {vn} }}}} yaz', f"_safe_input(driver, {repr(xpath)}, str(_VARS.get({repr(vn)}, '')))"]
 
+    # ── "hedef" oku {{varname}} — elementten değer oku ────────────────────────
+    _rm = re.match(r'^"([^"]+)"\s*oku\s*\{\{(\w+)\}\}\.?\s*$', s, re.IGNORECASE)
+    if _rm:
+        hint, vn = _rm.group(1), _rm.group(2)
+        return [
+            f'# "{hint}" oku {{{{ {vn} }}}}',
+            f"_VARS[{repr(vn)}] = _safe_read(driver, {repr(hint)})",
+            f"print(f'[OKU→_VARS] {vn} = {{_VARS[{repr(vn)}]}}')",
+        ]
+
     # ── Pasif Türkçe: "X [suffix] tıklanır" (tırnaksız) ─────────────────────
     _PC = re.search(
         r'^(.+?)\s+(?:seçene[ğg]ine|componentine|butonu?na|simgesine|ikonuna'
@@ -393,6 +403,16 @@ def _rule_web(step: str) -> list[str] | None:
         if hint:
             return [f'# {{{{ {vn} }}}} yaz', f"_safe_input_web(driver, {repr(hint)}, str(_VARS.get({repr(vn)}, '')))"]
         return [f'# {{{{ {vn} }}}} yaz', f"import pyperclip as _pc; _pc.copy(str(_VARS.get({repr(vn)}, ''))); import pyautogui as _pa; _pa.hotkey('ctrl','v')"]
+
+    # ── "hedef" oku {{varname}} — elementten değer oku ────────────────────────
+    _rm = re.match(r'^"([^"]+)"\s*oku\s*\{\{(\w+)\}\}\.?\s*$', s, re.IGNORECASE)
+    if _rm:
+        hint, vn = _rm.group(1), _rm.group(2)
+        return [
+            f'# "{hint}" oku {{{{ {vn} }}}}',
+            f"_VARS[{repr(vn)}] = _safe_read_web(driver, {repr(hint)})",
+            f"print(f'[OKU→_VARS] {vn} = {{_VARS[{repr(vn)}]}}')",
+        ]
 
     _WEB_KEY_MAP = {
         'ctrl': 'Keys.CONTROL', 'control': 'Keys.CONTROL',
@@ -1125,6 +1145,46 @@ def _safe_assert(driver, text, key_text=None):
         return
 
     print(f"[WARN] '{text}' ekranda bulunamadı — adım geçiliyor")
+
+
+def _safe_read(driver, text, key_text=None):
+    """Hedef metni/içeriği içeren elementin text/content-desc değerini okur (scroll ile arar)."""
+    _all_texts = [t for t in [text, key_text] if t]
+
+    def _try_find():
+        for _t in _all_texts:
+            for _xp in [
+                f'//*[contains(@text,"{_t}")]',
+                f'//*[contains(@content-desc,"{_t}")]',
+            ]:
+                try:
+                    el = driver.find_element(AppiumBy.XPATH, _xp)
+                    val = (el.get_attribute("text") or el.get_attribute("content-desc") or "").strip()
+                    if val:
+                        return val
+                except Exception:
+                    continue
+        return None
+
+    val = _try_find()
+    if val is not None:
+        print(f"[OK] Okundu: {text}")
+        return val
+
+    print(f"[SCROLL↓] '{text}' aranıyor...")
+    driver.swipe(540, 1400, 540, 500, 800); time.sleep(0.7)
+    val = _try_find()
+    if val is not None:
+        return val
+
+    print(f"[SCROLL↑] '{text}' aranıyor...")
+    driver.swipe(540, 500, 540, 1400, 800); time.sleep(0.7)
+    val = _try_find()
+    if val is not None:
+        return val
+
+    print(f"[WARN] '{text}' ekranda bulunamadı — değer okunamadı")
+    return ""
 '''
 
 
@@ -1266,6 +1326,25 @@ def _safe_assert_web(driver, text):
             continue
     driver.execute_script("window.scrollTo(0,0);"); time.sleep(0.5)
     assert text in driver.page_source, f"Beklenen metin yok: {text}"
+
+
+def _safe_read_web(driver, hint):
+    """Hedef metni içeren elementin görünen değerini okur (contains eşleşmesi)."""
+    from selenium.webdriver.common.by import By
+    for xp in [
+        f'//*[contains(normalize-space(.),"{hint}")]',
+        f'//*[contains(@value,"{hint}")]',
+        f'//*[contains(@placeholder,"{hint}")]',
+    ]:
+        try:
+            el = driver.find_element(By.XPATH, xp)
+            val = (el.text or el.get_attribute("value") or "").strip()
+            if val:
+                return val
+        except Exception:
+            continue
+    print(f"[WARN] Okunamadı: {hint}")
+    return ""
 '''
 
 
