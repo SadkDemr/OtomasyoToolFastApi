@@ -3,8 +3,9 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** AI Test Generator'a (1) senaryodaki tek bir adımı, önceki adımların bıraktığı durumdan
-devam ederek (baştan koşmadan) çalıştırma özelliği ve (2) çalışmayan, sadece açıklama amaçlı
-"yorum" adım tipi eklemek.
+devam ederek (baştan koşmadan) çalıştırma özelliği, (2) çalışmayan, sadece açıklama amaçlı
+"yorum" adım tipi ve (3) yazılmış, mevcut bir adımı silmeden "// gibi" devre dışı bırakma
+(yorum satırına alma) özelliği eklemek.
 
 **Architecture:** Desktop zaten `reuse_instance` ile tek-adım koşumunu doğal olarak destekliyor —
 sadece frontend'den `/generate` (`steps_list=[tek_adim]`) + `/execute` çağrısı yeterli. Web/Mobil
@@ -1167,10 +1168,231 @@ kalıcı olmamalı).
 
 ---
 
+### Task 10: Backend — Mevcut adımı devre dışı bırakma (`StepItem.disabled`)
+
+**Files:**
+- Modify: `backend/routers/ai_test_generator_router.py`
+  - `StepItem` (satır ~116-118) — yeni `disabled: bool = False` alanı
+  - `_generate_steps()` — adım döngüsünün en başı (satır ~2914)
+
+**Interfaces:**
+- Produces: `StepItem(disabled=True)` → `_generate_steps()` çıktısında bu adım için `report`
+  girdisinde `"method": "comment"`, üretilen kodda `# [DEVRE DIŞI] {content}` satırı (adımın
+  gerçek `type`'ı ne olursa olsun — text/image/sql/api hepsi için geçerli), `STEP_START`/
+  `STEP_DONE` yok, sonraki adımların `idx` sırası bozulmuyor.
+- Consumes: `_generate_steps()`'in mevcut birleştirme döngüsündeki `kind in ("rule", "image",
+  "comment")` kontrolü (Task 2'de eklendi, satır ~2955) — "comment" kind'ı olduğu gibi reuse
+  edilir, o döngüde DEĞİŞİKLİK GEREKMEZ.
+
+- [ ] **Step 1: Kontrol scriptini yaz (henüz FAIL vermeli)**
+
+Scratchpad'e `check_disabled_step.py`:
+
+```python
+import sys, asyncio
+sys.path.insert(0, r"C:\Users\Sadik Demir\Documents\GitHub\OtomasyoToolFastApi\backend")
+from routers.ai_test_generator_router import _generate_steps, StepItem, GenerateRequest
+
+req = GenerateRequest(platform="web", steps_list=[
+    StepItem(type="text", content='"data:text/html,<div>x</div>" git'),
+    StepItem(type="text", content='"buton" tikla', disabled=True),
+    StepItem(type="text", content='"sonuc" oku {{deger}}'),
+])
+steps_code, report = asyncio.run(_generate_steps(req))
+
+assert report[1]["method"] == "comment", f"FAIL: devre disi adim method=comment olmali, gelen={report[1]}"
+assert "# [DEVRE DIŞI]" in steps_code, "FAIL: devre disi yorum satiri script'te yok"
+assert "STEP_START:1" not in steps_code, "FAIL: devre disi adim STEP_START uretmemeli"
+assert "STEP_START:0" in steps_code and "STEP_START:2" in steps_code, "FAIL: index kaymamali (0 ve 2 hala STEP_START uretmeli)"
+print("OK")
+```
+
+- [ ] **Step 2: Çalıştır, FAIL beklenir**
+
+Run: `"backend/venv/Scripts/python.exe" <check_disabled_step.py yolu>`
+Expected: `AssertionError: FAIL: devre disi adim method=comment olmali...` (Pydantic v2 varsayılan
+`extra="ignore"` davranışı nedeniyle `disabled=True` şu an sessizce yok sayılır, adım normal
+`"buton" tikla` gibi işlenip `STEP_START:1` üretir).
+
+- [ ] **Step 3: `StepItem`'a `disabled` alanını ekle**
+
+Öncesi (satır ~116-118):
+```python
+class StepItem(BaseModel):
+    type:          str = "text"   # "text" | "image" | "sql" | "api" | "comment"
+    content:       str = ""
+```
+Sonrası:
+```python
+class StepItem(BaseModel):
+    type:          str = "text"   # "text" | "image" | "sql" | "api" | "comment"
+    disabled:      bool = False   # True ise adım çalıştırılmaz, "# [DEVRE DIŞI]" yorumuna döner
+    content:       str = ""
+```
+
+- [ ] **Step 4: `_generate_steps()` döngüsünün en başına erken-atlama kontrolü ekle**
+
+Öncesi (satır ~2914):
+```python
+    for idx, item in enumerate(structured):
+        if item.type == "image":
+            code = "_check_stop()\n" + _image_step_code(item, req.platform, idx)
+            code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
+```
+Sonrası:
+```python
+    for idx, item in enumerate(structured):
+        if item.disabled:
+            label = item.content or f"Adım {idx+1}"
+            code_lines.append(("comment", label, f"# [DEVRE DIŞI] {label}"))
+            continue
+        if item.type == "image":
+            code = "_check_stop()\n" + _image_step_code(item, req.platform, idx)
+            code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
+```
+
+**Not:** `type` ne olursa olsun (text/image/sql/api/comment) `disabled=True` her zaman önce
+kontrol edilir — bu yüzden kontrol SQL/API/görsel adımlarını da devre dışı bırakabilir, sadece
+diğer `elif` dallarından ÖNCE çalışan bağımsız bir `if` olmalı (yukarıdaki `elif` zincirine
+eklenirse SADECE `type != "image"` olan adımlarda çalışır — bu YANLIŞ olur).
+
+- [ ] **Step 5: Kontrol scriptini tekrar çalıştır, PASS beklenir**
+
+Run: aynı komut. Expected: `OK`
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/routers/ai_test_generator_router.py
+git commit -m "feat: mevcut adimi devre disi birakma (StepItem.disabled)"
+```
+
+---
+
+### Task 11: Frontend — Devre dışı bırakma toggle butonu + stil
+
+**Files:**
+- Modify: `backend/WebArayuz/ai-generator.html`
+  - CSS: `.step-del-btn:hover` kuralının hemen altına (satır ~789) `.step-item.disabled` ve
+    `.step-toggle-btn` stilleri
+  - `renderStepRow()` dönen template literal'ı (satır ~1857-1867) — `disabled` sınıfı + toggle
+    butonu
+  - Yeni `window.toggleStepDisabled` fonksiyonu (`window.deleteStep`'in hemen altına, satır ~1624)
+
+**Interfaces:**
+- Consumes: Task 10'un `disabled` alanı (aynı isim, `steps[i].disabled` olarak frontend state'inde
+  tutulur), mevcut `steps` dizisi, `renderStepList()`, `updateGenerateBtn()`.
+- Produces: yok (UI-only; script üretimi zaten Task 10'da backend'e `disabled` alanını olduğu
+  gibi gönderiyor — `StepItem` Pydantic modeli JSON'daki `disabled` alanını otomatik bağlar, ek
+  bir serialize adımı GEREKMEZ).
+
+- [ ] **Step 1: `toggleStepDisabled` fonksiyonunu ekle**
+
+`window.deleteStep`'in hemen altına (satır ~1624'ten sonra) ekle:
+
+```javascript
+    window.toggleStepDisabled = function(idx) {
+        if (!steps[idx]) return;
+        steps[idx].disabled = !steps[idx].disabled;
+        renderStepList();
+        updateGenerateBtn();
+    };
+```
+
+- [ ] **Step 2: CSS ekle**
+
+Öncesi (satır ~789-791):
+```css
+        .step-del-btn:hover { opacity: 1; color: var(--danger); background: rgba(239,68,68,0.08); }
+
+        /* ── Modals ── */
+```
+Sonrası:
+```css
+        .step-del-btn:hover { opacity: 1; color: var(--danger); background: rgba(239,68,68,0.08); }
+        .step-item.disabled { opacity: 0.5; }
+        .step-item.disabled .step-content-input,
+        .step-item.disabled textarea { text-decoration: line-through; }
+        .step-toggle-btn {
+            padding: 2px 5px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.85rem;
+            opacity: 0.5;
+            flex-shrink: 0;
+            line-height: 1;
+            border-radius: 3px;
+        }
+        .step-toggle-btn:hover { opacity: 1; color: var(--ai-accent); background: rgba(99,102,241,0.08); }
+        .step-item.disabled .step-toggle-btn { opacity: 1; color: var(--ai-accent); }
+
+        /* ── Modals ── */
+```
+
+**Not:** İçerik `text-decoration: line-through` ile üstü çizili görünür ama `input`/`textarea`
+DEVRE DIŞI (`disabled` HTML özniteliği) BIRAKILMAZ — kullanıcı devre dışı bir adımı hâlâ
+düzenleyebilmeli (spec'in "içerik düzenlenebilir kalmalı" gereksinimi).
+
+- [ ] **Step 3: `renderStepRow()`'un döndürdüğü template'e toggle butonu + sınıfı ekle**
+
+Öncesi (satır ~1857-1867):
+```javascript
+        return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}" id="step-row-${i}"
+            draggable="true"
+            ondragstart="stepDragStart(event, ${i})"
+            ondragend="stepDragEnd()">
+            <span class="step-drag-handle" title="Sürükle">⠿</span>
+            <span class="step-num">${i + 1}</span>
+            <span class="step-type-badge ${meta.cls}">${meta.label}</span>
+            ${contentHtml}
+            <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
+            <button class="step-del-btn" onclick="deleteStep(${i})" title="Sil">✕</button>
+        </div>`;
+    }
+```
+Sonrası:
+```javascript
+        const disabledClass = s.disabled ? " disabled" : "";
+        return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}${disabledClass}" id="step-row-${i}"
+            draggable="true"
+            ondragstart="stepDragStart(event, ${i})"
+            ondragend="stepDragEnd()">
+            <span class="step-drag-handle" title="Sürükle">⠿</span>
+            <span class="step-num">${i + 1}</span>
+            <span class="step-type-badge ${meta.cls}">${meta.label}</span>
+            ${contentHtml}
+            <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
+            <button class="step-toggle-btn" onclick="toggleStepDisabled(${i})"
+                title="${s.disabled ? 'Etkinleştir' : 'Devre dışı bırak (yorum satırına al)'}">${s.disabled ? "▶" : "⏸"}</button>
+            <button class="step-del-btn" onclick="deleteStep(${i})" title="Sil">✕</button>
+        </div>`;
+    }
+```
+
+- [ ] **Step 4: Manuel doğrulama**
+
+Sunucuyu başlat, bir Web senaryosuna en az 2 metin adımı ekle, ikinci adımın "⏸" butonuna tıkla —
+satırın soluklaştığını ve üstü çizili göründüğünü doğrula; "Script Üret"e tıklayıp üretilen kodda
+`# [DEVRE DIŞI] ...` satırının yer aldığını ve ORİJİNAL adım metninin KAYBOLMADIĞINI (input'ta hâlâ
+düzenlenebilir durduğunu) doğrula; "Tümünü Çalıştır" ile koşup devre dışı adımın hiç "running"
+durumuna geçmediğini gözle doğrula; "▶" ile tekrar etkinleştirip normal çalıştığını doğrula.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/WebArayuz/ai-generator.html
+git commit -m "feat(ui): mevcut adimi devre disi birakma (yorum satirina alma) toggle'i"
+```
+
+---
+
 ## Self-Review Notları
 
-- **Spec kapsaması:** Bölüm A (tek adım çalıştırma) → Task 1 (spike) + 4-8. Bölüm B (yorum) →
-  Task 2-3. "Test Planı" → Task 9.
+- **Spec kapsaması:** Bölüm A (tek adım çalıştırma) → Task 1 (spike) + 4-8. Bölüm B (yorum
+  adım tipi) → Task 2-3. Bölüm B2 (mevcut adımı devre dışı bırakma) → Task 10-11. "Test Planı" →
+  Task 9.
 - **Placeholder taraması:** Task 8'deki `selectedBrowser`/`appPath` gibi birkaç değişken adı,
   mevcut frontend state'iyle birebir eşleşmesi gerektiği için "Ön koşul" notuyla ayrıca
   işaretlendi — bu bir placeholder değil, gerçek bir entegrasyon adımı (implementer mevcut kodu
@@ -1181,4 +1403,9 @@ kalıcı olmamalı).
   Task 5/6/7'de aynı imzayla kullanılıyor; `_get_session`/`_touch_session`/`_remove_session`
   Task 4'te tanımlandığı gibi Task 7'de birebir kullanılıyor; `attach_selenium_session`/
   `attach_appium_session` Task 1'de tanımlandığı gibi Task 4 (reaper) ve Task 5/6 (şablonlar)
-  içinde tutarlı çağrılıyor.
+  içinde tutarlı çağrılıyor. Task 10'un `disabled` alanı Task 11'de birebir aynı isimle
+  (`steps[i].disabled`) frontend state'ine taşınıyor.
+- **Task 10/11 diğer task'lara bağımlılığı yok:** Bölüm B2, Bölüm A (oturum/tek-adım çalıştırma,
+  Task 1/4-8) ve Bölüm B (yorum tipi, Task 2-3) ile bağımsızdır — Task 7/8'den ÖNCE veya SONRA
+  uygulanabilir, sıra önemli değildir (her ikisi de sadece `_generate_steps()`'in mevcut "comment"
+  kind mekanizmasını reuse eder).
