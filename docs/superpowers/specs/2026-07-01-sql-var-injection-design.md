@@ -222,3 +222,20 @@ Sonrası: `'Adım açıklaması...  (değişken: {{ad}} yaz / "hedef" oku {{ad}}
   bir SQL adımı `SELECT * FROM rates WHERE code = {{kur}}` → log çıktısında `[OKU→_VARS] kur = ...`
   satırı ve doğru sorgu sonucunun göründüğü doğrulanacak. Mobil için aynısı bir Appium senaryosuyla
   tekrarlanacak.
+
+## Bilinen Sınırlamalar (final review sonrası eklendi, 2026-07-01)
+
+- **`_safe_read_web` en dar (leaf) eşleşen elementi hedefler**, ama hedef metin sayfada birden çok
+  yerde/iç içe geçiyorsa yine de en dıştaki değil en içteki eşleşen elementin TÜM metnini döner —
+  eğer o element başka metinlerle birlikte tek bir kapsayıcıdaysa (ör. `<div>Kur Kodu: USD
+  32.45</div>` tek element), okunan değer etiket+değeri birlikte içerir. Temiz değer için kullanıcı
+  hedefi mümkün olduğunca dar/spesifik yazmalı (mümkünse sadece değeri saran elementin metnini).
+- **Boş okuma adımı hata fırlatır** (element bulunamazsa `ValueError` → adım `STEP_FAIL` olarak
+  işaretlenir) — bu bilinçli bir tasarım: sessizce boş bir değerin SQL sorgusuna sızıp yanlış-ama-
+  makul bir sonuç üretmesindense, adımın görünür şekilde başarısız olması tercih edildi.
+- **Genişleyen güven sınırı:** `{{degisken}}` değeri artık sadece önceki bir SQL sorgusundan değil,
+  ekrandaki (potansiyel olarak test edilen uygulamanın kendi kullanıcı içeriğinden gelen) rastgele
+  metinden de gelebiliyor. Bu metin `_sub_vars` ile parametrik olmayan (düz string-replace) bir SQL
+  sorgusuna enjekte ediliyor. Yerel/kendi test veritabanına karşı çalışan bir test-otomasyon aracı
+  için kabul edilebilir bulundu, ama ekrandan okunan değerin güvenilir/temiz olduğu varsayımı artık
+  "bu değer benim kendi SQL sorgumdan geldi" garantisine dayanmıyor.
