@@ -61,12 +61,18 @@ echo.
 REM Log klasoru olustur
 if not exist "logs" mkdir logs
 
-REM Timestamp ile log dosyasi adi
-for /f "tokens=2 delims==" %%i in ('wmic os get localdatetime /value') do set DT=%%i
-set LOGFILE=logs\server_%DT:~0,8%_%DT:~8,6%.log
+REM Timestamp ile log dosyasi adi (PowerShell ile - wmic bazi sunucularda yok)
+for /f %%i in ('powershell -NoProfile -NonInteractive -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set DT=%%i
+set LOGFILE=logs\server_%DT%.log
 
 echo Loglar: %LOGFILE%
 echo.
+
+REM Port 8000'de takili kalmis eski surec varsa sonlandir
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do (
+    echo Port 8000 kullanimda, eski surec sonlandiriliyor ^(PID %%p^)...
+    taskkill /F /PID %%p >nul 2>&1
+)
 
 REM UTF-8 encoding ayarla (emoji ve Turkce karakter icin)
 set PYTHONUTF8=1
