@@ -2049,11 +2049,62 @@ def _refocus_window():
 # BÖLÜM 3: ŞABLONLAR
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _build_mobile_template(req: GenerateRequest, steps_code: str) -> str:
+def _build_mobile_template(
+    req: GenerateRequest,
+    steps_code: str,
+    session_mode: str = "fresh",
+    session_id: str = "",
+    command_executor_url: str = "",
+) -> str:
     device  = req.device_id    or "emulator-5554"
     pkg     = req.app_package  or ""
     act     = req.app_activity or ""
     appium  = req.appium_url   or "http://localhost:4723"
+
+    if session_mode in ("attach", "end"):
+        lines = [
+            "# -*- coding: utf-8 -*-",
+            "import sys",
+            f'sys.path.insert(0, r"{_ROUTER_BASE_DIR}")',
+            "from services.session_reconnect import attach_appium_session",
+            "from appium.webdriver.common.appiumby import AppiumBy",
+            "from selenium.webdriver.support.ui import WebDriverWait",
+            "from selenium.webdriver.support import expected_conditions as EC",
+            "import time",
+            "_VARS = {}  # adımlar arası değişken havuzu",
+            "def _sub_vars(_s):",
+            "    for _k, _v in _VARS.items():",
+            "        _s = _s.replace('{{' + _k + '}}', str(_v))",
+            "    return _s",
+            "",
+            f"driver = attach_appium_session({command_executor_url!r}, {session_id!r})",
+            "wait = WebDriverWait(driver, 15)",
+            "",
+            VISION_HELPER,
+            "",
+            "try:",
+        ]
+        for line in steps_code.splitlines():
+            lines.append("    " + line if line.strip() else "")
+        if session_mode == "end":
+            lines += [
+                "",
+                "except Exception as e:",
+                '    print(f"HATA: {e}")',
+                "finally:",
+                "    driver.quit()",
+                '    print("SESSION_ENDED")',
+            ]
+        else:  # attach - quit YOK
+            lines += [
+                "",
+                "except Exception as e:",
+                '    print(f"HATA: {e}")',
+                "    raise",
+            ]
+        return "\n".join(lines)
+
+    # session_mode in ("fresh", "start") - asagidaki mevcut kod aynen devam eder
 
     if act:
         caps = f'''\
@@ -2156,8 +2207,11 @@ time.sleep(3)
         '    print(f"HATA: {e}")',
         "    raise",
         "finally:",
-        "    driver.quit()",
-    ]
+        ("    pass" if session_mode == "start" else "    driver.quit()"),
+    ] + (
+        ["", 'print("SESSION_ID:", driver.session_id)', 'print("EXECUTOR_URL:", driver.command_executor._url)']
+        if session_mode == "start" else []
+    )
 
     return "\n".join(lines)
 
