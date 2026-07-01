@@ -2162,16 +2162,70 @@ time.sleep(3)
     return "\n".join(lines)
 
 
-def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
+def _build_web_template(
+    req: GenerateRequest,
+    steps_code: str,
+    session_mode: str = "fresh",
+    session_id: str = "",
+    command_executor_url: str = "",
+) -> str:
     browser = (req.browser or "chrome").lower()
     url     = (req.target_url or "").strip()
 
+    if session_mode in ("attach", "end"):
+        lines = [
+            "# -*- coding: utf-8 -*-",
+            "import sys",
+            f'sys.path.insert(0, r"{_ROUTER_BASE_DIR}")',
+            "from services.session_reconnect import attach_selenium_session",
+            "from selenium.webdriver.common.by import By",
+            "from selenium.webdriver.support.ui import WebDriverWait",
+            "from selenium.webdriver.support import expected_conditions as EC",
+            "import time",
+            "_VARS = {}  # adımlar arası değişken havuzu",
+            "def _sub_vars(_s):",
+            "    for _k, _v in _VARS.items():",
+            "        _s = _s.replace('{{' + _k + '}}', str(_v))",
+            "    return _s",
+            "",
+            f"driver = attach_selenium_session({command_executor_url!r}, {session_id!r})",
+            "wait = WebDriverWait(driver, 10)",
+            "",
+            STOP_HELPER,
+            IMAGE_HELPER,
+            VISION_HELPER_WEB,
+            "",
+            "try:",
+        ]
+        for line in steps_code.splitlines():
+            lines.append("    " + line if line.strip() else "")
+        if session_mode == "end":
+            lines += [
+                "",
+                "except Exception as e:",
+                '    print(f"HATA: {e}")',
+                "finally:",
+                "    driver.quit()",
+                '    print("SESSION_ENDED")',
+            ]
+        else:  # attach - quit YOK
+            lines += [
+                "",
+                "except Exception as e:",
+                '    print(f"HATA: {e}")',
+                "    raise",
+            ]
+        return "\n".join(lines)
+
+    # session_mode in ("fresh", "start") - asagidaki mevcut kod aynen devam eder
+
     if browser == "firefox":
+        _fx_headless = "" if session_mode == "start" else "_fx_opts.add_argument('--headless')\n"
         driver_setup = (
             "from selenium.webdriver.firefox.options import Options as _FxOpts\n"
             "from selenium.webdriver.firefox.service import Service as _FxSvc\n"
             "_fx_opts = _FxOpts()\n"
-            "_fx_opts.add_argument('--headless')\n"
+            f"{_fx_headless}"
             "_fx_opts.add_argument('--width=1920')\n"
             "_fx_opts.add_argument('--height=1080')\n"
             "try:\n"
@@ -2181,10 +2235,11 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
             "    driver = webdriver.Firefox(options=_fx_opts)"
         )
     elif browser == "edge":
+        _edge_headless = "" if session_mode == "start" else "_edge_opts.add_argument('--headless')\n"
         driver_setup = (
             "from selenium.webdriver.edge.options import Options as _EdgeOpts\n"
             "_edge_opts = _EdgeOpts()\n"
-            "_edge_opts.add_argument('--headless')\n"
+            f"{_edge_headless}"
             "_edge_opts.add_argument('--window-size=1920,1080')\n"
             "_edge_opts.add_argument('--disable-gpu')\n"
             "try:\n"
@@ -2195,10 +2250,11 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
             "    driver = webdriver.Edge(options=_edge_opts)"
         )
     else:  # chrome (default)
+        _cr_headless = "" if session_mode == "start" else "_cr_opts.add_argument('--headless=new')\n"
         driver_setup = (
             "from selenium.webdriver.chrome.options import Options as _CrOpts\n"
             "_cr_opts = _CrOpts()\n"
-            "_cr_opts.add_argument('--headless=new')\n"
+            f"{_cr_headless}"
             "_cr_opts.add_argument('--window-size=1920,1080')\n"
             "_cr_opts.add_argument('--disable-gpu')\n"
             "_cr_opts.add_argument('--no-sandbox')\n"
@@ -2256,8 +2312,11 @@ def _build_web_template(req: GenerateRequest, steps_code: str) -> str:
         '    print(f"HATA: {e}")',
         "    raise",
         "finally:",
-        "    driver.quit()",
-    ]
+        ("    pass" if session_mode == "start" else "    driver.quit()"),
+    ] + (
+        ["", 'print("SESSION_ID:", driver.session_id)', 'print("EXECUTOR_URL:", driver.command_executor._url)']
+        if session_mode == "start" else []
+    )
 
     return "\n".join(lines)
 
