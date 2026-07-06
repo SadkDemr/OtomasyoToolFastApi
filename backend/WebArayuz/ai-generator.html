@@ -1465,10 +1465,9 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </div>
-        <!-- Mod sekmeleri -->
+        <!-- Aşama göstergesi -->
         <div style="display:flex; gap:6px; align-items:center;">
-            <button id="tabCrop" class="crop-mode-tab active" onclick="setModalMode('crop')">✂ Bölge Kırp</button>
-            <button id="tabPoint" class="crop-mode-tab" onclick="setModalMode('point')">📍 Nokta İşaretle</button>
+            <span id="stageLabel" class="crop-mode-tab active">1/2: Alan Seç</span>
             <span id="cropModeHint" style="font-size:0.76rem; color:var(--text-muted); margin-left:6px;">Tıkla ve sürükle → hedef alanı seç</span>
         </div>
         <!-- Canvas -->
@@ -1481,9 +1480,9 @@
         <div style="display:flex; gap:10px; justify-content:flex-end; align-items:center;">
             <span id="cropSelectionInfo" style="font-size:0.78rem; color:var(--text-muted); flex:1;"></span>
             <button class="btn-reset" onclick="cancelCrop()">İptal</button>
-            <button class="btn-generate" id="btnCropConfirm" onclick="confirmCrop()" disabled style="flex:none; padding:10px 20px; display:flex; align-items:center; gap:6px;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                Kırp ve Ekle
+            <button class="btn-reset" id="btnBackToCrop" onclick="backToCropStage()" style="display:none;">← Geri</button>
+            <button class="btn-generate" id="btnCropConfirm" onclick="goToPointStage()" disabled style="flex:none; padding:10px 20px; display:flex; align-items:center; gap:6px;">
+                İleri: Nokta Seç →
             </button>
             <button class="btn-generate" id="btnPointConfirm" onclick="confirmPoints()" disabled style="display:none; flex:none; padding:10px 20px;">
                 📍 Noktaları Ekle (0)
@@ -1599,9 +1598,11 @@
     let _cropRect             = null;
     let _isDrawing            = false;
     let _startX = 0, _startY = 0;
-    // Nokta işaretle modu
-    let _modalMode   = "crop";    // "crop" | "point"
-    let _clickPoints = [];        // [{cx, cy, ox, oy}] — canvas + orijinal görsel koordinatları
+    // Kırp + Nokta akışı (2 aşamalı: "crop" → "point")
+    let _stage       = "crop";    // "crop" | "point"
+    let _croppedB64  = null;      // Aşama 1'de kırpılan küçük görsel (base64, data: öneki yok)
+    let _croppedImg  = null;      // Aynı görselin Image nesnesi (Aşama 2 canvas'ında gösterilir)
+    let _clickPoints = [];        // [{cx, cy, ox, oy}] — canvas + kırpılan görsel koordinatları
 
     const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api`;
 
@@ -2227,33 +2228,52 @@
         _cropRect    = null;
         _isDrawing   = false;
         _clickPoints = [];
-        _modalMode   = "crop";
-        document.getElementById("btnCropConfirm").disabled = true;
-        document.getElementById("cropSelectionInfo").textContent = "";
+        _croppedB64  = null;
+        _croppedImg  = null;
         document.getElementById("cropModal").style.display = "flex";
-        // Mod sıfırla
-        document.getElementById("tabCrop").classList.add("active");
-        document.getElementById("tabPoint").classList.remove("active");
-        document.getElementById("btnCropConfirm").style.display = "";
-        document.getElementById("btnPointConfirm").style.display = "none";
-        document.getElementById("pointsList").style.display = "none";
-        document.getElementById("cropModeHint").textContent = "Tıkla ve sürükle → hedef alanı seç";
-
-        const canvas = document.getElementById("cropCanvas");
-        const ctx    = canvas.getContext("2d");
+        _setStage("crop");
 
         _screenImg = new Image();
         _screenImg.onload = function() {
-            const maxW  = Math.min(820, window.innerWidth - 80);
-            const maxH  = Math.min(480, window.innerHeight - 280);
-            const scale = Math.min(maxW / _screenImg.width, maxH / _screenImg.height, 1);
-            canvas.width  = Math.round(_screenImg.width  * scale);
-            canvas.height = Math.round(_screenImg.height * scale);
-            canvas._imgScale = scale;
-            ctx.drawImage(_screenImg, 0, 0, canvas.width, canvas.height);
+            _renderCropStageCanvas();
             _applyCropHandlers();
         };
         _screenImg.src = "data:image/png;base64," + b64;
+    }
+
+    function _setStage(stage) {
+        _stage = stage;
+        document.getElementById("stageLabel").textContent = stage === "crop" ? "1/2: Alan Seç" : "2/2: Nokta İşaretle";
+        document.getElementById("cropModeHint").textContent = stage === "crop"
+            ? "Tıkla ve sürükle → hedef alanı seç"
+            : "Kırpılan alan üzerinde tıklanacak noktaları işaretle.";
+        document.getElementById("btnCropConfirm").style.display  = stage === "crop"  ? "" : "none";
+        document.getElementById("btnPointConfirm").style.display = stage === "point" ? "" : "none";
+        document.getElementById("btnBackToCrop").style.display   = stage === "point" ? "" : "none";
+        document.getElementById("pointsList").style.display      = stage === "point" ? "flex" : "none";
+    }
+
+    function _renderCropStageCanvas() {
+        const canvas = document.getElementById("cropCanvas");
+        const ctx    = canvas.getContext("2d");
+        const maxW   = Math.min(820, window.innerWidth - 80);
+        const maxH   = Math.min(480, window.innerHeight - 280);
+        const scale  = Math.min(maxW / _screenImg.width, maxH / _screenImg.height, 1);
+        canvas.width  = Math.round(_screenImg.width  * scale);
+        canvas.height = Math.round(_screenImg.height * scale);
+        canvas._imgScale = scale;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(_screenImg, 0, 0, canvas.width, canvas.height);
+        if (_cropRect) {
+            ctx.strokeStyle = "#3b82f6";
+            ctx.lineWidth   = 2;
+            ctx.strokeRect(_cropRect.x, _cropRect.y, _cropRect.w, _cropRect.h);
+            ctx.fillStyle   = "rgba(59,130,246,0.12)";
+            ctx.fillRect(_cropRect.x, _cropRect.y, _cropRect.w, _cropRect.h);
+        }
+        document.getElementById("cropSelectionInfo").textContent = _cropRect
+            ? `Seçim: ${Math.round(_cropRect.w / scale)}×${Math.round(_cropRect.h / scale)} px` : "";
+        document.getElementById("btnCropConfirm").disabled = !_cropRect;
     }
 
     function _applyCropHandlers() {
@@ -2272,33 +2292,48 @@
         canvas.onclick     = onPointClick;
     }
 
-    window.setModalMode = function(mode) {
-        _modalMode = mode;
-        document.getElementById("tabCrop").classList.toggle("active", mode === "crop");
-        document.getElementById("tabPoint").classList.toggle("active", mode === "point");
-        document.getElementById("btnCropConfirm").style.display  = mode === "crop"  ? "" : "none";
-        document.getElementById("btnPointConfirm").style.display = mode === "point" ? "" : "none";
-        document.getElementById("pointsList").style.display      = mode === "point" ? "flex" : "none";
-        document.getElementById("cropModeHint").textContent = mode === "crop"
-            ? "Tıkla ve sürükle → hedef alanı seç"
-            : "Tüm sayfa ekran görüntüsü yükle → tıklanacak noktaları işaretle. Tam sayfa bağlamı ile doğru eleman seçilir, pencere konumu ve boyutuna göre normalize edilir.";
-
+    window.goToPointStage = function() {
+        if (!_cropRect || !_screenImg) return;
         const canvas = document.getElementById("cropCanvas");
-        if (!_screenImg) return;
-        const ctx = canvas.getContext("2d");
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(_screenImg, 0, 0, canvas.width, canvas.height);
+        const scale  = canvas._imgScale || 1;
+        const sx = Math.round(_cropRect.x / scale);
+        const sy = Math.round(_cropRect.y / scale);
+        const sw = Math.round(_cropRect.w / scale);
+        const sh = Math.round(_cropRect.h / scale);
 
-        if (mode === "crop") {
-            _applyCropHandlers();
-            document.getElementById("cropSelectionInfo").textContent = "";
-            document.getElementById("btnCropConfirm").disabled = true;
-            _cropRect = null;
-        } else {
+        const tmp = document.createElement("canvas");
+        tmp.width  = sw;
+        tmp.height = sh;
+        tmp.getContext("2d").drawImage(_screenImg, sx, sy, sw, sh, 0, 0, sw, sh);
+        _croppedB64 = tmp.toDataURL("image/png").replace("data:image/png;base64,", "");
+
+        _clickPoints = [];
+        _croppedImg = new Image();
+        _croppedImg.onload = function() {
+            const maxW = Math.min(820, window.innerWidth - 80);
+            const maxH = Math.min(480, window.innerHeight - 280);
+            const zoom = Math.min(maxW / _croppedImg.width, maxH / _croppedImg.height, 4);
+            canvas.width  = Math.round(_croppedImg.width  * zoom);
+            canvas.height = Math.round(_croppedImg.height * zoom);
+            canvas._imgScale = zoom;
+            const ctx = canvas.getContext("2d");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(_croppedImg, 0, 0, canvas.width, canvas.height);
+            _setStage("point");
             _applyPointHandlers();
-            _drawAllPoints();
             _updatePointsUI();
-        }
+        };
+        _croppedImg.src = "data:image/png;base64," + _croppedB64;
+    };
+
+    window.backToCropStage = function() {
+        if (!_screenImg) return;
+        _clickPoints = [];
+        _croppedB64  = null;
+        _croppedImg  = null;
+        _renderCropStageCanvas();
+        _setStage("crop");
+        _applyCropHandlers();
     };
 
     function getCanvasPos(e) {
@@ -2365,7 +2400,7 @@
         const canvas = document.getElementById("cropCanvas");
         const ctx    = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(_screenImg, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(_croppedImg, 0, 0, canvas.width, canvas.height);
         _clickPoints.forEach((pt, i) => {
             // Dış halo
             ctx.beginPath();
@@ -2416,61 +2451,30 @@
     window.cancelCrop = function() {
         document.getElementById("cropModal").style.display = "none";
         _clickPoints = [];
+        _croppedB64  = null;
+        _croppedImg  = null;
         removeEmptyImageStep();
         _captureTargetStepIdx = -1;
     };
 
-    window.confirmCrop = function() {
-        if (!_cropRect || _captureTargetStepIdx < 0 || !_screenImg) return;
-        const canvas = document.getElementById("cropCanvas");
-        const scale  = canvas._imgScale || 1;
-        const sx = Math.round(_cropRect.x / scale);
-        const sy = Math.round(_cropRect.y / scale);
-        const sw = Math.round(_cropRect.w / scale);
-        const sh = Math.round(_cropRect.h / scale);
-
-        const tmp = document.createElement("canvas");
-        tmp.width  = sw;
-        tmp.height = sh;
-        tmp.getContext("2d").drawImage(_screenImg, sx, sy, sw, sh, 0, 0, sw, sh);
-        const croppedB64 = tmp.toDataURL("image/png").replace("data:image/png;base64,", "");
-
-        const step = steps[_captureTargetStepIdx];
-        if (step) {
-            step.b64     = croppedB64;
-            step.content = step.content || "Görsel element";
-        }
-
-        document.getElementById("cropModal").style.display = "none";
-        _captureTargetStepIdx = -1;
-        renderStepList();
-        updateGenerateBtn();
-        Toast.success("Görsel adım eklendi ✓");
-    };
-
     window.confirmPoints = function() {
-        if (_clickPoints.length === 0 || _captureTargetStepIdx < 0 || !_screenImg) return;
-        // Tam ekranı sakla — kırpma yok.
-        // click_x/click_y: orijinal görseldeki piksel koordinatı (normalize runtime'da hesaplanır).
-        const fullCanvas = document.createElement("canvas");
-        fullCanvas.width  = _screenImg.width;
-        fullCanvas.height = _screenImg.height;
-        fullCanvas.getContext("2d").drawImage(_screenImg, 0, 0);
-        const fullB64 = fullCanvas.toDataURL("image/png").replace("data:image/png;base64,", "");
-
+        if (_clickPoints.length === 0 || _captureTargetStepIdx < 0 || !_croppedB64) return;
+        // click_x/click_y: KIRPILAN gorseldeki orijinal piksel koordinati (tam sayfaya gore DEGIL).
         const newSteps = _clickPoints.map((pt, i) => ({
             type:    "image",
             content: `Nokta ${i + 1} tıkla`,
-            b64:     fullB64,   // tam ekran — bağlam zenginliği sayesinde 5 aynı toggle'ı ayırt eder
+            b64:     _croppedB64,   // kırpılmış, ayırt edici, küçük görsel — sağlam eşleşir
             action:  "click",
-            click_x: pt.ox,    // orijinal görsel piksel X
-            click_y: pt.oy,    // orijinal görsel piksel Y
+            click_x: pt.ox,    // kırpılan görseldeki piksel X
+            click_y: pt.oy,    // kırpılan görseldeki piksel Y
             status:  null,
         }));
         steps.splice(_captureTargetStepIdx, 1, ...newSteps);
         document.getElementById("cropModal").style.display = "none";
         _captureTargetStepIdx = -1;
         _clickPoints = [];
+        _croppedB64  = null;
+        _croppedImg  = null;
         renderStepList();
         updateGenerateBtn();
         Toast.success(`${newSteps.length} nokta adım olarak eklendi ✓`);

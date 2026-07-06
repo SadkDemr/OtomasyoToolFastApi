@@ -131,8 +131,8 @@ class StepItem(BaseModel):
     var_name:      str = ""       # dolu ise sonuç _VARS["var_name"]'e kaydedilir
     json_field:    str = ""       # API yanıtından çekilecek alan yolu: "id" veya "user.name"
     # Koordinat tıklama (nokta işaretle modu)
-    click_x:       int = -1       # >= 0 ise locateOnScreen yerine doğrudan koordinat kullanılır
-    click_y:       int = -1
+    click_x:       int = -1       # >= 0 ise kırpılan/tam görsele göre nokta tıklaması kullanılır
+    click_y:       int = -1       # (coklu-olcek eslestirme + normalize nokta, bkz. _find_b64_and_click_point)
 
 class GenerateRequest(BaseModel):
     test_case:    str         = ""   # geriye dönük uyumluluk
@@ -1441,9 +1441,11 @@ def _find_b64_on_screen(b64_data, threshold=0.80, timeout=10):
     try:
         with open(_tmp_path, "wb") as _f:
             _f.write(_ib64.b64decode(b64_data))
-        # Pencere bolgesi — _WINDOW_TITLE varsa tam ekran aramaz
+        # Pencere bolgesi — _WINDOW_TITLE varsa (Desktop) tam ekran aramaz. Web script'lerinde
+        # _WINDOW_TITLE hic tanimli olmadigi icin globals() ile guvenli kontrol edilir.
+        _wt_set = '_WINDOW_TITLE' in globals() and bool(_WINDOW_TITLE)
         _region = _get_window_region()
-        if _WINDOW_TITLE and _region is None:
+        if _wt_set and _region is None:
             _wt_end = _itime.time() + 3
             while _itime.time() < _wt_end:
                 _itime.sleep(0.3)
@@ -1454,7 +1456,7 @@ def _find_b64_on_screen(b64_data, threshold=0.80, timeout=10):
                 return None
         _start = _itime.time()
         while _itime.time() - _start < timeout:
-            if _WINDOW_TITLE:
+            if _wt_set:
                 _upd = _get_window_region()
                 if _upd: _region = _upd
             _elapsed = _itime.time() - _start
@@ -1469,8 +1471,9 @@ def _find_b64_on_screen(b64_data, threshold=0.80, timeout=10):
         try: _ios.unlink(_tmp_path)
         except Exception: pass
 
-def _find_image_on_screen(target_path, threshold=0.80, region=None):
-    """OpenCV multi-scale template matching. region=(x,y,w,h) ile kısıtlı arama yapar."""
+def _find_image_on_screen(target_path, threshold=0.80, region=None, return_bbox=False):
+    """OpenCV multi-scale template matching. region=(x,y,w,h) ile kısıtlı arama yapar.
+    return_bbox=True ise merkez nokta yerine eslesen alanin (x,y,w,h) dikdortgenini dondurur."""
     try:
         import cv2 as _cv2, numpy as _np
         import pyautogui as _pag_sc
@@ -1507,13 +1510,18 @@ def _find_image_on_screen(target_path, threshold=0.80, region=None):
             if _val > _best_val: _best_val = _val; _best = (_loc, _rw, _rh)
         if _best_val >= threshold and _best:
             _loc, _rw, _rh = _best
+            if return_bbox:
+                return (_loc[0] + _ox, _loc[1] + _oy, _rw, _rh)
             return (_loc[0] + _rw//2 + _ox, _loc[1] + _rh//2 + _oy)
     except ImportError:
         try:
             import pyautogui as _pag2
             _loc2 = _pag2.locateOnScreen(target_path, grayscale=True,
                                           confidence=min(0.8, threshold), region=region)
-            if _loc2: return (_pag2.center(_loc2).x, _pag2.center(_loc2).y)
+            if _loc2:
+                if return_bbox:
+                    return (_loc2.left, _loc2.top, _loc2.width, _loc2.height)
+                return (_pag2.center(_loc2).x, _pag2.center(_loc2).y)
         except Exception: pass
     except Exception: pass
     return None
@@ -1529,6 +1537,58 @@ def _do_robust_click(x, y, button="left"):
 def _find_b64_on_screen_web(b64_data, threshold=0.80, timeout=10):
     """Web için: görseli ekranda ara (pencere kısıtlaması olmadan)."""
     return _find_b64_on_screen(b64_data, threshold=threshold, timeout=timeout)
+
+def _bbox_click_point(bbox, click_x, click_y, orig_w, orig_h):
+    """bbox=(x,y,w,h) eslesen ekran alani; click_x/click_y kirpilan/tam gorseldeki orijinal
+    piksel nokta; orig_w/orig_h o gorselin boyutu. Mutlak ekran (x,y) dondurur."""
+    _norm_x = click_x / orig_w
+    _norm_y = click_y / orig_h
+    _bx, _by, _bw, _bh = bbox
+    return (int(_bx + _norm_x * _bw), int(_by + _norm_y * _bh))
+
+def _find_b64_and_click_point(b64_data, click_x, click_y, action="click", threshold=0.80, timeout=10):
+    """Base64 gorseli (kirpilmis alan veya eski tam sayfa) ekranda coklu-olcek eslestirmeyle
+    bulur, gorsel icindeki (click_x, click_y) orijinal piksel noktasini eslesen alana gore
+    mutlak ekran koordinatina cevirip tiklar."""
+    import io as _iio3
+    try:
+        from PIL import Image as _PILY
+        _pil = _PILY.open(_iio3.BytesIO(_ib64.b64decode(b64_data)))
+        _orig_w, _orig_h = _pil.size
+    except Exception as _pe:
+        print(f"[WARN] Gorsel boyutu alinamiyor: {_pe}")
+        return False
+
+    _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_click_{id(b64_data)}.png")
+    try:
+        with open(_tmp_path, "wb") as _f:
+            _f.write(_ib64.b64decode(b64_data))
+
+        _wt_set = '_WINDOW_TITLE' in globals() and bool(_WINDOW_TITLE)
+        _region = _get_window_region() if _wt_set else None
+
+        _start = _itime.time()
+        while _itime.time() - _start < timeout:
+            _elapsed = _itime.time() - _start
+            _conf = max(0.50, threshold - (_elapsed / timeout) * 0.30)
+            _bbox = _find_image_on_screen(_tmp_path, threshold=_conf, region=_region, return_bbox=True)
+            if _bbox:
+                _abs_x, _abs_y = _bbox_click_point(_bbox, click_x, click_y, _orig_w, _orig_h)
+                import pyautogui as _pag4
+                if action == "double_click":
+                    _pag4.doubleClick(_abs_x, _abs_y)
+                elif action == "right_click":
+                    _pag4.rightClick(_abs_x, _abs_y)
+                else:
+                    _pag4.click(_abs_x, _abs_y)
+                print(f"[OK] Nokta tiklandi (bolge esleme): ({_abs_x}, {_abs_y})")
+                return True
+            _itime.sleep(0.3)
+        print(f"[DEBUG] Gorsel {timeout}s icinde bulunamadi — nokta tiklanamadi.")
+        return False
+    finally:
+        try: _ios.unlink(_tmp_path)
+        except Exception: pass
 '''
 
 
@@ -1647,67 +1707,6 @@ def _in_window(x, y):
         return True
     _wx, _wy, _ww, _wh = _r
     return _wx <= x <= _wx + _ww and _wy <= y <= _wy + _wh
-
-
-def _find_b64_and_click_at(b64, click_x, click_y, action="click"):
-    """Tam ekran gorsel + orijinal piksel koordinati ile tiklama.
-    - Gorseli locateOnScreen ile ekranda bul; koordinati normalize edip uygula.
-    - Bulamazsa pencere bolgesi + normalize koordinat ile dogrudan tikla.
-    Bu sayede ayni toggle/butondan birden fazla varsa tam ekran bağlamı dogru olanı secer.
-    """
-    import tempfile as _itmp2, os as _ios2, io as _iio2
-    try:
-        from PIL import Image as _PILX
-        _pil = _PILX.open(_iio2.BytesIO(_b64.b64decode(b64)))
-        _orig_w, _orig_h = _pil.size
-    except Exception as _pe:
-        print(f"[WARN] Gorsel boyutu alinamiyor: {_pe}")
-        return False
-
-    _norm_x = click_x / _orig_w
-    _norm_y = click_y / _orig_h
-    _wr = _get_window_region()
-
-    def _do_click(ax, ay):
-        if action == "double_click":
-            _pag.doubleClick(ax, ay)
-        elif action == "right_click":
-            _pag.rightClick(ax, ay)
-        else:
-            _pag.click(ax, ay)
-
-    # 1. locateOnScreen ile tam ekranı bul
-    _tmp_path = None
-    try:
-        _fd, _tmp_path = _itmp2.mkstemp(suffix=".png")
-        with _ios2.fdopen(_fd, "wb") as _f:
-            _f.write(_b64.b64decode(b64))
-        _loc = _pag.locateOnScreen(_tmp_path, confidence=0.6, region=_wr)
-        if _loc:
-            _abs_x = int(_loc.left + _norm_x * _loc.width)
-            _abs_y = int(_loc.top  + _norm_y * _loc.height)
-            if _in_window(_abs_x, _abs_y):
-                _do_click(_abs_x, _abs_y)
-                print(f"[OK] Nokta tiklandi (tam ekran esleme): ({_abs_x}, {_abs_y})")
-                return True
-    except Exception as _le:
-        print(f"[WARN] locateOnScreen hatasi: {_le}")
-    finally:
-        if _tmp_path:
-            try: _ios2.unlink(_tmp_path)
-            except: pass
-
-    # 2. Fallback: pencere bolgesi + normalize koordinat
-    if _wr:
-        _abs_x = int(_wr[0] + _norm_x * _wr[2])
-        _abs_y = int(_wr[1] + _norm_y * _wr[3])
-        if _in_window(_abs_x, _abs_y):
-            _do_click(_abs_x, _abs_y)
-            print(f"[OK] Nokta tiklandi (pencere orani): ({_abs_x}, {_abs_y})")
-            return True
-
-    print(f"[FAIL] Nokta tiklanamiyor — norm ({_norm_x:.3f}, {_norm_y:.3f})")
-    return False
 
 
 def _get_active_window():
@@ -2587,108 +2586,77 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
 # BÖLÜM 4: ANA DÖNÜŞÜM MOTORU
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _image_click_code(idx: int, desc: str, b64: str, click_x: int, click_y: int, action: str, platform: str) -> str:
+    """Görsel tıklama adımı için Desktop+Web ortak kod üretir."""
+    refocus_line = "    _refocus_window()\n" if platform == "desktop" else ""
+    action_str = {"double_click": "double_click", "right_click": "right_click"}.get(action, "click")
+
+    if click_x >= 0 and click_y >= 0:
+        return (
+            f"# [NOKTA TIKLAMA] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"try:\n"
+            f"{refocus_line}"
+            f"    _img_b64_{idx} = '{b64}'\n"
+            f"    _ok_{idx} = _find_b64_and_click_point(_img_b64_{idx}, {click_x}, {click_y}, action='{action_str}')\n"
+            f"    if not _ok_{idx}: raise Exception('Nokta tiklanamiyor: {desc}')\n"
+            f"    time.sleep(0.5)\n"
+            f"    print('STEP_DONE:{idx}')\n"
+            f"except Exception as _e_{idx}:\n"
+            f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise"
+        )
+
+    find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
+    click_line = {
+        "double_click": f"    import pyautogui as _pag_i; _pag_i.doubleClick(_coords_{idx}[0], _coords_{idx}[1])",
+        "right_click":  f"    import pyautogui as _pag_i; _pag_i.rightClick(_coords_{idx}[0], _coords_{idx}[1])",
+    }.get(action, f"    _do_robust_click(_coords_{idx}[0], _coords_{idx}[1])")
+    return (
+        f"# [GÖRSEL TIKLAMA] {desc}\n"
+        f"print('STEP_START:{idx}')\n"
+        f"try:\n"
+        f"{refocus_line}"
+        f"    _img_b64_{idx} = '{b64}'\n"
+        f"    _coords_{idx} = {find_fn}(_img_b64_{idx}, timeout=10)\n"
+        f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
+        f"{click_line}\n"
+        f"    print('[OK] Gorsel tiklandi: {desc}')\n"
+        f"    time.sleep(0.5)\n"
+        f"    print('STEP_DONE:{idx}')\n"
+        f"except Exception as _e_{idx}:\n"
+        f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+        f"    print('STEP_FAIL:{idx}')\n"
+        f"    raise"
+    )
+
+
 def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
     """Görsel adımı için Python kodu üretir. base64 scripte gömülür."""
     b64  = item.image_b64
     desc = item.content or f"Görsel adım {idx+1}"
 
-    if platform == "desktop":
-        if item.action == "assert":
-            return (
-                f"# [GÖRSEL DOĞRULA] {desc}\n"
-                f"print('STEP_START:{idx}')\n"
-                f"try:\n"
-                f"    _refocus_window()\n"
-                f"    _img_b64_{idx} = '{b64}'\n"
-                f"    _res_{idx} = _find_b64_on_screen(_img_b64_{idx}, timeout=8)\n"
-                f"    if not _res_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
-                f"    print('[OK] Gorsel dogrulandi: {desc}')\n"
-                f"    print('STEP_DONE:{idx}')\n"
-                f"except Exception as _e_{idx}:\n"
-                f"    print(f'[FAIL] {{_e_{idx}}}')\n"
-                f"    print('STEP_FAIL:{idx}')\n"
-                f"    raise"
-            )
-        else:
-            cx, cy = item.click_x, item.click_y
-            if cx >= 0 and cy >= 0:
-                # Nokta İşaretle modu: tam ekran + orijinal piksel koordinatı
-                action_str = {"double_click": "double_click", "right_click": "right_click"}.get(item.action, "click")
-                return (
-                    f"# [NOKTA TIKLAMA] {desc}\n"
-                    f"print('STEP_START:{idx}')\n"
-                    f"try:\n"
-                    f"    _refocus_window()\n"
-                    f"    _img_b64_{idx} = '{b64}'\n"
-                    f"    _ok_{idx} = _find_b64_and_click_at(_img_b64_{idx}, {cx}, {cy}, action='{action_str}')\n"
-                    f"    if not _ok_{idx}: raise Exception('Nokta tiklanamiyor: {desc}')\n"
-                    f"    time.sleep(0.5)\n"
-                    f"    print('STEP_DONE:{idx}')\n"
-                    f"except Exception as _e_{idx}:\n"
-                    f"    print(f'[FAIL] {{_e_{idx}}}')\n"
-                    f"    print('STEP_FAIL:{idx}')\n"
-                    f"    raise"
-                )
-            else:
-                # Bölge Kırp modu: kırpılmış görsel → locateOnScreen ile ekranda bul
-                click_line = {
-                    "double_click": f"    import pyautogui as _pag_d; _pag_d.doubleClick(_coords_{idx}[0], _coords_{idx}[1])",
-                    "right_click":  f"    import pyautogui as _pag_d; _pag_d.rightClick(_coords_{idx}[0], _coords_{idx}[1])",
-                }.get(item.action, f"    _do_robust_click(_coords_{idx}[0], _coords_{idx}[1])")
-                return (
-                    f"# [GÖRSEL TIKLAMA] {desc}\n"
-                    f"print('STEP_START:{idx}')\n"
-                    f"try:\n"
-                    f"    _refocus_window()\n"
-                    f"    _img_b64_{idx} = '{b64}'\n"
-                    f"    _coords_{idx} = _find_b64_on_screen(_img_b64_{idx}, timeout=10)\n"
-                    f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
-                    f"{click_line}\n"
-                    f"    print('[OK] Gorsel tiklandi: {desc}')\n"
-                    f"    time.sleep(0.5)\n"
-                    f"    print('STEP_DONE:{idx}')\n"
-                    f"except Exception as _e_{idx}:\n"
-                    f"    print(f'[FAIL] {{_e_{idx}}}')\n"
-                    f"    print('STEP_FAIL:{idx}')\n"
-                    f"    raise"
-                )
-    else:  # web
-        if item.action == "assert":
-            return (
-                f"# [GÖRSEL DOĞRULA] {desc}\n"
-                f"print('STEP_START:{idx}')\n"
-                f"try:\n"
-                f"    _img_b64_{idx} = '{b64}'\n"
-                f"    _res_{idx} = _find_b64_on_screen_web(_img_b64_{idx}, timeout=8)\n"
-                f"    if not _res_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
-                f"    print('[OK] Gorsel dogrulandi: {desc}')\n"
-                f"    print('STEP_DONE:{idx}')\n"
-                f"except Exception as _e_{idx}:\n"
-                f"    print(f'[FAIL] {{_e_{idx}}}')\n"
-                f"    print('STEP_FAIL:{idx}')\n"
-                f"    raise"
-            )
-        else:
-            click_line = {
-                "double_click": f"    import pyautogui as _pag_web; _pag_web.doubleClick(_coords_{idx}[0], _coords_{idx}[1])",
-                "right_click":  f"    import pyautogui as _pag_web; _pag_web.rightClick(_coords_{idx}[0], _coords_{idx}[1])",
-            }.get(item.action, f"    import pyautogui as _pag_web; _pag_web.click(_coords_{idx}[0], _coords_{idx}[1])")
-            return (
-                f"# [GÖRSEL TIKLAMA] {desc}\n"
-                f"print('STEP_START:{idx}')\n"
-                f"try:\n"
-                f"    _img_b64_{idx} = '{b64}'\n"
-                f"    _coords_{idx} = _find_b64_on_screen_web(_img_b64_{idx}, timeout=10)\n"
-                f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
-                f"{click_line}\n"
-                f"    print('[OK] Gorsel tiklandi: {desc}')\n"
-                f"    time.sleep(0.5)\n"
-                f"    print('STEP_DONE:{idx}')\n"
-                f"except Exception as _e_{idx}:\n"
-                f"    print(f'[FAIL] {{_e_{idx}}}')\n"
-                f"    print('STEP_FAIL:{idx}')\n"
-                f"    raise"
-            )
+    if item.action == "assert":
+        find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
+        refocus_line = "    _refocus_window()\n" if platform == "desktop" else ""
+        return (
+            f"# [GÖRSEL DOĞRULA] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"try:\n"
+            f"{refocus_line}"
+            f"    _img_b64_{idx} = '{b64}'\n"
+            f"    _res_{idx} = {find_fn}(_img_b64_{idx}, timeout=8)\n"
+            f"    if not _res_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
+            f"    print('[OK] Gorsel dogrulandi: {desc}')\n"
+            f"    print('STEP_DONE:{idx}')\n"
+            f"except Exception as _e_{idx}:\n"
+            f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise"
+        )
+
+    return _image_click_code(idx, desc, b64, item.click_x, item.click_y, item.action, platform)
 
 
 def _sql_step_code(item: "StepItem", idx: int) -> str:
