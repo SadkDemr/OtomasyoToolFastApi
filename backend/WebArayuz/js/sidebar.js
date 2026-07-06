@@ -17,6 +17,7 @@
         var page    = getCurrentPage();
         var isAdmin = (typeof Auth !== "undefined" && Auth.isAdmin) ? Auth.isAdmin() : false;
         var user    = (typeof Auth !== "undefined" && Auth.getUser) ? Auth.getUser() : null;
+        var uploadOnly = !!(user && user.upload_only);
 
         var userName = user ? (user.full_name || user.username || "User") : "User";
         var userRole = user ? (user.role === "admin" ? "Yönetici" : "Kullanıcı") : "";
@@ -51,6 +52,28 @@
             );
         }
 
+        var navHtml = uploadOnly
+            ? section("Genel", item("dosya-yukleme", "&#128247;", "Dosya Yükleme"))
+            : (
+                section("Genel",
+                    item("index",     "&#128202;", "Dashboard")
+                    + item("workspace","&#128188;", "Workspace")
+                    + item("dosya-yukleme", "&#128247;", "Dosya Yükleme")
+                  )
+                + section("Test",
+                    item("web-test",     "&#127760;", "Web Test")
+                    + item("mobile-test","&#128242;", "Mobil Test")
+                    + item("desktop-test","&#128421;","Desktop Test")
+                  )
+                + section("AI Araçlar",
+                    item("ai-generator",   "&#129302;", "AI Test Generator")
+                    + item("java-generator","&#9749;",  "Java Generator")
+                    + item("bdd-generator","&#129405;", "BDD Generator")
+                    + item("test-history", "&#128203;", "Test Geçmişi")
+                  )
+                + adminBlock
+              );
+
         var html = ''
             + '<aside class="sidebar">'
             +   '<div class="sidebar-header">'
@@ -60,22 +83,7 @@
             +     '</div>'
             +   '</div>'
             +   '<nav class="sidebar-nav">'
-            +     section("Genel",
-                    item("index",     "&#128202;", "Dashboard")
-                    + item("workspace","&#128188;", "Workspace")
-                  )
-            +     section("Test",
-                    item("web-test",     "&#127760;", "Web Test")
-                    + item("mobile-test","&#128242;", "Mobil Test")
-                    + item("desktop-test","&#128421;","Desktop Test")
-                  )
-            +     section("AI Araçlar",
-                    item("ai-generator",   "&#129302;", "AI Test Generator")
-                    + item("java-generator","&#9749;",  "Java Generator")
-                    + item("bdd-generator","&#129405;", "BDD Generator")
-                    + item("test-history", "&#128203;", "Test Geçmişi")
-                  )
-            +     adminBlock
+            +     navHtml
             +   '</nav>'
             +   '<div class="sidebar-footer">'
             +     '<div class="user-info">'
