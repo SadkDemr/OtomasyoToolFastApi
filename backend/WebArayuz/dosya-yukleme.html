@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dosya Yükleme - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .page-content { padding: 24px; width: 100%; max-width: 1200px; box-sizing: border-box; }
+
+        .upload-box {
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            text-align: center;
+            margin-bottom: 20px;
+            background: var(--bg-secondary);
+        }
+        .upload-box.dragover { border-color: var(--accent-primary); background: rgba(79,70,229,0.06); }
+        .upload-note {
+            width: 100%; max-width: 420px; margin: 12px auto 0; padding: 8px 12px;
+            border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;
+            box-sizing: border-box; display: block;
+        }
+        .btn-pick {
+            display: inline-block; padding: 10px 20px; margin-top: 10px;
+            background: var(--accent-primary); color: #fff; border-radius: var(--radius-md);
+            font-size: 0.9rem; font-weight: 500; cursor: pointer;
+        }
+
+        .filter-row { display:flex; gap:10px; align-items:center; margin-bottom: 16px; flex-wrap: wrap; }
+        .filter-row select {
+            padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            background: var(--bg-secondary); color: var(--text-primary); font-size: 0.85rem;
+        }
+
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 14px;
+        }
+        .file-card {
+            border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            overflow: hidden; background: var(--bg-secondary); display: flex; flex-direction: column;
+        }
+        .file-card .thumb {
+            width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #000; display: block;
+        }
+        .file-card video.thumb { object-fit: contain; }
+        .file-card .icon-thumb {
+            width: 100%; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+            font-size: 2.4rem; background: var(--bg-primary);
+        }
+        .file-card .meta { padding: 8px 10px; font-size: 0.78rem; color: var(--text-secondary); flex: 1; }
+        .file-card .meta .fname { font-weight: 600; color: var(--text-primary); word-break: break-word; }
+        .file-card .actions { display: flex; gap: 6px; padding: 0 10px 10px; }
+        .file-card .actions a, .file-card .actions button {
+            flex: 1; text-align: center; padding: 8px 6px; font-size: 0.78rem;
+            border-radius: var(--radius-md); border: 1px solid var(--border-color);
+            background: var(--bg-primary); color: var(--text-primary); cursor: pointer;
+            text-decoration: none; min-height: 44px; display:flex; align-items:center; justify-content:center;
+        }
+        .file-card .actions .btn-del { color: #ef4444; border-color: rgba(239,68,68,.35); }
+
+        @media (max-width: 600px) {
+            .file-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+<div id="app-root">
+    <div id="sidebar-container"></div>
+    <div class="main-content">
+        <header class="top-bar">
+            <span class="top-bar-title">📷 Dosya Yükleme</span>
+        </header>
+
+        <div class="page-content">
+            <div class="upload-box" id="uploadBox">
+                <div>Fotoğraf veya video sürükle-bırak, ya da seç</div>
+                <input type="file" id="fileInput" accept="image/*,video/*" multiple style="display:none;">
+                <label class="btn-pick" for="fileInput">📁 Dosya Seç</label>
+                <input type="text" id="noteInput" class="upload-note" placeholder="Not (opsiyonel) — ör. login ekranında crash">
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">
+                    Kabul edilen: jpg, png, webp, heic, mp4, mov, webm, avi — dosya başına en fazla 50 MB
+                </div>
+            </div>
+
+            <div class="filter-row" id="adminFilterRow" style="display:none;">
+                <label style="font-size:0.85rem; color:var(--text-secondary);">Kullanıcı:</label>
+                <select id="userFilter" onchange="loadFiles()">
+                    <option value="">Tümü</option>
+                </select>
+            </div>
+
+            <div id="fileGrid" class="file-grid"></div>
+        </div>
+    </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    if (!Auth.checkAuth()) return;
+
+    const isAdmin = Auth.isAdmin();
+    const me = Auth.getUser();
+    let _files = [];
+
+    function fmtSize(bytes) {
+        if (bytes > 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+        return Math.round(bytes / 1024) + " KB";
+    }
+
+    function cardHtml(f) {
+        const url = `${API_URL}/uploads/${f.id}/file`;
+        let thumb;
+        if (f.file_type === "video") {
+            thumb = `<video class="thumb" src="${url}" controls preload="metadata"></video>`;
+        } else if (f.mime_type === "image/heic") {
+            thumb = `<div class="icon-thumb">🖼️</div>`;
+        } else {
+            thumb = `<img class="thumb" src="${url}" loading="lazy" alt="${Utils.escapeHtml(f.original_filename)}">`;
+        }
+        const canDelete = isAdmin || (me && f.user_id === me.id);
+        const uploaderLine = isAdmin ? `<div>Yükleyen: ${Utils.escapeHtml(f.username)}</div>` : "";
+        return `
+            <div class="file-card">
+                ${thumb}
+                <div class="meta">
+                    <div class="fname">${Utils.escapeHtml(f.original_filename)}</div>
+                    ${uploaderLine}
+                    <div>${fmtSize(f.size_bytes)} · ${Utils.formatRelativeTime(f.uploaded_at)}</div>
+                    ${f.note ? `<div>${Utils.escapeHtml(f.note)}</div>` : ""}
+                </div>
+                <div class="actions">
+                    <a href="${url}" download="${Utils.escapeHtml(f.original_filename)}">İndir</a>
+                    ${canDelete ? `<button class="btn-del" onclick="deleteFile(${f.id})">Sil</button>` : ""}
+                </div>
+            </div>`;
+    }
+
+    window.loadFiles = async function () {
+        const grid = document.getElementById("fileGrid");
+        grid.innerHTML = '<div style="color:var(--text-muted);">Yükleniyor...</div>';
+        try {
+            let endpoint = "/uploads";
+            if (isAdmin) {
+                const sel = document.getElementById("userFilter").value;
+                if (sel) endpoint += `?user_id=${sel}`;
+            }
+            const data = await API.get(endpoint);
+            _files = data.files || [];
+            grid.innerHTML = _files.length
+                ? _files.map(cardHtml).join("")
+                : '<div style="color:var(--text-muted);">Henüz dosya yüklenmemiş.</div>';
+        } catch (e) {
+            Toast.error(e.message);
+        }
+    };
+
+    window.deleteFile = async function (id) {
+        if (!confirm("Bu dosya silinsin mi?")) return;
+        try {
+            await API.delete(`/uploads/${id}`);
+            Toast.success("Dosya silindi");
+            loadFiles();
+        } catch (e) {
+            Toast.error(e.message);
+        }
+    };
+
+    async function uploadOne(file) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("note", document.getElementById("noteInput").value.trim());
+        const res = await fetch(`${API_URL}/uploads/`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+            body: form,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Yükleme hatası");
+        return data;
+    }
+
+    async function handleFiles(fileList) {
+        for (const file of fileList) {
+            try {
+                await uploadOne(file);
+                Toast.success(`${file.name} yüklendi`);
+            } catch (e) {
+                Toast.error(`${file.name}: ${e.message}`);
+            }
+        }
+        loadFiles();
+    }
+
+    document.getElementById("fileInput").addEventListener("change", (e) => {
+        handleFiles(e.target.files);
+        e.target.value = "";
+    });
+
+    const box = document.getElementById("uploadBox");
+    box.addEventListener("dragover", (e) => { e.preventDefault(); box.classList.add("dragover"); });
+    box.addEventListener("dragleave", () => box.classList.remove("dragover"));
+    box.addEventListener("drop", (e) => {
+        e.preventDefault();
+        box.classList.remove("dragover");
+        if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+    });
+
+    async function initAdminFilter() {
+        if (!isAdmin) return;
+        document.getElementById("adminFilterRow").style.display = "flex";
+        try {
+            const data = await AdminAPI.listUsers();
+            const sel = document.getElementById("userFilter");
+            (data.users || []).forEach(u => {
+                const opt = document.createElement("option");
+                opt.value = u.id;
+                opt.textContent = u.username;
+                sel.appendChild(opt);
+            });
+        } catch (e) { /* filtre olmadan da calisir */ }
+    }
+
+    initAdminFilter();
+    loadFiles();
+})();
+</script>
+</body>
+</html>
