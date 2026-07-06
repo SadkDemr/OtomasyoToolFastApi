@@ -125,6 +125,13 @@
         document.addEventListener("DOMContentLoaded", async () => {
             if (!Auth.checkAuth()) return;
 
+            // Cache'lenmis kullanici bilgisi eski olabilir (admin sonradan upload_only actiysa) -
+            // yonlendirme kararindan once /api/auth/me ile taze veri cek.
+            try {
+                const fresh = await API.get("/auth/me");
+                Auth.setUser(fresh);
+            } catch (e) { /* token gecerliyse checkAuth zaten gecti, cache'li veriyle devam */ }
+
             const user = Auth.getUser();
             if (user && user.upload_only) {
                 location.href = "dosya-yukleme.html";
