@@ -120,6 +120,12 @@
                 <option value="admin">Admin</option>
             </select>
         </div>
+        <div class="form-group">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="fUploadOnly" style="width:auto;">
+                Sadece Dosya Yükleme (sidebar'da başka hiçbir sayfa görünmez)
+            </label>
+        </div>
         <div class="modal-actions">
             <button class="btn btn-secondary" onclick="closeModal('userModal')">Iptal</button>
             <button class="btn btn-primary" onclick="saveUser()">Kaydet</button>
@@ -269,6 +275,7 @@
         document.getElementById("fPasswordHint").textContent = "";
         document.getElementById("fFullName").value = "";
         document.getElementById("fRole").value = "user";
+        document.getElementById("fUploadOnly").checked = false;
         document.getElementById("userModal").classList.add("active");
     };
 
@@ -286,6 +293,7 @@
         document.getElementById("fPasswordHint").textContent = "";
         document.getElementById("fFullName").value = u.full_name || "";
         document.getElementById("fRole").value = u.role;
+        document.getElementById("fUploadOnly").checked = !!u.upload_only;
         document.getElementById("userModal").classList.add("active");
     };
 
@@ -293,10 +301,11 @@
         const email    = document.getElementById("fEmail").value.trim();
         const password = document.getElementById("fPassword").value;
         const fullName = document.getElementById("fFullName").value.trim();
-        const role     = document.getElementById("fRole").value;
+        const role       = document.getElementById("fRole").value;
+        const uploadOnly = document.getElementById("fUploadOnly").checked;
 
         if (_editUserId) {
-            const body = { email, full_name: fullName, role };
+            const body = { email, full_name: fullName, role, upload_only: uploadOnly };
             if (password) body.password = password;
             const r = await fetch(`${API}/admin/users/${_editUserId}`, {
                 method:"PUT", headers:hdrs(), body:JSON.stringify(body)
@@ -307,7 +316,7 @@
         } else {
             const username = document.getElementById("fUsername").value.trim();
             if (!username || !email || !password) { toast("Zorunlu alanlar bos", false); return; }
-            const body = { username, email, password, full_name: fullName, role };
+            const body = { username, email, password, full_name: fullName, role, upload_only: uploadOnly };
             const r = await fetch(`${API}/admin/users/`, {
                 method:"POST", headers:hdrs(), body:JSON.stringify(body)
             });

@@ -29,6 +29,7 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=4)
     full_name: Optional[str] = None
     role: str = Field(default="user")  # user | admin
+    upload_only: bool = Field(default=False)
 
 
 class UserUpdate(BaseModel):
@@ -36,6 +37,7 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     password: Optional[str] = None
+    upload_only: Optional[bool] = None
 
 
 class PermissionSet(BaseModel):
@@ -59,6 +61,7 @@ def _user_dict(u: User, db: Session) -> dict:
         "email":         u.email,
         "full_name":     u.full_name,
         "role":          u.role,
+        "upload_only":   u.upload_only,
         "created_at":    u.created_at.isoformat() if u.created_at else None,
         "last_login":    u.last_login.isoformat() if u.last_login else None,
         "workspace_count": ws_count,
@@ -161,6 +164,7 @@ async def create_user(
         hashed_password=auth_service.hash_password(body.password),
         full_name=body.full_name,
         role=body.role,
+        upload_only=body.upload_only,
         created_at=datetime.utcnow(),
     )
     db.add(user)
@@ -202,6 +206,9 @@ async def update_user(
 
     if body.password:
         user.hashed_password = auth_service.hash_password(body.password)
+
+    if body.upload_only is not None:
+        user.upload_only = body.upload_only
 
     db.commit()
     db.refresh(user)
