@@ -92,22 +92,24 @@
     <script src="js/app.js"></script>
     <script>
         if (Auth.isLoggedIn()) {
-            location.href = 'index.html';
+            const existing = Auth.getUser();
+            location.href = (existing && existing.upload_only) ? 'dosya-yukleme.html' : 'index.html';
         }
-        
+
         async function login(e) {
             e.preventDefault();
             const btn = document.getElementById('loginBtn');
             btn.disabled = true;
             btn.textContent = 'Giriş yapılıyor...';
-            
+
             try {
-                await AuthAPI.login(
+                const data = await AuthAPI.login(
                     document.getElementById('loginUsername').value,
                     document.getElementById('loginPassword').value
                 );
                 Toast.success('Giriş başarılı!');
-                setTimeout(() => location.href = 'index.html', 500);
+                const target = (data.user && data.user.upload_only) ? 'dosya-yukleme.html' : 'index.html';
+                setTimeout(() => location.href = target, 500);
             } catch (err) {
                 Toast.error(err.message);
                 btn.disabled = false;

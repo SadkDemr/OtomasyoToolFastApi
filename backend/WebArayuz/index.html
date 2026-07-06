@@ -126,6 +126,10 @@
             if (!Auth.checkAuth()) return;
 
             const user = Auth.getUser();
+            if (user && user.upload_only) {
+                location.href = "dosya-yukleme.html";
+                return;
+            }
             document.getElementById("welcomeMsg").textContent = `Hoş geldin, ${user?.full_name || user?.username || 'Kullanıcı'}`;
 
             await loadStats();

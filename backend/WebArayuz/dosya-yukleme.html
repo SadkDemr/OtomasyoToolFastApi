@@ -36,36 +36,31 @@
             background: var(--bg-secondary); color: var(--text-primary); font-size: 0.85rem;
         }
 
-        .file-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 14px;
+        .date-group { margin-bottom: 22px; }
+        .date-header {
+            font-size: 0.85rem; font-weight: 700; color: var(--text-secondary);
+            padding: 6px 0; border-bottom: 1px solid var(--border-color); margin-bottom: 8px;
         }
-        .file-card {
-            border: 1px solid var(--border-color); border-radius: var(--radius-md);
-            overflow: hidden; background: var(--bg-secondary); display: flex; flex-direction: column;
+        .file-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            background: var(--bg-secondary); margin-bottom: 6px;
         }
-        .file-card .thumb {
-            width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #000; display: block;
+        .file-row-main { flex: 1; min-width: 0; }
+        .file-row .fname { font-weight: 600; color: var(--text-primary); word-break: break-word; }
+        .file-row .fmeta { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+        .file-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .file-row-actions button {
+            padding: 8px 12px; font-size: 0.78rem; border-radius: var(--radius-md);
+            border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);
+            cursor: pointer; min-height: 40px;
         }
-        .file-card video.thumb { object-fit: contain; }
-        .file-card .icon-thumb {
-            width: 100%; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
-            font-size: 2.4rem; background: var(--bg-primary);
-        }
-        .file-card .meta { padding: 8px 10px; font-size: 0.78rem; color: var(--text-secondary); flex: 1; }
-        .file-card .meta .fname { font-weight: 600; color: var(--text-primary); word-break: break-word; }
-        .file-card .actions { display: flex; gap: 6px; padding: 0 10px 10px; }
-        .file-card .actions a, .file-card .actions button {
-            flex: 1; text-align: center; padding: 8px 6px; font-size: 0.78rem;
-            border-radius: var(--radius-md); border: 1px solid var(--border-color);
-            background: var(--bg-primary); color: var(--text-primary); cursor: pointer;
-            text-decoration: none; min-height: 44px; display:flex; align-items:center; justify-content:center;
-        }
-        .file-card .actions .btn-del { color: #ef4444; border-color: rgba(239,68,68,.35); }
+        .file-row-actions .btn-del { color: #ef4444; border-color: rgba(239,68,68,.35); }
 
         @media (max-width: 600px) {
-            .file-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+            .file-row { flex-direction: column; align-items: flex-start; }
+            .file-row-actions { width: 100%; }
+            .file-row-actions button { flex: 1; }
         }
     </style>
 </head>
@@ -95,7 +90,7 @@
                 </select>
             </div>
 
-            <div id="fileGrid" class="file-grid"></div>
+            <div id="fileList"></div>
         </div>
     </div>
 </div>
@@ -116,37 +111,47 @@
         return Math.round(bytes / 1024) + " KB";
     }
 
-    function cardHtml(f) {
-        const url = `${API_URL}/uploads/${f.id}/file`;
-        let thumb;
-        if (f.file_type === "video") {
-            thumb = `<video class="thumb" src="${url}" controls preload="metadata"></video>`;
-        } else if (f.mime_type === "image/heic") {
-            thumb = `<div class="icon-thumb">🖼️</div>`;
-        } else {
-            thumb = `<img class="thumb" src="${url}" loading="lazy" alt="${Utils.escapeHtml(f.original_filename)}">`;
-        }
+    function groupByDate(files) {
+        const groups = {};
+        const order = [];
+        files.forEach(f => {
+            const day = (f.uploaded_at || "").slice(0, 10); // YYYY-MM-DD
+            if (!groups[day]) { groups[day] = []; order.push(day); }
+            groups[day].push(f);
+        });
+        return order.map(day => ({ day, files: groups[day] }));
+    }
+
+    function fmtDateHeader(day) {
+        if (!day) return "Bilinmeyen tarih";
+        const today = new Date().toISOString().slice(0, 10);
+        const label = new Date(day + "T00:00:00").toLocaleDateString("tr-TR", {
+            day: "2-digit", month: "long", year: "numeric"
+        });
+        return day === today ? `Bugün — ${label}` : label;
+    }
+
+    function rowHtml(f) {
         const canDelete = isAdmin || (me && f.user_id === me.id);
-        const uploaderLine = isAdmin ? `<div>Yükleyen: ${Utils.escapeHtml(f.username)}</div>` : "";
+        const parts = [fmtSize(f.size_bytes)];
+        if (isAdmin) parts.push(`Yükleyen: ${Utils.escapeHtml(f.username)}`);
+        if (f.note) parts.push(Utils.escapeHtml(f.note));
         return `
-            <div class="file-card">
-                ${thumb}
-                <div class="meta">
+            <div class="file-row">
+                <div class="file-row-main">
                     <div class="fname">${Utils.escapeHtml(f.original_filename)}</div>
-                    ${uploaderLine}
-                    <div>${fmtSize(f.size_bytes)} · ${Utils.formatRelativeTime(f.uploaded_at)}</div>
-                    ${f.note ? `<div>${Utils.escapeHtml(f.note)}</div>` : ""}
+                    <div class="fmeta">${parts.join(" · ")}</div>
                 </div>
-                <div class="actions">
-                    <a href="${url}" download="${Utils.escapeHtml(f.original_filename)}">İndir</a>
+                <div class="file-row-actions">
+                    <button onclick="downloadFile(${f.id})">İndir</button>
                     ${canDelete ? `<button class="btn-del" onclick="deleteFile(${f.id})">Sil</button>` : ""}
                 </div>
             </div>`;
     }
 
     window.loadFiles = async function () {
-        const grid = document.getElementById("fileGrid");
-        grid.innerHTML = '<div style="color:var(--text-muted);">Yükleniyor...</div>';
+        const container = document.getElementById("fileList");
+        container.innerHTML = '<div style="color:var(--text-muted);">Yükleniyor...</div>';
         try {
             let endpoint = "/uploads";
             if (isAdmin) {
@@ -155,9 +160,38 @@
             }
             const data = await API.get(endpoint);
             _files = data.files || [];
-            grid.innerHTML = _files.length
-                ? _files.map(cardHtml).join("")
-                : '<div style="color:var(--text-muted);">Henüz dosya yüklenmemiş.</div>';
+            if (!_files.length) {
+                container.innerHTML = '<div style="color:var(--text-muted);">Henüz dosya yüklenmemiş.</div>';
+                return;
+            }
+            container.innerHTML = groupByDate(_files).map(g => `
+                <div class="date-group">
+                    <div class="date-header">${fmtDateHeader(g.day)}</div>
+                    ${g.files.map(rowHtml).join("")}
+                </div>
+            `).join("");
+        } catch (e) {
+            Toast.error(e.message);
+        }
+    };
+
+    window.downloadFile = async function (id) {
+        const f = _files.find(x => x.id === id);
+        const filename = f ? f.original_filename : "dosya";
+        try {
+            const res = await fetch(`${API_URL}/uploads/${id}/file`, {
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+            });
+            if (!res.ok) throw new Error("İndirme başarısız");
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(blobUrl);
         } catch (e) {
             Toast.error(e.message);
         }
