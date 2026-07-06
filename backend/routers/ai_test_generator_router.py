@@ -2210,7 +2210,15 @@ time.sleep(3)
         "finally:",
         ("    pass" if session_mode == "start" else "    driver.quit()"),
     ] + (
-        ["", 'print("SESSION_ID:", driver.session_id)', 'print("EXECUTOR_URL:", driver.command_executor._url)']
+        [
+            "",
+            'print("SESSION_ID:", driver.session_id)',
+            'print("EXECUTOR_URL:", driver.command_executor._url)',
+            "import sys as _sys_st, os as _os_st",
+            "_sys_st.stdout.flush()",
+            # Service.__del__ normal script sonunda chromedriver/appium'u kapatir - os._exit ile atlanir
+            "_os_st._exit(0)",
+        ]
         if session_mode == "start" else []
     )
 
@@ -2369,7 +2377,15 @@ def _build_web_template(
         "finally:",
         ("    pass" if session_mode == "start" else "    driver.quit()"),
     ] + (
-        ["", 'print("SESSION_ID:", driver.session_id)', 'print("EXECUTOR_URL:", driver.command_executor._url)']
+        [
+            "",
+            'print("SESSION_ID:", driver.session_id)',
+            'print("EXECUTOR_URL:", driver.command_executor._url)',
+            "import sys as _sys_st, os as _os_st",
+            "_sys_st.stdout.flush()",
+            # Service.__del__ normal script sonunda chromedriver/appium'u kapatir - os._exit ile atlanir
+            "_os_st._exit(0)",
+        ]
         if session_mode == "start" else []
     )
 
@@ -2400,6 +2416,7 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         "",
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
         f'_WINDOW_TITLE   = "{window_title_esc}"',
+        f'_APP_PATH       = r"{app_path_esc}"',
         "_VARS = {}  # adımlar arası değişken havuzu",
         "def _sub_vars(_s):",
         "    for _k, _v in _VARS.items():",
@@ -3497,6 +3514,170 @@ async def execute_script(
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+class SessionStartRequest(BaseModel):
+    platform:     str
+    browser:      Optional[str] = "chrome"
+    target_url:   Optional[str] = ""
+    device_id:    Optional[str] = ""
+    app_package:  Optional[str] = ""
+    app_activity: Optional[str] = ""
+    appium_url:   Optional[str] = "http://localhost:4723"
+
+
+@router.post("/session/start")
+async def session_start(req: SessionStartRequest, current_user: User = Depends(get_current_user)):
+    """Web/Mobil için görünür, kalıcı bir tarayıcı/uygulama oturumu açar (driver.quit() etmez)."""
+    if req.platform not in ("web", "mobile"):
+        raise HTTPException(400, "Oturum sadece web/mobile platformlarında desteklenir.")
+    if _get_session(current_user.id, req.platform):
+        raise HTTPException(409, "Bu platform için zaten aktif bir oturum var.")
+
+    gen_req = GenerateRequest(
+        platform=req.platform, browser=req.browser, target_url=req.target_url,
+        device_id=req.device_id, app_package=req.app_package, app_activity=req.app_activity,
+        appium_url=req.appium_url,
+    )
+    build_fn = _build_mobile_template if req.platform == "mobile" else _build_web_template
+    script = build_fn(gen_req, "", session_mode="start")
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8", prefix="ai_session_start_") as f:
+        f.write(script)
+        tmp = f.name
+
+    # stdout/stderr bir DOSYAYA yönlendirilir (PIPE değil): script os._exit(0) ile bitse bile
+    # chromedriver/appium'un henüz yaşayan çocuk süreçleri PIPE'ın yazma ucunu miras alıp EOF'u
+    # engelleyebilir - subprocess.run(capture_output=True) bu yüzden timeout'a kadar asılı kalırdı.
+    out_fd, out_path = tempfile.mkstemp(suffix=".log", prefix="ai_session_start_out_")
+    os.close(out_fd)
+
+    try:
+        with open(out_path, "w", encoding="utf-8") as out_f:
+            proc = subprocess.Popen(
+                [sys.executable, tmp], stdout=out_f, stderr=out_f,
+                env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+            )
+            try:
+                proc.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                raise HTTPException(500, "Oturum başlatma zaman aşımına uğradı.")
+
+        out = Path(out_path).read_text(encoding="utf-8", errors="replace")
+        sid_m = re.search(r"SESSION_ID:\s*(\S+)", out)
+        url_m = re.search(r"EXECUTOR_URL:\s*(\S+)", out)
+        if not sid_m or not url_m:
+            raise HTTPException(500, f"Oturum başlatılamadı: {out}")
+        _active_sessions[(current_user.id, req.platform)] = {
+            "session_id": sid_m.group(1),
+            "command_executor_url": url_m.group(1),
+            "started_at": _time_mod.time(),
+            "last_used_at": _time_mod.time(),
+        }
+        return {"success": True, "platform": req.platform}
+    finally:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        try:
+            os.unlink(out_path)
+        except Exception:
+            pass
+
+
+class SessionRunStepRequest(BaseModel):
+    platform:    str
+    step:        StepItem
+    step_label:  Optional[str] = "Adım"
+
+
+@router.post("/session/run-step")
+async def session_run_step(req: SessionRunStepRequest, current_user: User = Depends(get_current_user)):
+    """Aktif oturuma bağlanıp TEK bir adımı, önceki adımların bıraktığı durumdan devam ederek çalıştırır."""
+    sess = _get_session(current_user.id, req.platform)
+    if not sess:
+        raise HTTPException(404, "Aktif oturum yok. Önce oturumu başlatın.")
+
+    gen_req = GenerateRequest(platform=req.platform, steps_list=[req.step])
+    steps_code, report = await _generate_steps(gen_req)
+    build_fn = _build_mobile_template if req.platform == "mobile" else _build_web_template
+    script = build_fn(
+        gen_req, steps_code, session_mode="attach",
+        session_id=sess["session_id"], command_executor_url=sess["command_executor_url"],
+    )
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8", prefix="ai_session_step_") as f:
+        f.write(script)
+        tmp = f.name
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, tmp], capture_output=True, text=True, encoding="utf-8", timeout=60,
+            env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+        _touch_session(current_user.id, req.platform)
+        passed = proc.returncode == 0
+        return {
+            "success": passed,
+            "output": (proc.stdout or "") + (proc.stderr or ""),
+            "report": report,
+        }
+    except subprocess.TimeoutExpired:
+        _touch_session(current_user.id, req.platform)
+        return {"success": False, "output": "Adım zaman aşımına uğradı.", "report": report}
+    finally:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+
+
+@router.post("/session/end")
+async def session_end(platform: str, current_user: User = Depends(get_current_user)):
+    """Aktif oturuma son kez bağlanıp kapatır (driver.quit())."""
+    sess = _get_session(current_user.id, platform)
+    if not sess:
+        raise HTTPException(404, "Aktif oturum yok.")
+
+    gen_req = GenerateRequest(platform=platform)
+    build_fn = _build_mobile_template if platform == "mobile" else _build_web_template
+    script = build_fn(
+        gen_req, "", session_mode="end",
+        session_id=sess["session_id"], command_executor_url=sess["command_executor_url"],
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8", prefix="ai_session_end_") as f:
+        f.write(script)
+        tmp = f.name
+    try:
+        subprocess.run(
+            [sys.executable, tmp], capture_output=True, text=True, encoding="utf-8", timeout=30,
+            env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+    except subprocess.TimeoutExpired:
+        pass
+    finally:
+        if platform == "web":
+            # attach modundaki driver'in Service nesnesi yok - driver.quit() chromedriver.exe'yi
+            # kapatmaz, /shutdown endpoint'ine dogrudan istek atmak gerekir (orphan surec onlenir)
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    await client.get(sess["command_executor_url"].rstrip("/") + "/shutdown")
+            except Exception:
+                pass
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        _remove_session(current_user.id, platform)
+    return {"success": True}
+
+
+@router.get("/session/status")
+async def session_status(platform: str, current_user: User = Depends(get_current_user)):
+    sess = _get_session(current_user.id, platform)
+    return {"active": sess is not None, "started_at": sess["started_at"] if sess else None}
 
 
 @router.get("/run-logs")

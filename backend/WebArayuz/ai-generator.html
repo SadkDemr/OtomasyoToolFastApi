@@ -590,6 +590,34 @@
         .btn-add-step.api-btn { border-color: rgba(6,182,212,0.35); color: #0891b2; }
         .btn-add-step.api-btn:hover { border-color: #0891b2; background: rgba(6,182,212,0.06); }
 
+        .session-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0;
+            padding: 6px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: rgba(99,102,241,0.04);
+        }
+        .session-status-text { font-size: 0.8rem; color: var(--text-secondary); margin-right: auto; }
+        .session-controls.active { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .session-controls.active .session-status-text { color: var(--ai-green); font-weight: 600; }
+
+        .step-run-btn {
+            padding: 2px 6px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.8rem;
+            opacity: 0.55;
+            flex-shrink: 0;
+            line-height: 1;
+            border-radius: 3px;
+        }
+        .step-run-btn:hover { opacity: 1; color: var(--ai-green); background: rgba(34,197,94,0.08); }
+
         .btn-import-file {
             margin-left: auto;
             padding: 5px 10px;
@@ -1090,6 +1118,13 @@
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                             Yorum
                         </button>
+                    </div>
+
+                    <!-- Oturum Kontrolleri (Web/Mobil) -->
+                    <div id="sessionControls" class="session-controls" style="display:none;">
+                        <span id="sessionStatusText" class="session-status-text">Oturum: kapalı</span>
+                        <button class="btn-add-step" onclick="startSession()" id="btnSessionStart">▶ Oturumu Başlat</button>
+                        <button class="btn-add-step" onclick="endSession()" id="btnSessionEnd" style="display:none;">⏹ Oturumu Bitir</button>
                     </div>
 
                     <!-- Step Listesi -->
@@ -1604,6 +1639,7 @@
         // Görsel adım butonu mobilde gizlenir
         document.getElementById("btnAddImage").style.display = platform === "mobile" ? "none" : "inline-flex";
         updateGenerateBtn();
+        syncSessionStatus();
     };
 
     function updateGenerateBtn() {
@@ -1615,6 +1651,137 @@
         );
         document.getElementById("btnGenerate").disabled = !(hasValidStep && selectedPlatform) || isGenerating;
     }
+
+    // ── Oturum (Session) Kontrolleri ────────────────────────────────────────
+    let _sessionActive = false;
+
+    function updateSessionUI() {
+        const ctrl = document.getElementById("sessionControls");
+        const isSessionPlatform = selectedPlatform === "web" || selectedPlatform === "mobile";
+        ctrl.style.display = isSessionPlatform ? "flex" : "none";
+        ctrl.classList.toggle("active", _sessionActive);
+        document.getElementById("sessionStatusText").textContent = "Oturum: " + (_sessionActive ? "aktif" : "kapalı");
+        document.getElementById("btnSessionStart").style.display = _sessionActive ? "none" : "inline-flex";
+        document.getElementById("btnSessionEnd").style.display   = _sessionActive ? "inline-flex" : "none";
+    }
+
+    async function syncSessionStatus() {
+        if (selectedPlatform !== "web" && selectedPlatform !== "mobile") {
+            _sessionActive = false;
+            updateSessionUI();
+            return;
+        }
+        try {
+            const data = await API.get(`/ai-gen/session/status?platform=${selectedPlatform}`);
+            _sessionActive = !!data.active;
+        } catch (e) { /* sessizce yoksay */ }
+        updateSessionUI();
+    }
+
+    window.startSession = async function() {
+        if (selectedPlatform !== "web" && selectedPlatform !== "mobile") return;
+        const payload = buildPayload();
+        try {
+            await API.post("/ai-gen/session/start", {
+                platform:     selectedPlatform,
+                browser:      payload.browser      || "chrome",
+                target_url:   payload.target_url   || "",
+                device_id:    payload.device_id    || "",
+                app_package:  payload.app_package  || "",
+                app_activity: payload.app_activity || "",
+                appium_url:   payload.appium_url   || "http://localhost:4723",
+            });
+            _sessionActive = true;
+            updateSessionUI();
+            Toast.success("Oturum başlatıldı — tarayıcı/uygulama açık kalacak");
+        } catch (e) {
+            Toast.error(e.message);
+        }
+    };
+
+    window.endSession = async function() {
+        try {
+            await API.post(`/ai-gen/session/end?platform=${selectedPlatform}`, {});
+        } catch (e) {
+            Toast.error(e.message);
+        } finally {
+            _sessionActive = false;
+            updateSessionUI();
+            Toast.info("Oturum kapatıldı");
+        }
+    };
+
+    window.runSingleStep = async function(idx) {
+        const step = steps[idx];
+        if (!step || step.type === "comment" || step.disabled) return;
+        if (!selectedPlatform) { Toast.error("Platform seçin"); return; }
+
+        if (selectedPlatform === "desktop") {
+            try {
+                setStepStatus(idx, "running");
+                const payload = buildPayload();
+                const genData = await API.post("/ai-gen/generate", { ...payload, steps_list: [_stepToApiItem(step)] });
+                if (!genData.success) throw new Error("Script üretilemedi");
+
+                const response = await fetch(`${API_BASE}/ai-gen/execute`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Auth.getToken()}` },
+                    body: JSON.stringify({
+                        script: genData.script, platform: "desktop",
+                        step_labels: [step.content || "Adım"],
+                    }),
+                });
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Çalıştırma hatası");
+                }
+
+                let stepFailed = false;
+                const reader  = response.body.getReader();
+                const decoder = new TextDecoder();
+                let   buffer  = "";
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split("\n\n");
+                    buffer = parts.pop();
+                    for (const part of parts) {
+                        const evtMatch  = part.match(/^event:\s*(\S+)/m);
+                        const dataLines = [...part.matchAll(/^data:\s*(.*)/gm)].map(m => m[1]);
+                        const evtType   = evtMatch ? evtMatch[1] : "log";
+                        const dataText  = dataLines.join("\n");
+                        if (evtType === "done") continue;
+                        if (evtType === "error" || evtType === "step_fail") stepFailed = true;
+                        if (dataText.trim()) appendLog(evtType, dataText);
+                    }
+                }
+                setStepStatus(idx, stepFailed ? "fail" : "done");
+            } catch (e) {
+                setStepStatus(idx, "fail");
+                Toast.error(e.message);
+            }
+            return;
+        }
+
+        if (!_sessionActive) {
+            Toast.error("Önce oturumu başlatın.");
+            return;
+        }
+        setStepStatus(idx, "running");
+        try {
+            const data = await API.post("/ai-gen/session/run-step", {
+                platform:   selectedPlatform,
+                step:       _stepToApiItem(step),
+                step_label: step.content || step.type || "Adım",
+            });
+            setStepStatus(idx, data.success ? "done" : "fail");
+            if (!data.success) appendLog("error", data.output || "Adım başarısız");
+        } catch (e) {
+            setStepStatus(idx, "fail");
+            Toast.error(e.message);
+        }
+    };
 
     // ── Step Yönetimi ─────────────────────────────────────────────────────────
     window.addTextStep = function() {
@@ -1879,6 +2046,9 @@
         }
 
         const disabledClass = s.disabled ? " disabled" : "";
+        const runBtn = (s.type === "comment" || s.disabled)
+            ? ""
+            : `<button class="step-run-btn" onclick="runSingleStep(${i})" title="Sadece bu adımı çalıştır">▶</button>`;
         return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}${disabledClass}" id="step-row-${i}"
             draggable="true"
             ondragstart="stepDragStart(event, ${i})"
@@ -1888,6 +2058,7 @@
             <span class="step-type-badge ${meta.cls}">${meta.label}</span>
             ${contentHtml}
             <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
+            ${runBtn}
             <button class="step-toggle-btn" onclick="toggleStepDisabled(${i})"
                 title="${s.disabled ? 'Etkinleştir' : 'Devre dışı bırak (yorum satırına al)'}">${s.disabled ? "▶" : "⏸"}</button>
             <button class="step-del-btn" onclick="deleteStep(${i})" title="Sil">✕</button>
@@ -2343,9 +2514,10 @@
         }
     };
 
-    function buildPayload() {
-        const stepsList = steps.map(s => ({
+    function _stepToApiItem(s) {
+        return {
             type:          s.type,
+            disabled:      !!s.disabled,
             content:       s.content,
             image_b64:     s.b64          || "",
             action:        s.action       || "click",
@@ -2359,7 +2531,11 @@
             json_field:    s.json_field   || "",
             click_x:       (s.click_x >= 0) ? s.click_x : -1,
             click_y:       (s.click_y >= 0) ? s.click_y : -1,
-        }));
+        };
+    }
+
+    function buildPayload() {
+        const stepsList = steps.map(_stepToApiItem);
         // test_case geriye uyumluluk için (mobile fallback)
         const testCase = steps.filter(s => s.type === "text").map(s => s.content).join("\n");
 
