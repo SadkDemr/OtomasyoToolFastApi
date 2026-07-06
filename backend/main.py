@@ -37,6 +37,8 @@ from routers.ai_test_generator_router import router as ai_gen_router
 from routers.java_generator_router import router as java_gen_router
 # 🥒 BDD Generator
 from routers.bdd_generator_router import router as bdd_gen_router
+# 📁 Genel Dosya Yukleme
+from routers.uploads_router import router as uploads_router
 # 🔁 AI Test Generator - idle oturum reaper
 from routers.ai_test_generator_router import _session_idle_reaper
 
@@ -78,6 +80,8 @@ app.include_router(ai_gen_router)
 app.include_router(java_gen_router)
 # 🥒 BDD Generator
 app.include_router(bdd_gen_router)
+# 📁 Genel Dosya Yukleme
+app.include_router(uploads_router)
 
 web_ui = os.path.join(BASE_DIR, "WebArayuz")
 if os.path.exists(web_ui):
