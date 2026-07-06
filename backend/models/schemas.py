@@ -32,7 +32,8 @@ class UserResponse(BaseModel):
     email: str
     full_name: Optional[str] = None
     role: str = "user"
-    
+    upload_only: bool = False
+
     class Config:
         from_attributes = True
 

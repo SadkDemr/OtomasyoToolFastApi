@@ -52,6 +52,7 @@ def _run_migrations():
         "ALTER TABLE repositories ADD COLUMN editor_type TEXT NOT NULL DEFAULT 'ai'",
         "ALTER TABLE scenario_share_permissions ADD COLUMN owner_user_id INTEGER",
         "ALTER TABLE users ADD COLUMN last_login DATETIME",
+        "ALTER TABLE users ADD COLUMN upload_only BOOLEAN NOT NULL DEFAULT 0",
     ]
     with engine.connect() as conn:
         for sql in migrations:

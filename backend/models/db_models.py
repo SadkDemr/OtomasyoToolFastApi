@@ -23,7 +23,8 @@ class User(Base):
     hashed_password = Column(String)
     full_name = Column(String, nullable=True)
     role = Column(String, default="user") # admin, user
-    
+    upload_only = Column(Boolean, default=False)  # True ise login sonrasi sadece dosya yukleme sayfasi gorunur
+
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -34,6 +35,21 @@ class User(Base):
     # Git integration ilişkileri
     created_repositories = relationship("Repository", back_populates="creator")
     workspaces = relationship("UserWorkspace", back_populates="user")
+
+# --- DOSYA YUKLEME (Genel) ---
+class UploadedFile(Base):
+    __tablename__ = "uploaded_files"
+    id                = Column(Integer, primary_key=True, index=True)
+    user_id           = Column(Integer, ForeignKey("users.id"))
+    original_filename = Column(String)
+    stored_filename    = Column(String)   # disk uzerindeki uuid tabanli ad
+    file_type         = Column(String)    # "image" | "video"
+    mime_type         = Column(String)    # imza kontrolunden tespit edilen gercek tip
+    size_bytes        = Column(Integer)
+    note              = Column(Text, nullable=True)
+    uploaded_at       = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
 
 # --- KLASOR YAPISI (AGAC) ---
 class Folder(Base):
