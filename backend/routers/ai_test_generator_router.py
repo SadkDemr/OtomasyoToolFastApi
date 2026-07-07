@@ -2743,7 +2743,9 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
                 f"    print(f'[SQL] {{_cur_{idx}.rowcount}} satir etkilendi')"
                 f"{var_store}"
             )
-        server_part = f"{jdbc_info['server']},{jdbc_info['port']}" if jdbc_info['port'] else jdbc_info['server']
+        # 'tcp:' onekiyle protokol acikca TCP/IP'ye zorlanir — aksi halde surucu Named Pipes
+        # deneyebilir ve ozel IP/uzak sunucularda "Named Pipes Provider" hatasi verir
+        server_part = f"tcp:{jdbc_info['server']},{jdbc_info['port'] or '1433'}"
         auth_part = (
             f"UID={jdbc_info['user']};PWD={jdbc_info['password']}"
             if jdbc_info['user'] else "Trusted_Connection=yes"
