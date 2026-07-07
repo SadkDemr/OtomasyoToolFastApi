@@ -2659,10 +2659,22 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
     return _image_click_code(idx, desc, b64, item.click_x, item.click_y, item.action, platform)
 
 
-def _jdbc_sqlserver_to_odbc(conn: str) -> Optional[str]:
+# Yaygından en yeniye, script'in ÇALIŞTIĞI makinede kurulu ilk uyumlu sürücü seçilir
+# (kod üretim anındaki makine ile çalışma zamanındaki makine farklı olabilir — IM002 hatasının nedeni buydu)
+_SQLSERVER_ODBC_DRIVER_CANDIDATES = [
+    "ODBC Driver 18 for SQL Server",
+    "ODBC Driver 17 for SQL Server",
+    "ODBC Driver 13 for SQL Server",
+    "SQL Server Native Client 11.0",
+    "SQL Server",
+]
+
+
+def _parse_jdbc_sqlserver(conn: str) -> Optional[dict]:
     """'jdbc:sqlserver://host;serverName=..;databaseName=..;user=..;password=..' formatını
-    pyodbc'nin anladığı 'DRIVER=...;SERVER=...;DATABASE=...;UID=...;PWD=...' formatına çevirir.
-    SQLAlchemy create_engine() JDBC URL'lerini anlamadığı için ArgumentError fırlatıyordu."""
+    bileşenlerine ayırır. JDBC URL'leri bir ODBC driver adı belirtmez (JDBC'nin kendi
+    sürücüsü vardır) — bu yüzden driver adı burada SEÇİLMEZ, çalışma zamanında hedef
+    makinedeki kurulu sürücülere bakılarak seçilir (bkz. _sql_step_code)."""
     body = conn.strip()
     if not body.lower().startswith("jdbc:sqlserver:"):
         return None
@@ -2687,14 +2699,13 @@ def _jdbc_sqlserver_to_odbc(conn: str) -> Optional[str]:
     if not server:
         return None
     port = props.get("portnumber") or (host_port.split(":", 1)[1] if ":" in host_port else "")
-    database = props.get("databasename", "")
-    user = props.get("user", "")
-    password = props.get("password", "")
-
-    server_part = f"{server},{port}" if port else server
-    odbc = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server_part};DATABASE={database}"
-    odbc += f";UID={user};PWD={password}" if user else ";Trusted_Connection=yes"
-    return odbc
+    return {
+        "server": server,
+        "port": port,
+        "database": props.get("databasename", ""),
+        "user": props.get("user", ""),
+        "password": props.get("password", ""),
+    }
 
 
 def _sql_step_code(item: "StepItem", idx: int) -> str:
@@ -2702,7 +2713,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
     desc  = item.content or f"SQL {idx+1}"
     conn  = item.db_connection or "sqlite:///test.db"
     query = item.sql_query or "SELECT 1"
-    conn  = _jdbc_sqlserver_to_odbc(conn) or conn
+    jdbc_info = _parse_jdbc_sqlserver(conn)
     is_print  = item.action != "execute"
     is_sqlite = conn.strip().lower().startswith("sqlite:///")
     # DRIVER= içeriyorsa doğrudan pyodbc — SQLAlchemy URL parsing sorununu önler
@@ -2711,7 +2722,59 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
     conn_r  = repr(conn)
     query_r = repr(query)
 
-    if is_sqlite:
+    if jdbc_info:
+        # JDBC bağlantı string'i: ODBC driver adı çalışma zamanında hedef makinede seçilir
+        var_store = ""
+        if item.var_name:
+            var_store = (
+                f"\n    _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
+                f"\n    print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+            )
+        if is_print:
+            result_code = (
+                f"    _rows_{idx} = _cur_{idx}.fetchall()\n"
+                f"    print(f'[SQL] {{len(_rows_{idx})}} kayit:')\n"
+                f"    for _r in _rows_{idx}: print('  ', list(_r))"
+                f"{var_store}"
+            )
+        else:
+            result_code = (
+                f"    _db_{idx}.commit()\n"
+                f"    print(f'[SQL] {{_cur_{idx}.rowcount}} satir etkilendi')"
+                f"{var_store}"
+            )
+        server_part = f"{jdbc_info['server']},{jdbc_info['port']}" if jdbc_info['port'] else jdbc_info['server']
+        auth_part = (
+            f"UID={jdbc_info['user']};PWD={jdbc_info['password']}"
+            if jdbc_info['user'] else "Trusted_Connection=yes"
+        )
+        conn_tail_r = repr(f"SERVER={server_part};DATABASE={jdbc_info['database']};{auth_part}")
+        drv_candidates_r = repr(_SQLSERVER_ODBC_DRIVER_CANDIDATES)
+        return (
+            f"# [SQL] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"try:\n"
+            f"    import pyodbc as _pyodbc_{idx}\n"
+            f"    _avail_{idx} = _pyodbc_{idx}.drivers()\n"
+            f"    _drv_{idx} = next((_d for _d in {drv_candidates_r} if _d in _avail_{idx}), None)\n"
+            f"    if not _drv_{idx}: raise Exception('Bu makinede SQL Server ODBC suruculeri bulunamadi. Kurulu suruculer: ' + ', '.join(_avail_{idx}))\n"
+            f"    _connstr_{idx} = 'DRIVER=' + '{{' + _drv_{idx} + '}}' + ';' + {conn_tail_r}\n"
+            f"    _db_{idx} = _pyodbc_{idx}.connect(_connstr_{idx})\n"
+            f"    _cur_{idx} = _db_{idx}.cursor()\n"
+            f"    _cur_{idx}.execute(_sub_vars({query_r}))\n"
+            f"{result_code}\n"
+            f"    _db_{idx}.close()\n"
+            f"    print('STEP_DONE:{idx}')\n"
+            f"except ImportError:\n"
+            f"    print('[FAIL] pyodbc kurulu degil: pip install pyodbc (ayrica Microsoft ODBC Driver 17/18 for SQL Server gerekir)')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise\n"
+            f"except Exception as _e_{idx}:\n"
+            f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise"
+        )
+    elif is_sqlite:
         db_path = conn.strip()[len("sqlite:///"):]
         var_store = ""
         if item.var_name:
