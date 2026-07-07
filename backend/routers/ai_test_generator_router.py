@@ -2758,6 +2758,8 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
             f"    _avail_{idx} = _pyodbc_{idx}.drivers()\n"
             f"    _drv_{idx} = next((_d for _d in {drv_candidates_r} if _d in _avail_{idx}), None)\n"
             f"    if not _drv_{idx}: raise Exception('Bu makinede SQL Server ODBC suruculeri bulunamadi. Kurulu suruculer: ' + ', '.join(_avail_{idx}))\n"
+            f"    print(f'[SQL] ODBC surucu: {{_drv_{idx}}}')\n"
+            f"    if _drv_{idx} == 'SQL Server': print('[SQL] UYARI: eski/deprecated \"SQL Server\" (DBNETLIB) suruculer kullaniliyor - bu makinede ODBC Driver 17/18 for SQL Server kurulu degil, TLS/encryption gerektiren sunucularda baglanti basarisiz olabilir')\n"
             f"    _connstr_{idx} = 'DRIVER=' + '{{' + _drv_{idx} + '}}' + ';' + {conn_tail_r}\n"
             f"    _db_{idx} = _pyodbc_{idx}.connect(_connstr_{idx})\n"
             f"    _cur_{idx} = _db_{idx}.cursor()\n"
