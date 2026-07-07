@@ -2659,11 +2659,50 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
     return _image_click_code(idx, desc, b64, item.click_x, item.click_y, item.action, platform)
 
 
+def _jdbc_sqlserver_to_odbc(conn: str) -> Optional[str]:
+    """'jdbc:sqlserver://host;serverName=..;databaseName=..;user=..;password=..' formatını
+    pyodbc'nin anladığı 'DRIVER=...;SERVER=...;DATABASE=...;UID=...;PWD=...' formatına çevirir.
+    SQLAlchemy create_engine() JDBC URL'lerini anlamadığı için ArgumentError fırlatıyordu."""
+    body = conn.strip()
+    if not body.lower().startswith("jdbc:sqlserver:"):
+        return None
+    body = body[len("jdbc:sqlserver:"):]
+    if body.startswith("//"):
+        body = body[2:]
+    parts = body.split(";")
+    host_port = parts[0].strip()
+
+    props = {}
+    for part in parts[1:]:
+        part = part.strip()
+        if not part:
+            continue
+        sep = "=" if "=" in part else (":" if ":" in part else None)
+        if not sep:
+            continue
+        key, val = part.split(sep, 1)
+        props[key.strip().lower()] = val.strip()
+
+    server = props.get("servername") or host_port.split(":")[0]
+    if not server:
+        return None
+    port = props.get("portnumber") or (host_port.split(":", 1)[1] if ":" in host_port else "")
+    database = props.get("databasename", "")
+    user = props.get("user", "")
+    password = props.get("password", "")
+
+    server_part = f"{server},{port}" if port else server
+    odbc = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server_part};DATABASE={database}"
+    odbc += f";UID={user};PWD={password}" if user else ";Trusted_Connection=yes"
+    return odbc
+
+
 def _sql_step_code(item: "StepItem", idx: int) -> str:
     """SQL adımı için Python kodu üretir."""
     desc  = item.content or f"SQL {idx+1}"
     conn  = item.db_connection or "sqlite:///test.db"
     query = item.sql_query or "SELECT 1"
+    conn  = _jdbc_sqlserver_to_odbc(conn) or conn
     is_print  = item.action != "execute"
     is_sqlite = conn.strip().lower().startswith("sqlite:///")
     # DRIVER= içeriyorsa doğrudan pyodbc — SQLAlchemy URL parsing sorununu önler
