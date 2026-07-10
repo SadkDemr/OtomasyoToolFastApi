@@ -32,7 +32,7 @@ function Copy-AppSource {
     param([string]$Dest)
     Write-Host "[app] Backend kaynak kodu kopyalaniyor -> $Dest"
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-    $exclude = @('venv', 'logs', '__pycache__', '.git', 'node-portable', 'appium-global', 'jdk', 'chromedriver', 'wheels', 'test_platform.db', 'test_platform.db-shm', 'test_platform.db-wal')
+    $exclude = @('venv', 'logs', '__pycache__', '.git', 'node-portable', 'appium-global', 'jdk', 'chromedriver', 'wheels', 'test_platform.db', 'test_platform.db-shm', 'test_platform.db-wal', 'platform-tools', 'workspaces', 'uploads', 'screenshots', 'desktop_data', 'mnt', 'reports')
     Get-ChildItem -Path $BackendDir -Force | Where-Object { $exclude -notcontains $_.Name } | ForEach-Object {
         Copy-Item -Path $_.FullName -Destination (Join-Path $Dest $_.Name) -Recurse -Force
     }
