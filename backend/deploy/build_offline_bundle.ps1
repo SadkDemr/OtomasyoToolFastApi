@@ -135,6 +135,24 @@ function Get-NodeAndAppium {
 }
 
 # ---------------------------------------------------------------------------
+# jdk: portable Temurin JDK 11 (zip - kurulum gerektirmez)
+# ---------------------------------------------------------------------------
+function Get-JdkPortable {
+    param([string]$Dest)
+    $jdkUrl = "https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.23%2B9/OpenJDK11U-jdk_x64_windows_hotspot_11.0.23_9.zip"
+    $jdkZip = Join-Path $env:TEMP "temurin11.zip"
+    Write-Host "[jdk] Temurin JDK 11 indiriliyor..."
+    Invoke-WebRequest -Uri $jdkUrl -OutFile $jdkZip
+    Expand-Archive -Path $jdkZip -DestinationPath $env:TEMP -Force
+    $extracted = Get-ChildItem -Path $env:TEMP -Directory -Filter "jdk-11*" | Select-Object -First 1
+    New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+    Copy-Item -Path (Join-Path $extracted.FullName "*") -Destination $Dest -Recurse -Force
+    Remove-Item $jdkZip -Force
+    Remove-Item $extracted.FullName -Recurse -Force
+    Write-Host "[jdk] Tamamlandi -> $Dest\bin\java.exe"
+}
+
+# ---------------------------------------------------------------------------
 # Calistir
 # ---------------------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -149,6 +167,10 @@ if ($Only -contains "python") {
 
 if ($Only -contains "node") {
     Get-NodeAndAppium -NodeDest (Join-Path $OutputDir "node-portable") -AppiumDest (Join-Path $OutputDir "appium-global")
+}
+
+if ($Only -contains "jdk") {
+    Get-JdkPortable -Dest (Join-Path $OutputDir "jdk")
 }
 
 Copy-Item -Path (Join-Path $DeployDir "install_offline.bat") -Destination (Join-Path $OutputDir "install_offline.bat") -Force
