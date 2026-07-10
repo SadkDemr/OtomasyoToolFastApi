@@ -440,9 +440,13 @@ window.doType = function(){
 };
 
 window.doKey = function(){
-  dialog("Tu\u015F Bas", [{label:"Tu\u015F", type:"select", opts:["enter","tab","esc","backspace","delete","space","home","end","up","down","left","right","f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12","ctrl+c","ctrl+v","ctrl+a","ctrl+s","ctrl+z","alt+tab","alt+f4"]}], function(v){
-    S.steps.push({type:"PRESS_KEY", params:{key:v[0]}, description:"Press: "+v[0]});
-    render(); log("Tu\u015F: "+v[0], "ok");
+  dialog("Tu\u015F Bas", [
+    {label:"Tu\u015F", type:"select", opts:["enter","tab","esc","backspace","delete","space","double_space","home","end","pageup","pagedown","up","down","left","right","f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12","ctrl+c","ctrl+v","ctrl+a","ctrl+s","ctrl+z","alt+tab","alt+f4"]},
+    {label:"\u00D6zel Tu\u015F (opsiyonel, doldurulursa yukar\u0131daki se\u00E7imin yerine ge\u00E7er)", ph:"\u00F6rn: insert, ctrl+shift+esc"}
+  ], function(v){
+    var key = (v[1] && v[1].trim()) ? v[1].trim() : v[0];
+    S.steps.push({type:"PRESS_KEY", params:{key:key}, description:"Press: "+key});
+    render(); log("Tu\u015F: "+key, "ok");
   });
 };
 

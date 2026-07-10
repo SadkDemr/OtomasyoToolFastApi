@@ -1280,6 +1280,11 @@
                                 <div class="hint-section-label">Klavye</div>
                                 <div><code class="hint">"Ctrl+A" bas</code></div>
                                 <div><code class="hint">enter bas</code> / <code class="hint">esc bas</code></div>
+                                <div><code class="hint">sağ ok tuşuna bas</code> / <code class="hint">aşağı ok bas</code></div>
+                                <div><code class="hint">çift boşluk bas</code> / <code class="hint">boşluk bas</code></div>
+                                <div><code class="hint">delete bas</code> / <code class="hint">geri sil</code></div>
+                                <div><code class="hint">home bas</code> / <code class="hint">end bas</code></div>
+                                <div><code class="hint">tümünü seç</code> / <code class="hint">kopyala</code> / <code class="hint">yapıştır</code></div>
                                 <div><code class="hint">ekran görüntüsü al</code></div>
                             </div>
                         </div>
@@ -1314,6 +1319,11 @@
                                 <div class="hint-section-label">Klavye</div>
                                 <div><code class="hint">"Ctrl+S" bas</code></div>
                                 <div><code class="hint">enter bas</code> / <code class="hint">escape bas</code></div>
+                                <div><code class="hint">sağ ok tuşuna bas</code> / <code class="hint">aşağı ok bas</code></div>
+                                <div><code class="hint">çift boşluk bas</code> / <code class="hint">boşluk bas</code></div>
+                                <div><code class="hint">delete bas</code> / <code class="hint">geri sil</code></div>
+                                <div><code class="hint">home bas</code> / <code class="hint">end bas</code></div>
+                                <div><code class="hint">tümünü seç</code> / <code class="hint">kopyala</code> / <code class="hint">yapıştır</code></div>
                                 <div><code class="hint">aşağı kaydır</code></div>
                             </div>
                         </div>
@@ -1486,6 +1496,9 @@
             </button>
             <button class="btn-generate" id="btnPointConfirm" onclick="confirmPoints()" disabled style="display:none; flex:none; padding:10px 20px;">
                 📍 Noktaları Ekle (0)
+            </button>
+            <button class="btn-generate" id="btnDragConfirm" onclick="confirmDrag()" disabled title="Tam olarak 2 nokta işaretleyin: 1=başlangıç, 2=bitiş" style="display:none; flex:none; padding:10px 20px; background:#7c3aed;">
+                🖱️ Sürükle Adımı Ekle
             </button>
         </div>
     </div>
@@ -1721,7 +1734,7 @@
             try {
                 setStepStatus(idx, "running");
                 const payload = buildPayload();
-                const genData = await API.post("/ai-gen/generate", { ...payload, steps_list: [_stepToApiItem(step)] });
+                const genData = await API.post("/ai-gen/generate", { ...payload, steps_list: [_stepToApiItem(step)], single_step_test: true });
                 if (!genData.success) throw new Error("Script üretilemedi");
 
                 const response = await fetch(`${API_BASE}/ai-gen/execute`, {
@@ -1967,6 +1980,7 @@
                 { v: "double_click", l: "Çift Tık" },
                 { v: "right_click",  l: "Sağ Tık" },
                 { v: "assert",       l: "Görünmeli" },
+                { v: "drag",         l: "🖱️ Sürükle" },
             ];
             const imgSel = `<select class="step-action-select" onchange="updateStepAction(${i}, this.value)">
                 ${imgActionOpts.map(o => `<option value="${o.v}"${(s.action||"click") === o.v ? " selected" : ""}>${o.l}</option>`).join("")}
@@ -2246,9 +2260,10 @@
         document.getElementById("stageLabel").textContent = stage === "crop" ? "1/2: Alan Seç" : "2/2: Nokta İşaretle";
         document.getElementById("cropModeHint").textContent = stage === "crop"
             ? "Tıkla ve sürükle → hedef alanı seç"
-            : "Kırpılan alan üzerinde tıklanacak noktaları işaretle.";
+            : "Tıklanacak noktaları işaretle. Fare ile sürükleme için tam olarak 2 nokta işaretleyin (1=başlangıç, 2=bitiş).";
         document.getElementById("btnCropConfirm").style.display  = stage === "crop"  ? "" : "none";
         document.getElementById("btnPointConfirm").style.display = stage === "point" ? "" : "none";
+        document.getElementById("btnDragConfirm").style.display  = stage === "point" ? "" : "none";
         document.getElementById("btnBackToCrop").style.display   = stage === "point" ? "" : "none";
         document.getElementById("pointsList").style.display      = stage === "point" ? "flex" : "none";
     }
@@ -2425,11 +2440,13 @@
     }
 
     function _updatePointsUI() {
-        const list = document.getElementById("pointsList");
-        const btn  = document.getElementById("btnPointConfirm");
-        const n    = _clickPoints.length;
+        const list    = document.getElementById("pointsList");
+        const btn     = document.getElementById("btnPointConfirm");
+        const dragBtn = document.getElementById("btnDragConfirm");
+        const n       = _clickPoints.length;
         btn.disabled     = n === 0;
         btn.textContent  = n === 0 ? "📍 Nokta seçilmedi" : `📍 ${n} Noktayı Adım Ekle`;
+        dragBtn.disabled = n !== 2;
         if (n === 0) {
             list.innerHTML = '<span style="color:var(--text-muted); font-size:0.77rem; padding:2px 0;">Görsele tıklayarak tıklanacak noktaları işaretleyin.</span>';
         } else {
@@ -2478,6 +2495,31 @@
         renderStepList();
         updateGenerateBtn();
         Toast.success(`${newSteps.length} nokta adım olarak eklendi ✓`);
+    };
+
+    window.confirmDrag = function() {
+        if (_clickPoints.length !== 2 || _captureTargetStepIdx < 0 || !_croppedB64) return;
+        const [p1, p2] = _clickPoints;
+        const newStep = {
+            type:    "image",
+            content: "Fare ile sürükle",
+            b64:     _croppedB64,
+            action:  "drag",
+            click_x: p1.ox,   // başlangıç noktası
+            click_y: p1.oy,
+            drag_x:  p2.ox,   // bitiş noktası
+            drag_y:  p2.oy,
+            status:  null,
+        };
+        steps.splice(_captureTargetStepIdx, 1, newStep);
+        document.getElementById("cropModal").style.display = "none";
+        _captureTargetStepIdx = -1;
+        _clickPoints = [];
+        _croppedB64  = null;
+        _croppedImg  = null;
+        renderStepList();
+        updateGenerateBtn();
+        Toast.success("Sürükleme adımı eklendi ✓");
     };
 
     // ── Script Üret ──────────────────────────────────────────────────────────
@@ -2535,6 +2577,8 @@
             json_field:    s.json_field   || "",
             click_x:       (s.click_x >= 0) ? s.click_x : -1,
             click_y:       (s.click_y >= 0) ? s.click_y : -1,
+            drag_x:        (s.drag_x  >= 0) ? s.drag_x  : -1,
+            drag_y:        (s.drag_y  >= 0) ? s.drag_y  : -1,
         };
     }
 
@@ -2772,6 +2816,7 @@
         generatedScript = "";
         renderStepList();
         resetOutput();
+        API.post("/ai-gen/vars/reset", {}).catch(() => {});
         document.getElementById("btnExecute").disabled = true;
         document.getElementById("btnSave").disabled    = true;
         updateGenerateBtn();
@@ -2962,6 +3007,8 @@
                     json_field:    s.json_field    || "",
                     click_x:       (s.click_x >= 0) ? s.click_x : -1,
                     click_y:       (s.click_y >= 0) ? s.click_y : -1,
+                    drag_x:        (s.drag_x  >= 0) ? s.drag_x  : -1,
+                    drag_y:        (s.drag_y  >= 0) ? s.drag_y  : -1,
                 })),
                 script:   currentScript,
                 folder:   overwriteFolder,
@@ -3112,6 +3159,8 @@
                 json_field:    s.json_field    || "",
                 click_x:       (s.click_x >= 0) ? s.click_x : -1,
                 click_y:       (s.click_y >= 0) ? s.click_y : -1,
+                drag_x:        (s.drag_x  >= 0) ? s.drag_x  : -1,
+                drag_y:        (s.drag_y  >= 0) ? s.drag_y  : -1,
             }));
             renderStepList();
             updateGenerateBtn();

@@ -24,6 +24,7 @@ from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
@@ -297,13 +298,45 @@ class SeleniumService:
             
             elif action in ['press', 'key', 'tus', 'tuş']:
                 key = (target or value).lower()
+                ae = self.driver.switch_to.active_element
                 if key == 'enter':
-                    self.driver.switch_to.active_element.send_keys(Keys.ENTER)
+                    ae.send_keys(Keys.ENTER)
                 elif key == 'tab':
-                    self.driver.switch_to.active_element.send_keys(Keys.TAB)
+                    ae.send_keys(Keys.TAB)
                 elif key in ['escape', 'esc']:
-                    self.driver.switch_to.active_element.send_keys(Keys.ESCAPE)
-                result["message"] = f"{key.upper()} tuşuna basıldı"
+                    ae.send_keys(Keys.ESCAPE)
+                elif key in ['up', 'down', 'left', 'right']:
+                    ae.send_keys(getattr(Keys, f'ARROW_{key.upper()}'))
+                elif key == 'space':
+                    ae.send_keys(Keys.SPACE)
+                elif key == 'double_space':
+                    ae.send_keys(Keys.SPACE)
+                    ae.send_keys(Keys.SPACE)
+                elif key == 'delete':
+                    ae.send_keys(Keys.DELETE)
+                elif key == 'backspace':
+                    ae.send_keys(Keys.BACK_SPACE)
+                elif key == 'home':
+                    ae.send_keys(Keys.HOME)
+                elif key == 'end':
+                    ae.send_keys(Keys.END)
+                elif key in ['pageup', 'page_up']:
+                    ae.send_keys(Keys.PAGE_UP)
+                elif key in ['pagedown', 'page_down']:
+                    ae.send_keys(Keys.PAGE_DOWN)
+                elif '+' in key:
+                    mod_name, letter = key.split('+', 1)
+                    mod_key = {'ctrl': Keys.CONTROL, 'shift': Keys.SHIFT, 'alt': Keys.ALT}.get(mod_name)
+                    if mod_key:
+                        ActionChains(self.driver).key_down(mod_key).send_keys(letter).key_up(mod_key).perform()
+                    else:
+                        result["success"] = False
+                        result["message"] = f"Bilinmeyen kısayol: {key}"
+                else:
+                    result["success"] = False
+                    result["message"] = f"Bilinmeyen tuş: {key}"
+                if result["success"]:
+                    result["message"] = f"{key.upper()} tuşuna basıldı"
             
             elif action in ['screenshot', 'ss', 'ekran']:
                 result["message"] = "Ekran görüntüsü alındı"
@@ -394,6 +427,12 @@ class SeleniumService:
                 commands.append(step)
                 continue
             
+            if re.search(r'backspace|geri\s*sil', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'backspace'
+                commands.append(step)
+                continue
+
             if re.search(r'geri\s*(?:git|dön)?', line, re.IGNORECASE):
                 step.action = 'back'
                 commands.append(step)
@@ -404,6 +443,75 @@ class SeleniumService:
                 commands.append(step)
                 continue
             
+            match = re.search(r'(sağ|sag|sol|yukarı|yukari|aşağı|asagi)\s*ok(?:\s*tuşuna?)?\s*bas', line, re.IGNORECASE)
+            if match:
+                _arrow_map = {'sağ': 'right', 'sag': 'right', 'sol': 'left',
+                              'yukarı': 'up', 'yukari': 'up', 'aşağı': 'down', 'asagi': 'down'}
+                step.action = 'press'
+                step.target = _arrow_map[match.group(1).lower()]
+                commands.append(step)
+                continue
+
+            if re.search(r'çift\s*boşluk|cift\s*bosluk', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'double_space'
+                commands.append(step)
+                continue
+
+            if re.search(r'boşluk(?:\s*tuşuna?)?\s*bas|bosluk\s*tusuna?\s*bas', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'space'
+                commands.append(step)
+                continue
+
+            if re.search(r'delete(?:\s*tuşuna?)?\s*bas|sil\s*tuşuna?\s*bas', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'delete'
+                commands.append(step)
+                continue
+
+            if re.search(r'home\s*tuşuna?\s*bas', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'home'
+                commands.append(step)
+                continue
+
+            if re.search(r'end\s*tuşuna?\s*bas', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'end'
+                commands.append(step)
+                continue
+
+            if re.search(r'page\s*up', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'pageup'
+                commands.append(step)
+                continue
+
+            if re.search(r'page\s*down', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'pagedown'
+                commands.append(step)
+                continue
+
+            if re.search(r'tümünü\s*seç|tumunu\s*sec', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'ctrl+a'
+                commands.append(step)
+                continue
+
+            if re.search(r'kopyala', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'ctrl+c'
+                commands.append(step)
+                continue
+
+            if re.search(r'yapıştır|yapistir', line, re.IGNORECASE):
+                step.action = 'press'
+                step.target = 'ctrl+v'
+                commands.append(step)
+                continue
+
             if re.search(r'enter\s*(?:bas)?', line, re.IGNORECASE):
                 step.action = 'press'
                 step.target = 'enter'
