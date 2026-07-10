@@ -87,6 +87,54 @@ function Get-PythonAndWheels {
 }
 
 # ---------------------------------------------------------------------------
+# node: portable Node.js + Appium (global npm prefix) + uiautomator2 driver
+# ---------------------------------------------------------------------------
+function Get-NodeAndAppium {
+    param([string]$NodeDest, [string]$AppiumDest)
+    New-Item -ItemType Directory -Force -Path $NodeDest | Out-Null
+
+    # Not: v20.15.0 (ilk secilen surum) 'require(esm)' destegini icermiyor
+    # (bu destek Node 20.19.0+ ile geldi). Appium 3.x'in bagimliligi olan
+    # asyncbox@6.3.0, p-limit@^7 (sadece ESM, CJS exportu yok) paketini
+    # require() ile yukledigi icin v20.15.0'da "ERR_REQUIRE_ESM" hatasiyla
+    # cakisir. v20.20.2 (guncel 20.x LTS) bu destegi icerdiginden kullanildi.
+    $nodeUrl = "https://nodejs.org/dist/v20.20.2/node-v20.20.2-win-x64.zip"
+    $nodeZip = Join-Path $env:TEMP "node-v20.20.2-win-x64.zip"
+    Write-Host "[node] Node.js indiriliyor..."
+    Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip
+    Expand-Archive -Path $nodeZip -DestinationPath $env:TEMP -Force
+    Copy-Item -Path (Join-Path $env:TEMP "node-v20.20.2-win-x64\*") -Destination $NodeDest -Recurse -Force
+    Remove-Item $nodeZip -Force
+    Remove-Item (Join-Path $env:TEMP "node-v20.20.2-win-x64") -Recurse -Force
+
+    $npmCmd = Join-Path $NodeDest "npm.cmd"
+
+    Write-Host "[node] Appium global olarak kuruluyor..."
+    New-Item -ItemType Directory -Force -Path $AppiumDest | Out-Null
+    # -g (global) onemli: -g olmadan --prefix bir "local" proje kurulumu gibi
+    # davranir ve appium.cmd shim'i $AppiumDest\node_modules\.bin altina konur.
+    # -g ile birlikte --prefix, $AppiumDest'i npm'in global prefix'i gibi
+    # kullanir ve appium.cmd shim'ini dogrudan $AppiumDest koku altina koyar
+    # (asagidaki $appiumCmd yolunun bekledigi yer).
+    & $npmCmd install -g --prefix $AppiumDest appium --loglevel=error
+    if ($LASTEXITCODE -ne 0) { throw "npm install appium basarisiz (exit $LASTEXITCODE)" }
+
+    $appiumHome = Join-Path $AppiumDest ".appium-home"
+    New-Item -ItemType Directory -Force -Path $appiumHome | Out-Null
+    $env:APPIUM_HOME = $appiumHome
+    $oldPath = $env:PATH
+    $env:PATH = "$NodeDest;$env:PATH"
+
+    $appiumCmd = Join-Path $AppiumDest "appium.cmd"
+    Write-Host "[node] uiautomator2 driver kuruluyor (APPIUM_HOME=$appiumHome)..."
+    & $appiumCmd driver install uiautomator2
+    if ($LASTEXITCODE -ne 0) { throw "appium driver install uiautomator2 basarisiz (exit $LASTEXITCODE)" }
+
+    $env:PATH = $oldPath
+    Write-Host "[node] Tamamlandi."
+}
+
+# ---------------------------------------------------------------------------
 # Calistir
 # ---------------------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -97,6 +145,10 @@ if ($Only -contains "app") {
 
 if ($Only -contains "python") {
     Get-PythonAndWheels -Dest (Join-Path $OutputDir "python-installer") -WheelsDest (Join-Path $OutputDir "wheels")
+}
+
+if ($Only -contains "node") {
+    Get-NodeAndAppium -NodeDest (Join-Path $OutputDir "node-portable") -AppiumDest (Join-Path $OutputDir "appium-global")
 }
 
 Copy-Item -Path (Join-Path $DeployDir "install_offline.bat") -Destination (Join-Path $OutputDir "install_offline.bat") -Force
