@@ -54,6 +54,28 @@ def _remove_session(user_id: int, platform: str) -> None:
     _active_sessions.pop((user_id, platform), None)
 
 
+# ── Tek-adım test havuzu: SQL/API/OKU adımlarının kaydettiği {{değişken}}ler,
+# izole alt-süreçlerde çalışan "▶ Test Et" adım testleri arasında hayatta kalsın ──
+_step_vars_pool: dict[int, dict[str, str]] = {}   # user_id -> {var_adı: değer}
+_VARS_OUT_RE = re.compile(r'\[(?:SQL|API|OKU)→_VARS\]\s*(\w+)\s*=\s*(.*)')
+
+
+def _get_step_vars(user_id: int) -> dict:
+    return _step_vars_pool.setdefault(user_id, {})
+
+
+def _ingest_step_vars(user_id: int, output: str) -> None:
+    if not output:
+        return
+    pool = _step_vars_pool.setdefault(user_id, {})
+    for name, value in _VARS_OUT_RE.findall(output):
+        pool[name] = value.strip()
+
+
+def _reset_step_vars(user_id: int) -> None:
+    _step_vars_pool[user_id] = {}
+
+
 async def _session_idle_reaper():
     """15 dakika boşta kalan oturumları otomatik kapatır (driver.quit())."""
     while True:
@@ -133,6 +155,9 @@ class StepItem(BaseModel):
     # Koordinat tıklama (nokta işaretle modu)
     click_x:       int = -1       # >= 0 ise kırpılan/tam görsele göre nokta tıklaması kullanılır
     click_y:       int = -1       # (coklu-olcek eslestirme + normalize nokta, bkz. _find_b64_and_click_point)
+    # Fare ile sürükleme (action="drag"): click_x/click_y = başlangıç, drag_x/drag_y = bitiş noktası
+    drag_x:        int = -1
+    drag_y:        int = -1
 
 class GenerateRequest(BaseModel):
     test_case:    str         = ""   # geriye dönük uyumluluk
@@ -147,6 +172,7 @@ class GenerateRequest(BaseModel):
     app_path:       Optional[str]  = ""
     window_title:   Optional[str]  = ""
     reuse_instance: Optional[bool] = True
+    single_step_test: Optional[bool] = False   # tek adım "Test Et" çağrısı mı?
 
 class ExecuteRequest(BaseModel):
     script:          str
@@ -513,10 +539,38 @@ def _rule_web(step: str) -> list[str] | None:
         return [f'# {s}'] + _web_key_lines('tab')   + ['time.sleep(0.2)']
     if re.search(r'(?:escape|esc)\s*bas\b', sl):
         return [f'# {s}'] + _web_key_lines('escape') + ['time.sleep(0.2)']
-    if re.search(r'(?:delete|sil)\s*bas\b', sl):
+    if re.search(r'(?:delete(?:\s*tuşuna?)?|sil(?:\s*tuşuna?)?)\s*bas\b', sl):
         return [f'# {s}'] + _web_key_lines('delete') + ['time.sleep(0.2)']
     if re.search(r'backspace\s*bas\b', sl):
         return [f'# {s}'] + _web_key_lines('backspace') + ['time.sleep(0.2)']
+    if re.search(r'geri\s*sil', sl):
+        return [f'# {s}'] + _web_key_lines('backspace') + ['time.sleep(0.2)']
+
+    # ── Ok tuşları: "sağ ok (tuşuna) bas" ──────────────────────────────────
+    _arrow_m = re.search(r'(sağ|sag|sol|yukarı|yukari|aşağı|asagi)\s*ok(?:\s*tuşuna?)?\s*bas', sl)
+    if _arrow_m:
+        _arrow_map = {'sağ': 'right', 'sag': 'right', 'sol': 'left',
+                      'yukarı': 'up', 'yukari': 'up', 'aşağı': 'down', 'asagi': 'down'}
+        return [f'# {s}'] + _web_key_lines(_arrow_map[_arrow_m.group(1)]) + ['time.sleep(0.2)']
+
+    if re.search(r'çift\s*boşluk|cift\s*bosluk', sl):
+        return [f'# {s}'] + _web_key_lines('space') + _web_key_lines('space') + ['time.sleep(0.2)']
+    if re.search(r'boşluk(?:\s*tuşuna?)?\s*bas|bosluk\s*tusuna?\s*bas', sl):
+        return [f'# {s}'] + _web_key_lines('space') + ['time.sleep(0.2)']
+    if re.search(r'home\s*tuşuna?\s*bas', sl):
+        return [f'# {s}'] + _web_key_lines('home') + ['time.sleep(0.2)']
+    if re.search(r'end\s*tuşuna?\s*bas', sl):
+        return [f'# {s}'] + _web_key_lines('end') + ['time.sleep(0.2)']
+    if re.search(r'page\s*up', sl):
+        return [f'# {s}'] + _web_key_lines('pageup') + ['time.sleep(0.2)']
+    if re.search(r'page\s*down', sl):
+        return [f'# {s}'] + _web_key_lines('pagedown') + ['time.sleep(0.2)']
+    if re.search(r'tümünü\s*seç|tumunu\s*sec', sl):
+        return [f'# {s}'] + _web_key_lines('ctrl+a') + ['time.sleep(0.2)']
+    if re.search(r'\bkopyala\b', sl):
+        return [f'# {s}'] + _web_key_lines('ctrl+c') + ['time.sleep(0.2)']
+    if re.search(r'yapıştır|yapistir', sl):
+        return [f'# {s}'] + _web_key_lines('ctrl+v') + ['time.sleep(0.2)']
 
     CLICK_WORDS  = r'(?:t[iı]kla|tikla|click|tap)'
     INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type\b)'
@@ -632,10 +686,38 @@ def _rule_desktop(step: str) -> list[str] | None:
     if re.search(r'\bescape|esc\b', sl):
         return [f'# {s}', '_pag.press("esc")',   'time.sleep(0.2)']
 
+    # ── Ok tuşları: "sağ ok (tuşuna) bas" ──────────────────────────────────
+    _arrow_m = re.search(r'(sağ|sag|sol|yukarı|yukari|aşağı|asagi)\s*ok(?:\s*tuşuna?)?\s*bas', sl)
+    if _arrow_m:
+        _arrow_map = {'sağ': 'right', 'sag': 'right', 'sol': 'left',
+                      'yukarı': 'up', 'yukari': 'up', 'aşağı': 'down', 'asagi': 'down'}
+        return [f'# {s}', f'_pag.press("{_arrow_map[_arrow_m.group(1)]}")', 'time.sleep(0.2)']
+
+    if re.search(r'çift\s*boşluk|cift\s*bosluk', sl):
+        return [f'# {s}', '_pag.press("space")', 'time.sleep(0.05)', '_pag.press("space")', 'time.sleep(0.2)']
+    if re.search(r'boşluk(?:\s*tuşuna?)?\s*bas|bosluk\s*tusuna?\s*bas', sl):
+        return [f'# {s}', '_pag.press("space")', 'time.sleep(0.2)']
+    if re.search(r'delete(?:\s*tuşuna?)?\s*bas|\bsil\s*tuşuna?\s*bas', sl):
+        return [f'# {s}', '_pag.press("delete")', 'time.sleep(0.2)']
+    if re.search(r'backspace|geri\s*sil', sl):
+        return [f'# {s}', '_pag.press("backspace")', 'time.sleep(0.2)']
+    if re.search(r'home\s*tuşuna?\s*bas', sl):
+        return [f'# {s}', '_pag.press("home")', 'time.sleep(0.2)']
+    if re.search(r'end\s*tuşuna?\s*bas', sl):
+        return [f'# {s}', '_pag.press("end")', 'time.sleep(0.2)']
+    if re.search(r'page\s*up', sl):
+        return [f'# {s}', '_pag.press("pageup")', 'time.sleep(0.2)']
+    if re.search(r'page\s*down', sl):
+        return [f'# {s}', '_pag.press("pagedown")', 'time.sleep(0.2)']
+    if re.search(r'tümünü\s*seç|tumunu\s*sec', sl):
+        return [f'# {s}', '_pag.hotkey("ctrl", "a")', 'time.sleep(0.2)']
+
     # ── Kopyala / Yapıştır ────────────────────────────────────────────────────
     if re.search(r'(?:kopyala|copy)', sl) and quoted:
         text = quoted[0]
         return [f'# {s}', '_refocus_window()', f"_safe_click_desktop('{text}', _WINDOW_TITLE)", '_pag.hotkey("ctrl", "c")', 'time.sleep(0.3)']
+    if re.search(r'(?:kopyala|copy)', sl):
+        return [f'# {s}', '_pag.hotkey("ctrl", "c")', 'time.sleep(0.2)']
     if re.search(r'(?:yapıştır|paste)', sl):
         return [f'# {s}', '_refocus_window()', '_pag.hotkey("ctrl", "v")', 'time.sleep(0.3)']
 
@@ -1589,6 +1671,51 @@ def _find_b64_and_click_point(b64_data, click_x, click_y, action="click", thresh
     finally:
         try: _ios.unlink(_tmp_path)
         except Exception: pass
+
+def _find_b64_and_drag(b64_data, x1, y1, x2, y2, drag_duration=0.4, threshold=0.80, timeout=10):
+    """Kirpilmis referans gorseli ekranda coklu-olcek eslestirmeyle bulur, gorsel icindeki
+    iki noktayi ((x1,y1) -> (x2,y2)) eslesen alana gore mutlak ekran koordinatina cevirip
+    aralarinda fare ile surukler (mouseDown -> moveTo -> mouseUp)."""
+    import io as _iio4
+    try:
+        from PIL import Image as _PILY2
+        _pil2 = _PILY2.open(_iio4.BytesIO(_ib64.b64decode(b64_data)))
+        _orig_w, _orig_h = _pil2.size
+    except Exception as _pe2:
+        print(f"[WARN] Gorsel boyutu alinamiyor: {_pe2}")
+        return False
+
+    _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_drag_{id(b64_data)}.png")
+    try:
+        with open(_tmp_path, "wb") as _f:
+            _f.write(_ib64.b64decode(b64_data))
+
+        _wt_set = '_WINDOW_TITLE' in globals() and bool(_WINDOW_TITLE)
+        _region = _get_window_region() if _wt_set else None
+
+        _start = _itime.time()
+        while _itime.time() - _start < timeout:
+            _elapsed = _itime.time() - _start
+            _conf = max(0.50, threshold - (_elapsed / timeout) * 0.30)
+            _bbox = _find_image_on_screen(_tmp_path, threshold=_conf, region=_region, return_bbox=True)
+            if _bbox:
+                _ax1, _ay1 = _bbox_click_point(_bbox, x1, y1, _orig_w, _orig_h)
+                _ax2, _ay2 = _bbox_click_point(_bbox, x2, y2, _orig_w, _orig_h)
+                import pyautogui as _pag5
+                _pag5.moveTo(_ax1, _ay1, duration=0.2)
+                _pag5.mouseDown()
+                _itime.sleep(0.1)
+                _pag5.moveTo(_ax2, _ay2, duration=drag_duration)
+                _itime.sleep(0.05)
+                _pag5.mouseUp()
+                print(f"[OK] Suruklendi (bolge esleme): ({_ax1},{_ay1}) -> ({_ax2},{_ay2})")
+                return True
+            _itime.sleep(0.3)
+        print(f"[DEBUG] Gorsel {timeout}s icinde bulunamadi — surukleme yapilamadi.")
+        return False
+    finally:
+        try: _ios.unlink(_tmp_path)
+        except Exception: pass
 '''
 
 
@@ -2055,6 +2182,7 @@ def _build_mobile_template(
     session_mode: str = "fresh",
     session_id: str = "",
     command_executor_url: str = "",
+    vars_seed: dict | None = None,
 ) -> str:
     device  = req.device_id    or "emulator-5554"
     pkg     = req.app_package  or ""
@@ -2071,7 +2199,7 @@ def _build_mobile_template(
             "from selenium.webdriver.support.ui import WebDriverWait",
             "from selenium.webdriver.support import expected_conditions as EC",
             "import time",
-            "_VARS = {}  # adımlar arası değişken havuzu",
+            f"_VARS = {(vars_seed or {})!r}  # adımlar arası değişken havuzu",
             "def _sub_vars(_s):",
             "    for _k, _v in _VARS.items():",
             "        _s = _s.replace('{{' + _k + '}}', str(_v))",
@@ -2230,6 +2358,7 @@ def _build_web_template(
     session_mode: str = "fresh",
     session_id: str = "",
     command_executor_url: str = "",
+    vars_seed: dict | None = None,
 ) -> str:
     browser = (req.browser or "chrome").lower()
     url     = (req.target_url or "").strip()
@@ -2244,7 +2373,7 @@ def _build_web_template(
             "from selenium.webdriver.support.ui import WebDriverWait",
             "from selenium.webdriver.support import expected_conditions as EC",
             "import time",
-            "_VARS = {}  # adımlar arası değişken havuzu",
+            f"_VARS = {(vars_seed or {})!r}  # adımlar arası değişken havuzu",
             "def _sub_vars(_s):",
             "    for _k, _v in _VARS.items():",
             "        _s = _s.replace('{{' + _k + '}}', str(_v))",
@@ -2391,7 +2520,7 @@ def _build_web_template(
     return "\n".join(lines)
 
 
-def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
+def _build_desktop_template(req: GenerateRequest, steps_code: str, vars_seed: dict | None = None) -> str:
     app_path      = (req.app_path     or "").strip()
     window_title  = (req.window_title or "").strip()
     reuse_instance = getattr(req, "reuse_instance", True)
@@ -2416,7 +2545,7 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str) -> str:
         f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
         f'_WINDOW_TITLE   = "{window_title_esc}"',
         f'_APP_PATH       = r"{app_path_esc}"',
-        "_VARS = {}  # adımlar arası değişken havuzu",
+        f"_VARS = {(vars_seed or {})!r}  # adımlar arası değişken havuzu",
         "def _sub_vars(_s):",
         "    for _k, _v in _VARS.items():",
         "        _s = _s.replace('{{' + _k + '}}', str(_v))",
@@ -2636,6 +2765,24 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
     """Görsel adımı için Python kodu üretir. base64 scripte gömülür."""
     b64  = item.image_b64
     desc = item.content or f"Görsel adım {idx+1}"
+
+    if item.action == "drag":
+        refocus_line = "    _refocus_window()\n" if platform == "desktop" else ""
+        return (
+            f"# [GÖRSEL SÜRÜKLE] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"try:\n"
+            f"{refocus_line}"
+            f"    _img_b64_{idx} = '{b64}'\n"
+            f"    _ok_{idx} = _find_b64_and_drag(_img_b64_{idx}, {item.click_x}, {item.click_y}, {item.drag_x}, {item.drag_y})\n"
+            f"    if not _ok_{idx}: raise Exception('Surukleme yapilamadi: {desc}')\n"
+            f"    time.sleep(0.5)\n"
+            f"    print('STEP_DONE:{idx}')\n"
+            f"except Exception as _e_{idx}:\n"
+            f"    print(f'[FAIL] {{_e_{idx}}}')\n"
+            f"    print('STEP_FAIL:{idx}')\n"
+            f"    raise"
+        )
 
     if item.action == "assert":
         find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
@@ -3408,12 +3555,14 @@ async def generate_script(req: GenerateRequest, current_user: User = Depends(get
     """
     steps_code, report = await _generate_steps(req)
 
+    vars_seed = _get_step_vars(current_user.id) if req.single_step_test else None
+
     if req.platform == "mobile":
         final_script = _build_mobile_template(req, steps_code)
     elif req.platform == "web":
         final_script = _build_web_template(req, steps_code)
     else:
-        final_script = _build_desktop_template(req, steps_code)
+        final_script = _build_desktop_template(req, steps_code, vars_seed=vars_seed)
 
     todo_steps = [r for r in report if r["method"] == "todo"]
     warnings   = [f"Anlaşılamayan adım: {r['step']}" for r in todo_steps]
@@ -3524,6 +3673,8 @@ async def execute_script(
                     yield _sse("step_fail", idx_s)
                 else:
                     terminal_lines.append(text)
+                    if "→_VARS]" in text:
+                        _ingest_step_vars(current_user.id, text)
                     yield _sse("log", text)
 
             await loop.run_in_executor(None, proc.wait)
@@ -3612,6 +3763,8 @@ async def session_start(req: SessionStartRequest, current_user: User = Depends(g
     if _get_session(current_user.id, req.platform):
         raise HTTPException(409, "Bu platform için zaten aktif bir oturum var.")
 
+    _reset_step_vars(current_user.id)
+
     gen_req = GenerateRequest(
         platform=req.platform, browser=req.browser, target_url=req.target_url,
         device_id=req.device_id, app_package=req.app_package, app_activity=req.app_activity,
@@ -3665,6 +3818,13 @@ async def session_start(req: SessionStartRequest, current_user: User = Depends(g
             pass
 
 
+@router.post("/vars/reset")
+async def reset_step_vars(current_user: User = Depends(get_current_user)):
+    """Tek-adım test havuzundaki {{değişken}}leri temizler (Yeni Senaryo / Sıfırla)."""
+    _reset_step_vars(current_user.id)
+    return {"success": True}
+
+
 class SessionRunStepRequest(BaseModel):
     platform:    str
     step:        StepItem
@@ -3684,6 +3844,7 @@ async def session_run_step(req: SessionRunStepRequest, current_user: User = Depe
     script = build_fn(
         gen_req, steps_code, session_mode="attach",
         session_id=sess["session_id"], command_executor_url=sess["command_executor_url"],
+        vars_seed=_get_step_vars(current_user.id),
     )
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8", prefix="ai_session_step_") as f:
@@ -3696,6 +3857,7 @@ async def session_run_step(req: SessionRunStepRequest, current_user: User = Depe
             env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
         )
         _touch_session(current_user.id, req.platform)
+        _ingest_step_vars(current_user.id, (proc.stdout or "") + (proc.stderr or ""))
         passed = proc.returncode == 0
         return {
             "success": passed,

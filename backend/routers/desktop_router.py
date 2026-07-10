@@ -348,6 +348,7 @@ class _RecorderState:
         self.keyboard_listener = None
         self.type_buffer = ""
         self.last_click_time = 0.0
+        self.last_space_time = 0.0
 
 _rec = _RecorderState()
 
@@ -452,7 +453,17 @@ def _rec_on_key(key):
         if hasattr(key, "char") and key.char:
             _rec.type_buffer += key.char
         elif key == kb.Key.space:
-            _rec.type_buffer += " "
+            now = time.time()
+            if now - _rec.last_space_time < 0.4:
+                if _rec.type_buffer.endswith(" "):
+                    _rec.type_buffer = _rec.type_buffer[:-1]
+                _rec_flush_type()
+                _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
+                              "key": "double_space", "description": "Press Key: double_space"})
+                _rec.last_space_time = 0.0
+            else:
+                _rec.type_buffer += " "
+                _rec.last_space_time = now
         elif key == kb.Key.enter:
             _rec_flush_type()
             _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
@@ -467,6 +478,32 @@ def _rec_on_key(key):
             else:
                 _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
                               "key": "backspace", "description": "Press Key: backspace"})
+        elif key in (kb.Key.up, kb.Key.down, kb.Key.left, kb.Key.right):
+            _rec_flush_type()
+            key_name = {kb.Key.up: "up", kb.Key.down: "down",
+                        kb.Key.left: "left", kb.Key.right: "right"}[key]
+            _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
+                          "key": key_name, "description": f"Press Key: {key_name}"})
+        elif key == kb.Key.delete:
+            _rec_flush_type()
+            _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
+                          "key": "delete", "description": "Press Key: delete"})
+        elif key == kb.Key.home:
+            _rec_flush_type()
+            _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
+                          "key": "home", "description": "Press Key: home"})
+        elif key == kb.Key.end:
+            _rec_flush_type()
+            _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
+                          "key": "end", "description": "Press Key: end"})
+        elif key == kb.Key.page_up:
+            _rec_flush_type()
+            _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
+                          "key": "pageup", "description": "Press Key: pageup"})
+        elif key == kb.Key.page_down:
+            _rec_flush_type()
+            _rec_broadcast({"type": "step", "action_type": "PRESS_KEY",
+                          "key": "pagedown", "description": "Press Key: pagedown"})
         else:
             _rec_flush_type()
     except Exception:
@@ -628,7 +665,11 @@ def _execute_step(step: dict, action_delay: float = 0.5) -> dict:
         # ─── PRESS_KEY ───
         elif stype == "PRESS_KEY":
             key = params.get("key", "enter")
-            if "+" in key:
+            if key == "double_space":
+                _pag().press("space")
+                time.sleep(0.05)
+                _pag().press("space")
+            elif "+" in key:
                 _pag().hotkey(*key.split("+"))
             else:
                 _pag().press(key)
