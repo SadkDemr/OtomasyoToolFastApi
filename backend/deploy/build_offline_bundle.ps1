@@ -153,6 +153,22 @@ function Get-JdkPortable {
 }
 
 # ---------------------------------------------------------------------------
+# adb: Android platform-tools
+# ---------------------------------------------------------------------------
+function Get-PlatformTools {
+    param([string]$Dest)
+    $url = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+    $zip = Join-Path $env:TEMP "platform-tools.zip"
+    Write-Host "[adb] platform-tools indiriliyor..."
+    Invoke-WebRequest -Uri $url -OutFile $zip
+    $parent = Split-Path -Parent $Dest
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    Expand-Archive -Path $zip -DestinationPath $parent -Force
+    Remove-Item $zip -Force
+    Write-Host "[adb] Tamamlandi -> $Dest\adb.exe"
+}
+
+# ---------------------------------------------------------------------------
 # Calistir
 # ---------------------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -171,6 +187,10 @@ if ($Only -contains "node") {
 
 if ($Only -contains "jdk") {
     Get-JdkPortable -Dest (Join-Path $OutputDir "jdk")
+}
+
+if ($Only -contains "adb") {
+    Get-PlatformTools -Dest (Join-Path $OutputDir "platform-tools")
 }
 
 Copy-Item -Path (Join-Path $DeployDir "install_offline.bat") -Destination (Join-Path $OutputDir "install_offline.bat") -Force
