@@ -169,6 +169,32 @@ function Get-PlatformTools {
 }
 
 # ---------------------------------------------------------------------------
+# chromedriver: Chrome for Testing - kurulu Chrome surumune uygun chromedriver
+# ---------------------------------------------------------------------------
+function Get-ChromeDriverForTesting {
+    param([string]$MajorVersion, [string]$Dest)
+    New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+    $jsonUrl = "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
+    Write-Host "[chromedriver] Surum listesi aliniyor..."
+    $data = Invoke-RestMethod -Uri $jsonUrl
+    $match = $data.versions | Where-Object { $_.version -like "$MajorVersion.*" } | Select-Object -Last 1
+    if (-not $match) { throw "Chrome $MajorVersion icin chromedriver bulunamadi" }
+    $win64 = $match.downloads.chromedriver | Where-Object { $_.platform -eq 'win64' } | Select-Object -First 1
+    if (-not $win64) { throw "win64 chromedriver indirme linki bulunamadi (versiyon $($match.version))" }
+
+    $zipPath = Join-Path $env:TEMP "chromedriver-win64.zip"
+    Write-Host "[chromedriver] $($match.version) indiriliyor..."
+    Invoke-WebRequest -Uri $win64.url -OutFile $zipPath
+    Expand-Archive -Path $zipPath -DestinationPath $env:TEMP -Force
+    $exe = Get-ChildItem -Path $env:TEMP -Filter "chromedriver.exe" -Recurse | Select-Object -First 1
+    if (-not $exe) { throw "chromedriver.exe zip icinde bulunamadi" }
+    Copy-Item $exe.FullName -Destination (Join-Path $Dest "chromedriver.exe") -Force
+    Remove-Item $zipPath -Force
+    Remove-Item $exe.DirectoryName -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "[chromedriver] Tamamlandi ($($match.version)) -> $Dest\chromedriver.exe"
+}
+
+# ---------------------------------------------------------------------------
 # Calistir
 # ---------------------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -193,8 +219,12 @@ if ($Only -contains "adb") {
     Get-PlatformTools -Dest (Join-Path $OutputDir "platform-tools")
 }
 
+if ($Only -contains "chromedriver") {
+    Get-ChromeDriverForTesting -MajorVersion $ChromeMajorVersion -Dest (Join-Path $OutputDir "chromedriver")
+}
+
 Copy-Item -Path (Join-Path $DeployDir "install_offline.bat") -Destination (Join-Path $OutputDir "install_offline.bat") -Force
 Copy-Item -Path (Join-Path $DeployDir "offline-requirements.txt") -Destination (Join-Path $OutputDir "offline-requirements.txt") -Force
 
 Write-Host ""
-Write-Host "Bundle hazir (kismi): $OutputDir"
+Write-Host "Bundle hazir: $OutputDir"
