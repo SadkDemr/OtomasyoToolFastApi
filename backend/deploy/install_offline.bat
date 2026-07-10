@@ -48,7 +48,7 @@ cd /d "%BACKEND_DIR%"
 if not exist "venv" python -m venv venv
 call venv\Scripts\activate.bat
 echo   Paketler yerel wheels'tan kuruluyor (--no-index, internet kullanilmiyor)...
-pip install --no-index --no-build-isolation --find-links="%BUNDLE_DIR%wheels" -r "%BUNDLE_DIR%offline-requirements.txt"
+pip install --no-index --find-links="%BUNDLE_DIR%wheels" -r "%BUNDLE_DIR%offline-requirements.txt"
 if %errorlevel% neq 0 (
     echo   HATA: Paketler kurulamadi! wheels\ klasorunu kontrol edin.
     pause

@@ -32,7 +32,7 @@ function Copy-AppSource {
     param([string]$Dest)
     Write-Host "[app] Backend kaynak kodu kopyalaniyor -> $Dest"
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-    $exclude = @('venv', 'logs', '__pycache__', '.git', 'node-portable', 'appium-global', 'jdk', 'chromedriver', 'wheels', 'test_platform.db', 'test_platform.db-shm', 'test_platform.db-wal', 'platform-tools', 'workspaces', 'uploads', 'screenshots', 'desktop_data', 'mnt', 'reports')
+    $exclude = @('venv', 'logs', '__pycache__', '.git', 'node-portable', 'appium-global', 'jdk', 'chromedriver', 'wheels', 'test_platform.db', 'test_platform.db-shm', 'test_platform.db-wal', 'platform-tools', 'workspaces', 'uploads', 'screenshots', 'desktop_data', 'mnt', 'reports', 'ai_config.json', 'deploy')
     Get-ChildItem -Path $BackendDir -Force | Where-Object { $exclude -notcontains $_.Name } | ForEach-Object {
         Copy-Item -Path $_.FullName -Destination (Join-Path $Dest $_.Name) -Recurse -Force
     }
@@ -74,11 +74,19 @@ function Get-PythonAndWheels {
     python -m pip download pyautogui -d $WheelsDest
     if ($LASTEXITCODE -ne 0) { throw "pip download basarisiz - pyautogui (exit $LASTEXITCODE)" }
 
-    # pyautogui ve alt bagimliliklari sdist oldugundan, sunucuda pip bunlari
-    # --no-build-isolation ile mevcut venv'in setuptools/wheel'ini kullanarak
-    # derleyecek (bkz. install_offline.bat). Cok minimal bir venv'de bunlar
-    # guncel olmayabilir; belirtip-kemer onlemi olarak wheel'lerini de indiriyoruz.
-    Write-Host "[python] setuptools/wheel indiriliyor (sdist build icin, internet gerektirmesin diye)..."
+    # pyautogui ve alt bagimliliklari (pyscreeze, pygetwindow, pytweening,
+    # mouseinfo, pyrect) sdist oldugundan, sunucuda pip bunlari PEP 517 build
+    # isolation ile (install_offline.bat --no-build-isolation KULLANMIYOR,
+    # bilerek) izole bir gecici ortamda derleyecek. pip, bu izole ortam icin
+    # kendi ic pip cagrisini disaridaki --no-index/--find-links ayarlarini
+    # miras alarak yapar (bkz. pypa/pip#12270), bu yuzden setuptools/wheel
+    # burada wheels/ klasorunde bulunursa derleme tamamen yerelde/offline
+    # tamamlanir. Bu ampirik olarak dogrulandi: --no-build-isolation ile
+    # venv'de wheel paketi olmadigindan "error: invalid command 'bdist_wheel'"
+    # ile basarisiz oluyor; --no-build-isolation OLMADAN (varsayilan izole
+    # build ile) ise izole ortam wheels/ klasorunden setuptools/wheel'i
+    # buluyor ve derleme basariyla tamamlaniyor - internete hic cikilmiyor.
+    Write-Host "[python] setuptools/wheel indiriliyor (izole PEP 517 build ortami icin, internet gerektirmesin diye)..."
     python -m pip download setuptools wheel -d $WheelsDest --only-binary=:all: --python-version 311 --platform win_amd64 --implementation cp
     if ($LASTEXITCODE -ne 0) { throw "pip download (setuptools/wheel) basarisiz (exit $LASTEXITCODE)" }
 
