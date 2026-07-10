@@ -74,6 +74,14 @@ function Get-PythonAndWheels {
     python -m pip download pyautogui -d $WheelsDest
     if ($LASTEXITCODE -ne 0) { throw "pip download basarisiz - pyautogui (exit $LASTEXITCODE)" }
 
+    # pyautogui ve alt bagimliliklari sdist oldugundan, sunucuda pip bunlari
+    # --no-build-isolation ile mevcut venv'in setuptools/wheel'ini kullanarak
+    # derleyecek (bkz. install_offline.bat). Cok minimal bir venv'de bunlar
+    # guncel olmayabilir; belirtip-kemer onlemi olarak wheel'lerini de indiriyoruz.
+    Write-Host "[python] setuptools/wheel indiriliyor (sdist build icin, internet gerektirmesin diye)..."
+    python -m pip download setuptools wheel -d $WheelsDest --only-binary=:all: --python-version 311 --platform win_amd64 --implementation cp
+    if ($LASTEXITCODE -ne 0) { throw "pip download (setuptools/wheel) basarisiz (exit $LASTEXITCODE)" }
+
     Remove-Item -Force $tmpReqFile -ErrorAction SilentlyContinue
     Write-Host "[python] Tamamlandi."
 }
