@@ -40,12 +40,55 @@ function Copy-AppSource {
 }
 
 # ---------------------------------------------------------------------------
+# python: Python offline installer + wheelhouse
+# ---------------------------------------------------------------------------
+function Get-PythonAndWheels {
+    param([string]$Dest, [string]$WheelsDest)
+    New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+    New-Item -ItemType Directory -Force -Path $WheelsDest | Out-Null
+
+    $pyUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+    $pyExe = Join-Path $Dest "python-3.11.9-amd64.exe"
+    Write-Host "[python] Python 3.11.9 installer indiriliyor..."
+    Invoke-WebRequest -Uri $pyUrl -OutFile $pyExe
+
+    $reqFile = Join-Path $DeployDir "offline-requirements.txt"
+
+    # pyautogui PyPI'da hicbir surumde wheel yayinlamiyor (sadece sdist) ve bu
+    # yuzden --only-binary=:all: ile birlikte indirilemiyor. pip, cross-platform
+    # kisitlamalari (--python-version/--platform/--implementation) kullanilirken
+    # --no-binary istisnasina izin vermiyor ("either --no-deps must be set, or
+    # --only-binary=:all: must be set and --no-binary must not be set"), bu
+    # yuzden pyautogui'yi requirements listesinden ayirip ayri bir pip download
+    # cagrisiyla indiriyoruz. pyautogui pure-python oldugu (derleyici gerektirmez)
+    # ve alt bagimliliklari (pygetwindow, pyscreeze, pytweening, mouseinfo,
+    # pymsgbox, pyrect, pyperclip) de platformdan bagimsiz oldugu icin bu guvenli.
+    $tmpReqFile = Join-Path $env:TEMP "offline-requirements-no-pyautogui.txt"
+    Get-Content $reqFile | Where-Object { $_ -notmatch '^\s*pyautogui\s*$' } | Set-Content $tmpReqFile
+
+    Write-Host "[python] Wheel'ler indiriliyor (pip download)..."
+    python -m pip download -r $tmpReqFile -d $WheelsDest --only-binary=:all: --python-version 311 --platform win_amd64 --implementation cp
+    if ($LASTEXITCODE -ne 0) { throw "pip download basarisiz (exit $LASTEXITCODE)" }
+
+    Write-Host "[python] pyautogui indiriliyor (wheel yoksa sdist'e dusulur)..."
+    python -m pip download pyautogui -d $WheelsDest
+    if ($LASTEXITCODE -ne 0) { throw "pip download basarisiz - pyautogui (exit $LASTEXITCODE)" }
+
+    Remove-Item -Force $tmpReqFile -ErrorAction SilentlyContinue
+    Write-Host "[python] Tamamlandi."
+}
+
+# ---------------------------------------------------------------------------
 # Calistir
 # ---------------------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 if ($Only -contains "app") {
     Copy-AppSource -Dest (Join-Path $OutputDir "app")
+}
+
+if ($Only -contains "python") {
+    Get-PythonAndWheels -Dest (Join-Path $OutputDir "python-installer") -WheelsDest (Join-Path $OutputDir "wheels")
 }
 
 Copy-Item -Path (Join-Path $DeployDir "install_offline.bat") -Destination (Join-Path $OutputDir "install_offline.bat") -Force
