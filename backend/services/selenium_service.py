@@ -55,6 +55,23 @@ except ImportError:
     WEBDRIVER_MANAGER = False
     print("[SELENIUM] webdriver-manager yüklü değil. pip install webdriver-manager")
 
+
+def _resolve_local_chromedriver() -> Optional[str]:
+    """Offline modda kullanilacak yerel chromedriver.exe yolunu dondurur, yoksa None.
+
+    CHROMEDRIVER_PATH ortam degiskeni varsa onceliklidir; yoksa backend kok
+    dizinindeki chromedriver/chromedriver.exe dosyasina bakilir. Ikisi de yoksa
+    (gelistirme ortami) None doner ve mevcut webdriver-manager davranisina dusulur.
+    """
+    env_path = os.environ.get("CHROMEDRIVER_PATH")
+    if env_path and os.path.isfile(env_path):
+        return env_path
+    backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_path = os.path.join(backend_root, "chromedriver", "chromedriver.exe")
+    if os.path.isfile(default_path):
+        return default_path
+    return None
+
 # PDF oluşturma için (opsiyonel)
 PDF_AVAILABLE = False
 try:
@@ -156,7 +173,11 @@ class SeleniumService:
             options.add_argument('--disable-features=VizDisplayCompositor')
         
         try:
-            if WEBDRIVER_MANAGER:
+            local_driver = _resolve_local_chromedriver()
+            if local_driver:
+                print(f"[SELENIUM] Yerel ChromeDriver kullaniliyor (offline mod): {local_driver}")
+                service = Service(executable_path=local_driver)
+            elif WEBDRIVER_MANAGER:
                 driver_path = ChromeDriverManager().install()
                 if os.name == 'nt' and not driver_path.endswith('.exe'):
                     driver_dir = os.path.dirname(driver_path)
