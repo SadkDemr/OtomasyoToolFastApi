@@ -25,6 +25,17 @@ $ErrorActionPreference = "Stop"
 $DeployDir = $PSScriptRoot                   # backend\deploy
 $BackendDir = Split-Path -Parent $DeployDir  # backend
 
+# OutputDir, backend klasorunun icinde olamaz: Copy-AppSource, $BackendDir'i
+# oldugu gibi kopyalar, eger $OutputDir da $BackendDir'in altindaysa script
+# kendi ureteceği bundle klasorunu de kopyalamaya calisir ve sonsuz/kendi
+# kendini iceren bir kopyalamaya (path uzunlugu asimina) yol acar.
+$ResolvedBackendDir = [System.IO.Path]::GetFullPath($BackendDir)
+$ResolvedOutputDir = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $OutputDir))
+$BackendDirWithSep = $ResolvedBackendDir.TrimEnd('\') + '\'
+if ($ResolvedOutputDir -eq $ResolvedBackendDir.TrimEnd('\') -or $ResolvedOutputDir.StartsWith($BackendDirWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "OutputDir ('$ResolvedOutputDir') backend klasorunun ('$ResolvedBackendDir') icinde olamaz - script kendi bundle ciktisini da kopyalamaya calisir. Backend disinda bir klasor secin (orn. -OutputDir '..\OtomasyoTool-Offline-Bundle')."
+}
+
 # ---------------------------------------------------------------------------
 # app: backend kaynak kodunu kopyala
 # ---------------------------------------------------------------------------

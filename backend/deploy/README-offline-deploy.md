@@ -7,11 +7,16 @@ sunucuya OtomasyoTool'u kurmak için kullanılır.
 
 ```
 cd backend
-powershell -File deploy\build_offline_bundle.ps1 -OutputDir .\OtomasyoTool-Offline-Bundle -ChromeMajorVersion 136
+powershell -File deploy\build_offline_bundle.ps1 -OutputDir ..\OtomasyoTool-Offline-Bundle -ChromeMajorVersion 136
 ```
 
 `-ChromeMajorVersion` parametresini sunucuda kurulu Chrome'un ana sürümüyle
 eşleştirin (sunucuda `chrome://version` sayfasından kontrol edilebilir).
+
+**Önemli:** `-OutputDir`, `backend\` klasörünün **dışında** bir yol olmalı (yukarıdaki
+örnekte olduğu gibi `..\...` ile bir üst dizin) — `backend\` içine verilirse script
+kendi ürettiği bundle'ı tekrar kopyalamaya çalışıp hata verir; script bu durumu
+tespit edip açık bir hata mesajıyla durur.
 
 Çıktı: `OtomasyoTool-Offline-Bundle\` klasörü (birkaç GB, wheels + Node + JDK +
 ADB + chromedriver + Python installer + kaynak kod içerir).
