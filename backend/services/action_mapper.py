@@ -211,7 +211,7 @@ def display_to_action(display_text: str, lang: str = "tr") -> Optional[str]:
     """
     for action_code, action_data in ACTION_MAP.items():
         if action_data.get(lang, "").lower() == display_text.lower():
-            return action_codebu 
+            return action_code
     return None
 
 
