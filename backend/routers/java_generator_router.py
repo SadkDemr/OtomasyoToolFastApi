@@ -67,6 +67,24 @@ def _jxs(s: str) -> str:
     return s.replace("'", "\\'")
 
 
+_QUOTE_SPAN_RE = re.compile(r'["“”‘’][^"“”‘’]*["“”‘’]')
+
+
+def _mask_quoted(text: str) -> str:
+    """Tırnak içindeki element/metin değerlerini boşlukla değiştirir.
+    Örn. "Seçimi" içindeki "seç" fiil regex'ini yanıltmasın diye fiil tespiti bu maskeli metin üzerinde yapılır."""
+    return _QUOTE_SPAN_RE.sub(lambda m: ' ' * len(m.group(0)), text)
+
+
+def _quoted_target(raw_group: str, quoted: list[str]) -> str:
+    """Pasif kalıplarda (X butonuna tıklanır / X açılır) hedef metni belirler.
+    Tırnaklı değer varsa onu kullanır (tırnak karakterleri metne karışmasın diye),
+    yoksa yakalanan ham metinden olası tırnak karakterlerini temizler."""
+    if quoted:
+        return quoted[-1]
+    return raw_group.strip('"“”‘’\'')
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BÖLÜM 2: KURAL MOTORU  (Türkçe adım → Java satırları)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -75,8 +93,8 @@ def _rule_java(step: str) -> list[str] | None:
     s      = _clean_step(step)
     if not s:
         return None
-    sl     = s.lower()
     quoted = _extract_quoted(s)
+    sl     = _mask_quoted(s).lower()  # fiil tespiti: tırnaklı değerler maskeli (örn. "Seçimi" -> "seç" fiiliyle karışmasın)
 
     CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun)'
     INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
@@ -89,7 +107,7 @@ def _rule_java(step: str) -> list[str] | None:
         s, re.IGNORECASE
     )
     if _PC:
-        text = _jxs(_PC.group(1).strip())
+        text = _jxs(_quoted_target(_PC.group(1).strip(), quoted))
         return [
             f'// {s}',
             f"driver.findElement(By.xpath(\"//*[@text='{text}']\")).click();",
@@ -102,7 +120,7 @@ def _rule_java(step: str) -> list[str] | None:
     # ── "X açılır" ───────────────────────────────────────────────────────────
     _AC = re.search(r'^(.+?)\s+a[çc][ıi]l[ıi]r\.?\s*$', s, re.IGNORECASE)
     if _AC:
-        text = _jxs(_AC.group(1).strip())
+        text = _jxs(_quoted_target(_AC.group(1).strip(), quoted))
         return [
             f'// {s}',
             f"driver.findElement(By.xpath(\"//*[@text='{text}']\")).click();",
@@ -123,20 +141,21 @@ def _rule_java(step: str) -> list[str] | None:
                 'driver.hideKeyboard();',
             ]
 
+    # ── Doğrulama (Tıklama'dan önce kontrol edilir: "görülür/doğrula/kontrol"
+    #   gibi daha spesifik fiiller, tıklama kelimeleriyle çakıştığında öncelikli) ─
+    if re.search(ASSERT_WORDS, sl) and quoted:
+        text = _jxs(quoted[0])
+        return [
+            f'// {s}',
+            f"assertTrue(driver.findElement(By.xpath(\"//*[@text='{text}']\")).isDisplayed());",
+        ]
+
     # ── Tıklama ───────────────────────────────────────────────────────────────
     if re.search(CLICK_WORDS, sl) and quoted:
         text = _jxs(quoted[0])
         return [
             f'// {s}',
             f"driver.findElement(By.xpath(\"//*[@text='{text}']\")).click();",
-        ]
-
-    # ── Doğrulama ─────────────────────────────────────────────────────────────
-    if re.search(ASSERT_WORDS, sl) and quoted:
-        text = _jxs(quoted[0])
-        return [
-            f'// {s}',
-            f"assertTrue(driver.findElement(By.xpath(\"//*[@text='{text}']\")).isDisplayed());",
         ]
 
     # ── Metin girişi: alan + değer (tek satır) ────────────────────────────────
@@ -194,8 +213,8 @@ def _rule_ios(step: str) -> list[str] | None:
     s      = _clean_step(step)
     if not s:
         return None
-    sl     = s.lower()
     quoted = _extract_quoted(s)
+    sl     = _mask_quoted(s).lower()  # fiil tespiti: tırnaklı değerler maskeli (örn. "Seçimi" -> "seç" fiiliyle karışmasın)
 
     CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun)'
     INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
@@ -214,7 +233,7 @@ def _rule_ios(step: str) -> list[str] | None:
         s, re.IGNORECASE
     )
     if _PC:
-        text = _PC.group(1).strip()
+        text = _quoted_target(_PC.group(1).strip(), quoted)
         return [
             f'// {s}',
             f'wait.until(ExpectedConditions.elementToBeClickable(AppiumBy.xpath("{_ixp(text)}"))).click();',
@@ -227,7 +246,7 @@ def _rule_ios(step: str) -> list[str] | None:
     # ── "X açılır" ───────────────────────────────────────────────────────────
     _AC = re.search(r'^(.+?)\s+a[çc][ıi]l[ıi]r\.?\s*$', s, re.IGNORECASE)
     if _AC:
-        text = _AC.group(1).strip()
+        text = _quoted_target(_AC.group(1).strip(), quoted)
         return [
             f'// {s}',
             f'wait.until(ExpectedConditions.elementToBeClickable(AppiumBy.xpath("{_ixp(text)}"))).click();',
@@ -248,18 +267,19 @@ def _rule_ios(step: str) -> list[str] | None:
                 'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
             ]
 
+    # ── Doğrulama (Tıklama'dan önce kontrol edilir: "görülür/doğrula/kontrol"
+    #   gibi daha spesifik fiiller, tıklama kelimeleriyle çakıştığında öncelikli) ─
+    if re.search(ASSERT_WORDS, sl) and quoted:
+        return [
+            f'// {s}',
+            f'wait.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("{_ixp(quoted[0])}"))).isDisplayed();',
+        ]
+
     # ── Tıklama ───────────────────────────────────────────────────────────────
     if re.search(CLICK_WORDS, sl) and quoted:
         return [
             f'// {s}',
             f'wait.until(ExpectedConditions.elementToBeClickable(AppiumBy.xpath("{_ixp(quoted[0])}"))).click();',
-        ]
-
-    # ── Doğrulama ─────────────────────────────────────────────────────────────
-    if re.search(ASSERT_WORDS, sl) and quoted:
-        return [
-            f'// {s}',
-            f'wait.until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("{_ixp(quoted[0])}"))).isDisplayed();',
         ]
 
     # ── Metin girişi: alan + değer ────────────────────────────────────────────
