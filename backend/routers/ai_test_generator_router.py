@@ -3294,18 +3294,27 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
     # LLM kodu üretilen ana string'e enjekte edilmeli — placeholder yaklaşımı yerine,
     # basitlik için LLM adımlarını üst seviyede yeniden üret (nested LLM adımı nadir durum,
     # 1-seviye sınırı ile dal içi LLM adımları da düz metinle aynı formatta üretilir).
-    def _fill_llm(items: list, counter2: list, indent: str = "") -> str:
+    # report_out: bu geçişte üretilen HER adımın gerçek method/code'unu (rule/llm/todo dahil)
+    # kaydeder — ilk geçişteki code_lines "llm" olarak damgaladığı ama burada asıl gerçek
+    # sonucun (llm mi todo mu) belirlendiği adımlar için rapor artık bu listeden gelir.
+    def _fill_llm(items: list, counter2: list, indent: str = "", report_out: list | None = None) -> str:
+        if report_out is None:
+            report_out = []
         blocks = []
         for item in items:
             idx = counter2[0]; counter2[0] += 1
             if item.disabled:
-                blocks.append(f"{indent}# [DEVRE DIŞI] {item.content or f'Adım {idx+1}'}")
+                label = item.content or f"Adım {idx+1}"
+                block = f"{indent}# [DEVRE DIŞI] {label}"
+                blocks.append(block)
+                report_out.append({"step": label, "method": "comment", "code": block, "index": idx})
                 continue
             if item.type == "condition":
                 cond_expr = _condition_expr(item, req.platform, idx)
-                then_code = _fill_llm(item.then_steps, counter2, indent + "    ") or f"{indent}    pass"
-                else_code = _fill_llm(item.else_steps, counter2, indent + "    ") or f"{indent}    pass"
-                blocks.append(
+                then_code = _fill_llm(item.then_steps, counter2, indent + "    ", report_out) or f"{indent}    pass"
+                else_code = _fill_llm(item.else_steps, counter2, indent + "    ", report_out) or f"{indent}    pass"
+                label = item.content or f"Koşul {idx+1}"
+                block = (
                     f"{indent}_check_stop()\n"
                     f"{indent}print('STEP_START:{idx}')\n"
                     f"{indent}_cond_{idx} = {cond_expr}\n"
@@ -3313,24 +3322,36 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                     f"{indent}else:\n{else_code}\n"
                     f"{indent}print('STEP_DONE:{idx}')"
                 )
+                blocks.append(block)
+                report_out.append({"step": label, "method": "condition", "code": block, "index": idx})
                 continue
             if item.type in ("image", "sql", "api", "comment"):
                 # Bu tipler zaten _steps_to_code içinde tam üretildi (LLM'e hiç düşmezler),
                 # burada sadece idx senkronizasyonu için tekrar üretiyoruz.
                 if item.type == "image":
-                    blocks.append(_indent_code("_check_stop()\n" + _image_step_code(item, req.platform, idx), indent))
+                    block  = _indent_code("_check_stop()\n" + _image_step_code(item, req.platform, idx), indent)
+                    method = "image"
+                    label  = item.content or f"Görsel {idx+1}"
                 elif item.type == "sql":
-                    blocks.append(_indent_code("_check_stop()\n" + _sql_step_code(item, idx), indent))
+                    block  = _indent_code("_check_stop()\n" + _sql_step_code(item, idx), indent)
+                    method = "rule"
+                    label  = item.content or f"SQL {idx+1}"
                 elif item.type == "api":
-                    blocks.append(_indent_code("_check_stop()\n" + _api_step_code(item, idx), indent))
+                    block  = _indent_code("_check_stop()\n" + _api_step_code(item, idx), indent)
+                    method = "rule"
+                    label  = item.content or f"API {idx+1}"
                 else:
-                    blocks.append(f"{indent}# [YORUM] {item.content}")
+                    block  = f"{indent}# [YORUM] {item.content}"
+                    method = "comment"
+                    label  = item.content or f"Yorum {idx+1}"
+                blocks.append(block)
+                report_out.append({"step": label, "method": method, "code": block, "index": idx})
                 continue
             step = item.content
             parsed = rule_fn(step)
             if parsed:
                 _inner = ("\n" + indent + "    ").join(parsed)
-                blocks.append(
+                block = (
                     f"{indent}_check_stop()\n"
                     f"{indent}print('STEP_START:{idx}')\n"
                     f"{indent}try:\n"
@@ -3341,6 +3362,8 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                     f"{indent}    print('STEP_FAIL:{idx}')\n"
                     f"{indent}    raise"
                 )
+                blocks.append(block)
+                report_out.append({"step": step, "method": "rule", "code": block, "index": idx})
             else:
                 llm_code = llm_results.get(step, "")
                 llm_code = "\n".join(
@@ -3352,10 +3375,12 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                 if not llm_code:
                     llm_code = f"# TODO (anlasilamadi): {step}\n{indent}time.sleep(1)"
                     _inner = llm_code
-                    blocks.append(f"{indent}{_inner}")
+                    block = f"{indent}{_inner}"
+                    blocks.append(block)
+                    report_out.append({"step": step, "method": "todo", "code": block, "index": idx})
                 else:
                     _llm_inner = ("\n" + indent + "    ").join(llm_code.splitlines())
-                    blocks.append(
+                    block = (
                         f"{indent}_check_stop()\n"
                         f"{indent}print('STEP_START:{idx}')\n"
                         f"{indent}# {step}\n"
@@ -3367,18 +3392,23 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                         f"{indent}    print('STEP_FAIL:{idx}')\n"
                         f"{indent}    raise"
                     )
+                    blocks.append(block)
+                    report_out.append({"step": step, "method": "llm", "code": block, "index": idx})
         return "\n\n".join(blocks)
 
     if unrecognized:
         # LLM sonucu varsa tüm kodu (idx sayacını sıfırlayıp) yeniden, bu sefer LLM
         # sonuçlarıyla üret — iki geçişli tasarım mevcut _generate_steps ile aynı prensip.
-        steps_code = _fill_llm(structured, [0])
-
-    # Rapor: üst seviye rapor code_lines'tan gelir (condition dahil).
-    report = [
-        {"step": step, "method": kind, "code": code, "index": i}
-        for i, (kind, step, code) in enumerate(code_lines)
-    ]
+        # fill_report bu geçişte her adımın GERÇEK method/code'unu (rule/llm/todo dahil) taşır.
+        fill_report: list = []
+        steps_code = _fill_llm(structured, [0], report_out=fill_report)
+        report = sorted(fill_report, key=lambda r: r["index"])
+    else:
+        # LLM'e hiç düşülmedi — ilk geçişteki code_lines zaten doğru rapor.
+        report = [
+            {"step": step, "method": kind, "code": code, "index": i}
+            for i, (kind, step, code) in enumerate(code_lines)
+        ]
 
     return steps_code, report
 
