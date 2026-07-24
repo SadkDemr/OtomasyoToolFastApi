@@ -1448,12 +1448,12 @@ def _safe_input_web(driver, field_hint, value, is_password=False):
         raise Exception(f"Input girilemiyor: {_ex}")
 
 
-def _safe_assert_web(driver, text):
+def _safe_assert_web(driver, text, raise_on_fail=True):
     """Metni sayfada doğrula — kaynak + element + scroll"""
     from selenium.webdriver.common.by import By
     import time
     if text in driver.page_source:
-        print(f"[OK] Doğrulandı: {text}"); return
+        print(f"[OK] Doğrulandı: {text}"); return True
     for xp in [
         f'//*[contains(normalize-space(.),"{text}")]',
         f'//*[contains(@value,"{text}")]',
@@ -1462,11 +1462,17 @@ def _safe_assert_web(driver, text):
         try:
             el = driver.find_element(By.XPATH, xp)
             if el.is_displayed():
-                print(f"[OK] Doğrulandı: {text}"); return
+                print(f"[OK] Doğrulandı: {text}"); return True
         except Exception:
             continue
     driver.execute_script("window.scrollTo(0,0);"); time.sleep(0.5)
-    assert text in driver.page_source, f"Beklenen metin yok: {text}"
+    _found = text in driver.page_source
+    if _found:
+        print(f"[OK] Doğrulandı: {text}")
+        return True
+    if raise_on_fail:
+        assert _found, f"Beklenen metin yok: {text}"
+    return False
 
 
 def _safe_read_web(driver, hint):
@@ -2086,8 +2092,9 @@ def _safe_wait_for_desktop(target, timeout=10):
     return False
 
 
-def _safe_assert_desktop(target):
-    """Ekranda element / metin doğrula. Bulamazsa AssertionError fırlatır."""
+def _safe_assert_desktop(target, raise_on_fail=True):
+    """Ekranda element / metin doğrula. raise_on_fail=True (varsayılan) ise bulamazsa
+    AssertionError fırlatır, False ise sessizce bool döner."""
     print(f"[ASSERT] \'{target}\' kontrol ediliyor...")
 
     # pywinauto
@@ -2097,7 +2104,7 @@ def _safe_assert_desktop(target):
             if _win:
                 _el = _win.child_window(title_re=f".*{target}.*", found_index=0)
                 if _el.exists(timeout=1):
-                    print(f"[OK] pywinauto: \'{target}\'"); return
+                    print(f"[OK] pywinauto: \'{target}\'"); return True
         except Exception:
             pass
 
@@ -2108,16 +2115,18 @@ def _safe_assert_desktop(target):
             shot = _pag.screenshot(region=_region) if _region else _pag.screenshot()
             _txt = _tess.image_to_string(shot, lang="tur+eng")
             if target.lower() in _txt.lower():
-                print(f"[OK] OCR: \'{target}\'"); return
+                print(f"[OK] OCR: \'{target}\'"); return True
         except Exception:
             pass
 
     # Vision
     _vx, _vy = _vision_find_desktop(target)
     if _vx and _vy:
-        print(f"[OK] Vision: \'{target}\'"); return
+        print(f"[OK] Vision: \'{target}\'"); return True
 
-    raise AssertionError(f"[FAIL] \'{target}\' ekranda bulunamadi")
+    if raise_on_fail:
+        raise AssertionError(f"[FAIL] \'{target}\' ekranda bulunamadi")
+    return False
 
 def _refocus_window():
     """Her adım öncesi pencereyi öne getirir — başlık veya süreç adıyla bulur."""
