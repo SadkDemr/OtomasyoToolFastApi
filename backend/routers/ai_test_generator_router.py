@@ -3148,9 +3148,125 @@ def _api_step_code(item: "StepItem", idx: int) -> str:
     )
 
 
+def _indent_code(code: str, prefix: str = "    ") -> str:
+    """Çok satırlı bir kod bloğunun her satırının başına prefix ekler (boş satırlar hariç).
+    _build_mobile/web/desktop_template'in steps_code'u indent'leme şeklinin aynısı."""
+    return "\n".join((prefix + line if line.strip() else "") for line in code.splitlines())
+
+
+def _condition_expr(item: "StepItem", platform: str, idx: int) -> str:
+    """Bir condition StepItem'ı, raise etmeyen bool döndüren tek satırlık bir Python ifadesine çevirir."""
+    ctype = item.condition_type
+    if ctype == "image_exists":
+        find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
+        return f"bool({find_fn}('{item.image_b64}', timeout=8))"
+    if ctype == "element_exists":
+        hint = item.content.replace("'", "\\'")
+        if platform == "mobile":
+            return f"_safe_assert(driver, '{hint}')"
+        if platform == "web":
+            return f"_safe_assert_web(driver, '{hint}', raise_on_fail=False)"
+        return f"_safe_assert_desktop('{hint}', raise_on_fail=False)"
+    if ctype == "variable_compare":
+        var   = item.compare_var.replace("'", "\\'")
+        value = item.compare_value.replace("'", "\\'")
+        left  = f"str(_VARS.get('{var}', ''))"
+        if item.compare_op == "neq":
+            return f"{left} != '{value}'"
+        if item.compare_op == "contains":
+            return f"'{value}' in {left}"
+        return f"{left} == '{value}'"   # "eq" varsayılan
+    return "False"  # condition_type boş/bilinmeyen — güvenli varsayılan
+
+
+def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: str = "") -> tuple[str, list, list]:
+    """items (üst seviye ya da bir then/else dalı) için Python kodu üretir.
+    counter=[n] paylaşılan/mutable sayaç — dal içindeki adımlar da aynı artan idx'i kullanır.
+    Returns: (indent'li kod string'i, code_lines rapor listesi, unrecognized metin listesi)
+    code_lines elemanları: (kind, step_label, code_or_empty) — mevcut _generate_steps sözleşmesiyle aynı."""
+    blocks = []
+    code_lines = []
+    unrecognized = []
+
+    for item in items:
+        idx = counter[0]; counter[0] += 1
+
+        if item.disabled:
+            label = item.content or f"Adım {idx+1}"
+            code_lines.append(("comment", label, f"{indent}# [DEVRE DIŞI] {label}"))
+            blocks.append(f"{indent}# [DEVRE DIŞI] {label}")
+            continue
+
+        if item.type == "condition":
+            cond_expr = _condition_expr(item, platform, idx)
+            then_code, then_lines, then_unrec = _steps_to_code(
+                item.then_steps, platform, counter, rule_fn, indent + "    ")
+            else_code, else_lines, else_unrec = _steps_to_code(
+                item.else_steps, platform, counter, rule_fn, indent + "    ")
+            then_code = then_code or f"{indent}    pass"
+            else_code = else_code or f"{indent}    pass"
+            label = item.content or f"Koşul {idx+1}"
+            block = (
+                f"{indent}_check_stop()\n"
+                f"{indent}print('STEP_START:{idx}')\n"
+                f"{indent}_cond_{idx} = {cond_expr}\n"
+                f"{indent}if _cond_{idx}:\n{then_code}\n"
+                f"{indent}else:\n{else_code}\n"
+                f"{indent}print('STEP_DONE:{idx}')"
+            )
+            blocks.append(block)
+            code_lines.append(("condition", label, block))
+            code_lines.extend(then_lines)
+            code_lines.extend(else_lines)
+            unrecognized.extend(then_unrec)
+            unrecognized.extend(else_unrec)
+            continue
+
+        if item.type == "image":
+            code = _indent_code("_check_stop()\n" + _image_step_code(item, platform, idx), indent)
+            blocks.append(code)
+            code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
+        elif item.type == "sql":
+            code = _indent_code("_check_stop()\n" + _sql_step_code(item, idx), indent)
+            blocks.append(code)
+            code_lines.append(("rule", item.content or f"SQL {idx+1}", code))
+        elif item.type == "api":
+            code = _indent_code("_check_stop()\n" + _api_step_code(item, idx), indent)
+            blocks.append(code)
+            code_lines.append(("rule", item.content or f"API {idx+1}", code))
+        elif item.type == "comment":
+            code = f"{indent}# [YORUM] {item.content}"
+            blocks.append(code)
+            code_lines.append(("comment", item.content or f"Yorum {idx+1}", code))
+        else:
+            step = item.content
+            parsed = rule_fn(step)
+            if parsed:
+                _inner = ("\n" + indent + "    ").join(parsed)
+                wrapped = (
+                    f"{indent}_check_stop()\n"
+                    f"{indent}print('STEP_START:{idx}')\n"
+                    f"{indent}try:\n"
+                    f"{indent}    {_inner}\n"
+                    f"{indent}    print('STEP_DONE:{idx}')\n"
+                    f"{indent}except Exception as _e_{idx}:\n"
+                    f"{indent}    print(f'[FAIL] {{_e_{idx}}}')\n"
+                    f"{indent}    print('STEP_FAIL:{idx}')\n"
+                    f"{indent}    raise"
+                )
+                blocks.append(wrapped)
+                code_lines.append(("rule", step, wrapped))
+            else:
+                blocks.append(None)   # LLM sonucu ikinci geçişte doldurulacak — yer tutucu
+                code_lines.append(("llm", step, ""))
+                unrecognized.append(step)
+
+    return "\n\n".join(b for b in blocks if b is not None), code_lines, unrecognized
+
+
 async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
     """
-    Test case'i adım adım işler (metin + görsel karma destekli).
+    Test case'i adım adım işler (metin + görsel + condition karma destekli).
     Döndürür: (kod_str, adım_raporu)
     """
     rule_fn = (
@@ -3159,7 +3275,6 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
         _rule_web
     )
 
-    # steps_list varsa onu kullan, yoksa test_case textarea'dan oku (geriye dönük)
     if req.steps_list:
         structured = req.steps_list
     else:
@@ -3168,89 +3283,104 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
             for l in req.test_case.splitlines() if l.strip()
         ]
 
-    code_lines   = []
-    unrecognized = []
-    report       = []
+    counter = [0]
+    steps_code, code_lines, unrecognized = _steps_to_code(structured, req.platform, counter, rule_fn)
 
-    for idx, item in enumerate(structured):
-        if item.disabled:
-            label = item.content or f"Adım {idx+1}"
-            code_lines.append(("comment", label, f"# [DEVRE DIŞI] {label}"))
-            continue
-        if item.type == "image":
-            code = "_check_stop()\n" + _image_step_code(item, req.platform, idx)
-            code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
-        elif item.type == "sql":
-            code = "_check_stop()\n" + _sql_step_code(item, idx)
-            code_lines.append(("rule", item.content or f"SQL {idx+1}", code))
-        elif item.type == "api":
-            code = "_check_stop()\n" + _api_step_code(item, idx)
-            code_lines.append(("rule", item.content or f"API {idx+1}", code))
-        elif item.type == "comment":
-            code_lines.append(("comment", item.content or f"Yorum {idx+1}", f"# [YORUM] {item.content}"))
-        else:
-            step = item.content
-            parsed = rule_fn(step)
-            if parsed:
-                _inner = "\n    ".join(parsed)
-                wrapped = (
-                    f"_check_stop()\n"
-                    f"print('STEP_START:{idx}')\n"
-                    f"try:\n"
-                    f"    {_inner}\n"
-                    f"    print('STEP_DONE:{idx}')\n"
-                    f"except Exception as _e_{idx}:\n"
-                    f"    print(f'[FAIL] {{_e_{idx}}}')\n"
-                    f"    print('STEP_FAIL:{idx}')\n"
-                    f"    raise"
-                )
-                code_lines.append(("rule", step, wrapped))
-            else:
-                code_lines.append(("llm", step, ""))
-                unrecognized.append(step)
-
-    # LLM'e toplu sor
+    # LLM'e toplu sor (üst seviye + dal içi tüm tanınmayan metin adımları)
     llm_results = {}
     if unrecognized:
         llm_results = await _ask_llm_for_steps(unrecognized, req.platform)
 
-    # Birleştir + rapor oluştur
-    final_lines = []
-    for idx, (kind, step, rule_code) in enumerate(code_lines):
-        if kind in ("rule", "image", "comment"):
-            final_lines.append(rule_code)
-            report.append({"step": step, "method": kind, "code": rule_code, "index": idx})
-        else:
-            llm_code = llm_results.get(step, "")
-            llm_code = "\n".join(
-                l for l in llm_code.splitlines()
-                if l.strip().startswith("#") or re.match(r'^\s*[a-z_].*[\(\.]', l)
-            ).strip()
-            if llm_code:
-                llm_code = textwrap.dedent(llm_code)
-            if not llm_code:
-                llm_code = f"# TODO (anlasilamadi): {step}\ntime.sleep(1)"
-                method = "todo"
-            else:
-                method = "llm"
-                _llm_inner = "\n    ".join(llm_code.splitlines())
-                llm_code = (
-                    f"_check_stop()\n"
-                    f"print('STEP_START:{idx}')\n"
-                    f"# {step}\n"
-                    f"try:\n"
-                    f"    {_llm_inner}\n"
-                    f"    print('STEP_DONE:{idx}')\n"
-                    f"except Exception as _e_{idx}:\n"
-                    f"    print(f'[FAIL] {{_e_{idx}}}')\n"
-                    f"    print('STEP_FAIL:{idx}')\n"
-                    f"    raise"
+    # LLM kodu üretilen ana string'e enjekte edilmeli — placeholder yaklaşımı yerine,
+    # basitlik için LLM adımlarını üst seviyede yeniden üret (nested LLM adımı nadir durum,
+    # 1-seviye sınırı ile dal içi LLM adımları da düz metinle aynı formatta üretilir).
+    def _fill_llm(items: list, counter2: list, indent: str = "") -> str:
+        blocks = []
+        for item in items:
+            idx = counter2[0]; counter2[0] += 1
+            if item.disabled:
+                blocks.append(f"{indent}# [DEVRE DIŞI] {item.content or f'Adım {idx+1}'}")
+                continue
+            if item.type == "condition":
+                cond_expr = _condition_expr(item, req.platform, idx)
+                then_code = _fill_llm(item.then_steps, counter2, indent + "    ") or f"{indent}    pass"
+                else_code = _fill_llm(item.else_steps, counter2, indent + "    ") or f"{indent}    pass"
+                blocks.append(
+                    f"{indent}_check_stop()\n"
+                    f"{indent}print('STEP_START:{idx}')\n"
+                    f"{indent}_cond_{idx} = {cond_expr}\n"
+                    f"{indent}if _cond_{idx}:\n{then_code}\n"
+                    f"{indent}else:\n{else_code}\n"
+                    f"{indent}print('STEP_DONE:{idx}')"
                 )
-            final_lines.append(llm_code)
-            report.append({"step": step, "method": method, "code": llm_code, "index": idx})
-        final_lines.append("")
+                continue
+            if item.type in ("image", "sql", "api", "comment"):
+                # Bu tipler zaten _steps_to_code içinde tam üretildi (LLM'e hiç düşmezler),
+                # burada sadece idx senkronizasyonu için tekrar üretiyoruz.
+                if item.type == "image":
+                    blocks.append(_indent_code("_check_stop()\n" + _image_step_code(item, req.platform, idx), indent))
+                elif item.type == "sql":
+                    blocks.append(_indent_code("_check_stop()\n" + _sql_step_code(item, idx), indent))
+                elif item.type == "api":
+                    blocks.append(_indent_code("_check_stop()\n" + _api_step_code(item, idx), indent))
+                else:
+                    blocks.append(f"{indent}# [YORUM] {item.content}")
+                continue
+            step = item.content
+            parsed = rule_fn(step)
+            if parsed:
+                _inner = ("\n" + indent + "    ").join(parsed)
+                blocks.append(
+                    f"{indent}_check_stop()\n"
+                    f"{indent}print('STEP_START:{idx}')\n"
+                    f"{indent}try:\n"
+                    f"{indent}    {_inner}\n"
+                    f"{indent}    print('STEP_DONE:{idx}')\n"
+                    f"{indent}except Exception as _e_{idx}:\n"
+                    f"{indent}    print(f'[FAIL] {{_e_{idx}}}')\n"
+                    f"{indent}    print('STEP_FAIL:{idx}')\n"
+                    f"{indent}    raise"
+                )
+            else:
+                llm_code = llm_results.get(step, "")
+                llm_code = "\n".join(
+                    l for l in llm_code.splitlines()
+                    if l.strip().startswith("#") or re.match(r'^\s*[a-z_].*[\(\.]', l)
+                ).strip()
+                if llm_code:
+                    llm_code = textwrap.dedent(llm_code)
+                if not llm_code:
+                    llm_code = f"# TODO (anlasilamadi): {step}\n{indent}time.sleep(1)"
+                    _inner = llm_code
+                    blocks.append(f"{indent}{_inner}")
+                else:
+                    _llm_inner = ("\n" + indent + "    ").join(llm_code.splitlines())
+                    blocks.append(
+                        f"{indent}_check_stop()\n"
+                        f"{indent}print('STEP_START:{idx}')\n"
+                        f"{indent}# {step}\n"
+                        f"{indent}try:\n"
+                        f"{indent}    {_llm_inner}\n"
+                        f"{indent}    print('STEP_DONE:{idx}')\n"
+                        f"{indent}except Exception as _e_{idx}:\n"
+                        f"{indent}    print(f'[FAIL] {{_e_{idx}}}')\n"
+                        f"{indent}    print('STEP_FAIL:{idx}')\n"
+                        f"{indent}    raise"
+                    )
+        return "\n\n".join(blocks)
 
-    return "\n".join(final_lines), report
+    if unrecognized:
+        # LLM sonucu varsa tüm kodu (idx sayacını sıfırlayıp) yeniden, bu sefer LLM
+        # sonuçlarıyla üret — iki geçişli tasarım mevcut _generate_steps ile aynı prensip.
+        steps_code = _fill_llm(structured, [0])
+
+    # Rapor: üst seviye rapor code_lines'tan gelir (condition dahil).
+    report = [
+        {"step": step, "method": kind, "code": code, "index": i}
+        for i, (kind, step, code) in enumerate(code_lines)
+    ]
+
+    return steps_code, report
 
 
 async def _ask_llm_for_steps(steps: list[str], platform: str) -> dict[str, str]:
