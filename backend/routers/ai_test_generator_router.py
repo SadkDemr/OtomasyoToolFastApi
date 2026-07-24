@@ -1266,25 +1266,26 @@ def _safe_assert(driver, text, key_text=None):
                     continue
         return False
 
-    if _try_find(): return
+    if _try_find(): return True
 
     # Aşağı kaydır + tekrar
     print(f"[SCROLL↓] '{text}' aranıyor...")
     driver.swipe(540, 1400, 540, 500, 800); time.sleep(0.7)
-    if _try_find(): return
+    if _try_find(): return True
 
     # Yukarı kaydır + tekrar
     print(f"[SCROLL↑] '{text}' aranıyor...")
     driver.swipe(540, 500, 540, 1400, 800); time.sleep(0.7)
-    if _try_find(): return
+    if _try_find(): return True
 
     # Vision fallback
     print(f"[VISION] '{text}' için ekran görüntüsü analiz ediliyor...")
     if _vision_find(driver, key_text or text):
         print(f"[OK] Vision ile doğrulandı: {text}")
-        return
+        return True
 
     print(f"[WARN] '{text}' ekranda bulunamadı — adım geçiliyor")
+    return False
 
 
 def _safe_read(driver, text, key_text=None):
