@@ -136,7 +136,7 @@ _ROUTER_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ─── Pydantic ─────────────────────────────────────────────────────────────────
 
 class StepItem(BaseModel):
-    type:          str = "text"   # "text" | "image" | "sql" | "api" | "comment"
+    type:          str = "text"   # "text" | "image" | "sql" | "api" | "comment" | "condition"
     disabled:      bool = False   # True ise adım çalıştırılmaz, "# [DEVRE DIŞI]" yorumuna döner
     content:       str = ""
     image_b64:     str = ""
@@ -158,6 +158,15 @@ class StepItem(BaseModel):
     # Fare ile sürükleme (action="drag"): click_x/click_y = başlangıç, drag_x/drag_y = bitiş noktası
     drag_x:        int = -1
     drag_y:        int = -1
+    # ── Koşullu dallanma (type == "condition") ────────────────────────────
+    condition_type: str = ""      # "" | "image_exists" | "element_exists" | "variable_compare"
+    compare_var:    str = ""      # variable_compare: {{degisken}} adı (_VARS anahtarı)
+    compare_op:     str = ""      # variable_compare: "eq" | "neq" | "contains"
+    compare_value:  str = ""      # variable_compare: karşılaştırılacak sabit değer
+    then_steps:     list["StepItem"] = []
+    else_steps:     list["StepItem"] = []
+
+StepItem.model_rebuild()   # self-referential model — forward ref ("StepItem") çözümü için gerekli
 
 class GenerateRequest(BaseModel):
     test_case:    str         = ""   # geriye dönük uyumluluk
