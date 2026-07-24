@@ -1504,6 +1504,25 @@
     </div>
 </div>
 
+<!-- ── MODAL: Görsel Büyüt ── -->
+<div id="imagePreviewModal" class="ai-modal-overlay" style="display:none;" onclick="if(event.target===this) closeImagePreview()">
+    <div class="modal-box" style="max-width:min(720px,95vw); max-height:95vh; width:100%;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-weight:600; font-size:1rem;">Görsel</div>
+            <button onclick="closeImagePreview()" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:4px; border-radius:6px; display:flex; align-items:center;" aria-label="Kapat">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div style="overflow:auto; max-height:70vh; display:flex; justify-content:center;">
+            <img id="imagePreviewImg" src="" style="max-width:100%; max-height:70vh; border-radius:8px; border:1px solid var(--border-color);">
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn-reset" onclick="closeImagePreview()">Kapat</button>
+            <button class="btn-generate" onclick="retakeImageFromPreview()" style="flex:none; padding:10px 20px;">Farklı Görsel Yükle</button>
+        </div>
+    </div>
+</div>
+
 <!-- ── MODAL: Senaryo Kaydet ── -->
 <div id="saveModal" class="ai-modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:420px; width:100%;">
@@ -1922,6 +1941,27 @@
         startImageCapture(idx);
     };
 
+    let _previewStepIdx = null;
+
+    window.previewStepImage = function(idx) {
+        const s = steps[idx];
+        if (!s || !s.b64) return;
+        _previewStepIdx = idx;
+        document.getElementById("imagePreviewImg").src = "data:image/png;base64," + s.b64;
+        document.getElementById("imagePreviewModal").style.display = "flex";
+    };
+
+    window.closeImagePreview = function() {
+        document.getElementById("imagePreviewModal").style.display = "none";
+        _previewStepIdx = null;
+    };
+
+    window.retakeImageFromPreview = function() {
+        const idx = _previewStepIdx;
+        closeImagePreview();
+        if (idx !== null) retakeImage(idx);
+    };
+
     function setStepStatus(idx, status) {
         if (!steps[idx]) return;
         steps[idx].status = status;
@@ -1988,7 +2028,7 @@
             if (s.b64) {
                 contentHtml = `
                     <img class="step-img-thumb" src="data:image/png;base64,${s.b64}"
-                        onclick="retakeImage(${i})" title="Tıkla → Farklı görsel yükle">
+                        onclick="previewStepImage(${i})" title="Tıkla → Büyüt">
                     ${imgSel}
                     <input class="step-content-input" type="text" value="${escHtml(s.content)}"
                         placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${i}, this.value)"
