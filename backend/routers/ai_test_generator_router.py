@@ -1468,7 +1468,6 @@ def _safe_assert_web(driver, text, raise_on_fail=True):
     driver.execute_script("window.scrollTo(0,0);"); time.sleep(0.5)
     _found = text in driver.page_source
     if _found:
-        print(f"[OK] Doğrulandı: {text}")
         return True
     if raise_on_fail:
         assert _found, f"Beklenen metin yok: {text}"
