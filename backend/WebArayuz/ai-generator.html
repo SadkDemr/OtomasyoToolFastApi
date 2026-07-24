@@ -1603,9 +1603,11 @@
     let _editingFolder = null;
     let _editingName   = "";
 
-    // Sürükle-bırak state
+    // Sürükle-bırak state — kapsam (parentIdx, branch) ile birlikte tutulur;
+    // farklı kapsamlar arası sürükleme engellenir (dallar arası taşıma kapsam dışı)
     let _dragSrcIdx    = -1;
     let _dragTargetIdx = -1;
+    let _dragScope     = null;   // null (üst seviye) | {parentIdx, branch}
 
     // Screenshot / crop state
     let _captureTargetStepIdx = -1;
@@ -1811,8 +1813,13 @@
     };
 
     // ── Step Yönetimi ─────────────────────────────────────────────────────────
-    window.addTextStep = function() {
-        steps.push({ type: "text", content: "", b64: "", action: "click", status: null });
+    function _container(idx, branch) {
+        return branch ? steps[idx][branch + "_steps"] : steps;
+    }
+
+    window.addTextStep = function(parentIdx, branch) {
+        const arr = _container(parentIdx, branch);
+        arr.push({ type: "text", content: "", b64: "", action: "click", status: null });
         renderStepList();
         updateGenerateBtn();
         // Son input'u odakla
@@ -1820,34 +1827,42 @@
         if (inputs.length) inputs[inputs.length - 1].focus();
     };
 
-    window.addImageStep = function() {
-        const idx = steps.length;
-        steps.push({ type: "image", content: "", b64: "", action: "click", status: null });
+    window.addImageStep = function(parentIdx, branch) {
+        const arr = _container(parentIdx, branch);
+        const localIdx = arr.length;
+        arr.push({ type: "image", content: "", b64: "", action: "click", status: null });
         renderStepList();
         updateGenerateBtn();
-        startImageCapture(idx);
+        // Görsel yakalama akışı düz index bekliyor — dal içi adımlar için otomatik
+        // yakalama tetiklenmez, kullanıcı "Tıkla → Görsel Yükle" ile manuel doldurur.
+        if (!branch) startImageCapture(localIdx);
     };
 
-    window.deleteStep = function(idx) {
-        steps.splice(idx, 1);
+    window.deleteStep = function(idx, branch, bIdx) {
+        const arr = _container(idx, branch);
+        arr.splice(branch ? bIdx : idx, 1);
         renderStepList();
         updateGenerateBtn();
     };
 
-    window.toggleStepDisabled = function(idx) {
-        if (!steps[idx]) return;
-        steps[idx].disabled = !steps[idx].disabled;
+    window.toggleStepDisabled = function(idx, branch, bIdx) {
+        const arr = _container(idx, branch);
+        const target = branch ? arr[bIdx] : arr[idx];
+        if (!target) return;
+        target.disabled = !target.disabled;
         renderStepList();
         updateGenerateBtn();
     };
 
     // ── Sürükle-Bırak ────────────────────────────────────────────────────────
-    window.stepDragStart = function(e, idx) {
-        _dragSrcIdx = idx;
+    window.stepDragStart = function(e, idx, branch, bIdx) {
+        _dragSrcIdx = branch ? bIdx : idx;
+        _dragScope  = branch ? { parentIdx: idx, branch } : null;
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", String(idx));
+        e.dataTransfer.setData("text/plain", String(_dragSrcIdx));
+        const rowId = branch ? `step-row-${idx}-${branch}-${bIdx}` : `step-row-${idx}`;
         setTimeout(() => {
-            const row = document.getElementById(`step-row-${idx}`);
+            const row = document.getElementById(rowId);
             if (row) row.classList.add("dragging");
         }, 0);
     };
@@ -1855,28 +1870,39 @@
     window.stepDragEnd = function() {
         _dragSrcIdx    = -1;
         _dragTargetIdx = -1;
+        _dragScope     = null;
         document.querySelectorAll(".step-item").forEach(el =>
             el.classList.remove("dragging", "drag-over"));
     };
 
+    function _scopeMatches(rowId) {
+        // rowId ya "step-row-{idx}" (üst seviye) ya "step-row-{idx}-{branch}-{bIdx}" (dal içi).
+        const parts = rowId.replace("step-row-", "").split("-");
+        if (parts.length === 1) return _dragScope === null;
+        const [parentIdx, branch] = parts;
+        return _dragScope !== null && String(_dragScope.parentIdx) === parentIdx && _dragScope.branch === branch;
+    }
+
     window.stepListDragOver = function(e) {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        // Fare hangi adımın üzerinde? Y pozisyonuna göre belirle
-        const items = document.querySelectorAll("#stepList .step-item[id^='step-row-']");
-        let targetIdx = -1;
+        const items = document.querySelectorAll(".step-item[id^='step-row-']");
+        let targetIdx = -1, targetRowId = null;
         for (const item of items) {
+            if (!_scopeMatches(item.id)) continue;   // farklı kapsam — sürükleme hedefi olamaz
             const rect = item.getBoundingClientRect();
             if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                targetIdx = parseInt(item.id.replace("step-row-", ""), 10);
+                const parts = item.id.replace("step-row-", "").split("-");
+                targetIdx   = parseInt(parts[parts.length - 1], 10);
+                targetRowId = item.id;
                 break;
             }
         }
         if (targetIdx !== _dragTargetIdx) {
             _dragTargetIdx = targetIdx;
             document.querySelectorAll(".step-item").forEach(el => el.classList.remove("drag-over"));
-            if (targetIdx >= 0 && targetIdx !== _dragSrcIdx) {
-                const row = document.getElementById(`step-row-${targetIdx}`);
+            if (targetIdx >= 0 && targetIdx !== _dragSrcIdx && targetRowId) {
+                const row = document.getElementById(targetRowId);
                 if (row) row.classList.add("drag-over");
             }
         }
@@ -1888,44 +1914,67 @@
             stepDragEnd();
             return;
         }
-        const moved = steps.splice(_dragSrcIdx, 1)[0];
-        steps.splice(_dragTargetIdx, 0, moved);
+        const arr = _dragScope ? steps[_dragScope.parentIdx][_dragScope.branch + "_steps"] : steps;
+        const moved = arr.splice(_dragSrcIdx, 1)[0];
+        arr.splice(_dragTargetIdx, 0, moved);
         stepDragEnd();
         renderStepList();
         updateGenerateBtn();
     };
 
-    window.updateStepContent = function(idx, value) {
-        if (steps[idx]) steps[idx].content = value;
+    window.updateStepContent = function(idx, a, b, c) {
+        // Eski çağrı: updateStepContent(idx, value) → arguments.length === 2
+        // Yeni çağrı: updateStepContent(idx, branch, bIdx, value) → arguments.length === 4
+        let branch, bIdx, value;
+        if (arguments.length <= 2) { value = a; }
+        else { branch = a; bIdx = b; value = c; }
+        const arr = _container(idx, branch);
+        const target = branch ? arr[bIdx] : arr[idx];
+        if (target) target.content = value;
         updateGenerateBtn();
     };
 
-    window.updateStepAction = function(idx, value) {
-        if (steps[idx]) steps[idx].action = value;
+    window.updateStepAction = function(idx, a, b, c) {
+        let branch, bIdx, value;
+        if (arguments.length <= 2) { value = a; }
+        else { branch = a; bIdx = b; value = c; }
+        const arr = _container(idx, branch);
+        const target = branch ? arr[bIdx] : arr[idx];
+        if (target) target.action = value;
     };
 
-    window.updateStepField = function(idx, field, value) {
-        if (steps[idx]) steps[idx][field] = value;
+    window.updateStepField = function(idx, a, b, c, d) {
+        // Eski çağrı: updateStepField(idx, field, value) → arguments.length === 3
+        // Yeni çağrı: updateStepField(idx, branch, bIdx, field, value) → arguments.length === 5
+        let branch, bIdx, field, value;
+        if (arguments.length <= 3) { field = a; value = b; }
+        else { branch = a; bIdx = b; field = c; value = d; }
+        const arr = _container(idx, branch);
+        const target = branch ? arr[bIdx] : arr[idx];
+        if (target) target[field] = value;
         updateGenerateBtn();
     };
 
-    window.addSqlStep = function() {
-        steps.push({ type: "sql", content: "", b64: "", action: "query_print",
+    window.addSqlStep = function(parentIdx, branch) {
+        const arr = _container(parentIdx, branch);
+        arr.push({ type: "sql", content: "", b64: "", action: "query_print",
             db_connection: "", sql_query: "", var_name: "", status: null });
         renderStepList();
         updateGenerateBtn();
     };
 
-    window.addApiStep = function() {
-        steps.push({ type: "api", content: "", b64: "", action: "print",
+    window.addApiStep = function(parentIdx, branch) {
+        const arr = _container(parentIdx, branch);
+        arr.push({ type: "api", content: "", b64: "", action: "print",
             api_url: "", api_method: "GET", api_headers: "", api_body: "",
             json_field: "", var_name: "", status: null });
         renderStepList();
         updateGenerateBtn();
     };
 
-    window.addCommentStep = function() {
-        steps.push({ type: "comment", content: "", status: null });
+    window.addCommentStep = function(parentIdx, branch) {
+        const arr = _container(parentIdx, branch);
+        arr.push({ type: "comment", content: "", status: null });
         renderStepList();
         updateGenerateBtn();
     };
@@ -2661,30 +2710,48 @@
 
     function _stepToApiItem(s) {
         return {
-            type:          s.type,
-            disabled:      !!s.disabled,
-            content:       s.content,
-            image_b64:     s.b64          || "",
-            action:        s.action       || "click",
-            db_connection: s.db_connection || "",
-            sql_query:     s.sql_query    || "",
-            api_url:       s.api_url      || "",
-            api_method:    s.api_method   || "GET",
-            api_headers:   s.api_headers  || "",
-            api_body:      s.api_body     || "",
-            var_name:      s.var_name     || "",
-            json_field:    s.json_field   || "",
-            click_x:       (s.click_x >= 0) ? s.click_x : -1,
-            click_y:       (s.click_y >= 0) ? s.click_y : -1,
-            drag_x:        (s.drag_x  >= 0) ? s.drag_x  : -1,
-            drag_y:        (s.drag_y  >= 0) ? s.drag_y  : -1,
+            type:           s.type,
+            disabled:       !!s.disabled,
+            content:        s.content,
+            image_b64:      s.b64          || "",
+            action:         s.action       || "click",
+            db_connection:  s.db_connection || "",
+            sql_query:      s.sql_query    || "",
+            api_url:        s.api_url      || "",
+            api_method:     s.api_method   || "GET",
+            api_headers:    s.api_headers  || "",
+            api_body:       s.api_body     || "",
+            var_name:       s.var_name     || "",
+            json_field:     s.json_field   || "",
+            click_x:        (s.click_x >= 0) ? s.click_x : -1,
+            click_y:        (s.click_y >= 0) ? s.click_y : -1,
+            drag_x:         (s.drag_x  >= 0) ? s.drag_x  : -1,
+            drag_y:         (s.drag_y  >= 0) ? s.drag_y  : -1,
+            condition_type: s.condition_type || "",
+            compare_var:    s.compare_var    || "",
+            compare_op:     s.compare_op     || "",
+            compare_value:  s.compare_value  || "",
+            then_steps:     (s.then_steps || []).map(_stepToApiItem),
+            else_steps:     (s.else_steps || []).map(_stepToApiItem),
         };
+    }
+
+    function _flattenTextContent(list) {
+        let out = [];
+        for (const s of list) {
+            if (s.type === "text") out.push(s.content);
+            else if (s.type === "condition") {
+                out = out.concat(_flattenTextContent(s.then_steps || []));
+                out = out.concat(_flattenTextContent(s.else_steps || []));
+            }
+        }
+        return out;
     }
 
     function buildPayload() {
         const stepsList = steps.map(_stepToApiItem);
-        // test_case geriye uyumluluk için (mobile fallback)
-        const testCase = steps.filter(s => s.type === "text").map(s => s.content).join("\n");
+        // test_case geriye uyumluluk için (mobile fallback) — condition dallarındaki metin adımları da dahil
+        const testCase = _flattenTextContent(steps).join("\n");
 
         const base = { test_case: testCase, steps_list: stepsList, platform: selectedPlatform };
         if (selectedPlatform === "web") {
