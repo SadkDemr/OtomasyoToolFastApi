@@ -3154,6 +3154,21 @@ def _indent_code(code: str, prefix: str = "    ") -> str:
     return "\n".join((prefix + line if line.strip() else "") for line in code.splitlines())
 
 
+def _ensure_block_body(code: str, indent: str) -> str:
+    """if/else gövdesi olarak kullanılacak kodun GEÇERLİ bir Python bloğu olmasını garanti eder.
+    Boşsa ya da (dal sadece 'yorum' tipi adımlardan oluştuğunda olduğu gibi) sadece '#' ile
+    başlayan/boş satırlardan oluşuyorsa — yorumlar Python grameri için 'statement' sayılmaz ve
+    tek başlarına bir blok gövdesi oluşturamaz — sona bir 'pass' eklenir."""
+    has_executable_line = any(
+        line.strip() and not line.strip().startswith("#")
+        for line in code.splitlines()
+    )
+    if has_executable_line:
+        return code
+    pass_line = f"{indent}    pass"
+    return f"{code}\n{pass_line}" if code else pass_line
+
+
 def _condition_expr(item: "StepItem", platform: str, idx: int) -> str:
     """Bir condition StepItem'ı, raise etmeyen bool döndüren tek satırlık bir Python ifadesine çevirir."""
     ctype = item.condition_type
@@ -3203,8 +3218,8 @@ def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: s
                 item.then_steps, platform, counter, rule_fn, indent + "    ")
             else_code, else_lines, else_unrec = _steps_to_code(
                 item.else_steps, platform, counter, rule_fn, indent + "    ")
-            then_code = then_code or f"{indent}    pass"
-            else_code = else_code or f"{indent}    pass"
+            then_code = _ensure_block_body(then_code, indent)
+            else_code = _ensure_block_body(else_code, indent)
             label = item.content or f"Koşul {idx+1}"
             block = (
                 f"{indent}_check_stop()\n"
@@ -3311,8 +3326,8 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                 continue
             if item.type == "condition":
                 cond_expr = _condition_expr(item, req.platform, idx)
-                then_code = _fill_llm(item.then_steps, counter2, indent + "    ", report_out) or f"{indent}    pass"
-                else_code = _fill_llm(item.else_steps, counter2, indent + "    ", report_out) or f"{indent}    pass"
+                then_code = _ensure_block_body(_fill_llm(item.then_steps, counter2, indent + "    ", report_out), indent)
+                else_code = _ensure_block_body(_fill_llm(item.else_steps, counter2, indent + "    ", report_out), indent)
                 label = item.content or f"Koşul {idx+1}"
                 block = (
                     f"{indent}_check_stop()\n"
