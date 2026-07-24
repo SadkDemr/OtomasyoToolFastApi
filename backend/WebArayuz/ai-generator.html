@@ -1118,6 +1118,10 @@
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                             Yorum
                         </button>
+                        <button class="btn-add-step condition-btn" onclick="addConditionStep()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-6 6-4-4-4 4"/></svg>
+                            If/Else
+                        </button>
                     </div>
 
                     <!-- Oturum Kontrolleri (Web/Mobil) -->
@@ -1656,13 +1660,22 @@
         syncSessionStatus();
     };
 
-    function updateGenerateBtn() {
-        const hasValidStep = steps.some(s =>
-            (s.type === "text"  && s.content.trim().length > 0) ||
-            (s.type === "image" && s.b64.length > 0) ||
-            (s.type === "sql"   && (s.sql_query  || "").trim().length > 0) ||
-            (s.type === "api"   && (s.api_url    || "").trim().length > 0)
+    function _isValidLeafStep(s) {
+        return (s.type === "text"  && s.content.trim().length > 0) ||
+               (s.type === "image" && (s.b64 || "").length > 0) ||
+               (s.type === "sql"   && (s.sql_query  || "").trim().length > 0) ||
+               (s.type === "api"   && (s.api_url    || "").trim().length > 0);
+    }
+    function _hasValidStepIn(list) {
+        return list.some(s =>
+            _isValidLeafStep(s) ||
+            (s.type === "condition" && (
+                _hasValidStepIn(s.then_steps || []) || _hasValidStepIn(s.else_steps || [])
+            ))
         );
+    }
+    function updateGenerateBtn() {
+        const hasValidStep = _hasValidStepIn(steps);
         document.getElementById("btnGenerate").disabled = !(hasValidStep && selectedPlatform) || isGenerating;
     }
 
@@ -1917,6 +1930,18 @@
         updateGenerateBtn();
     };
 
+    window.addConditionStep = function() {
+        steps.push({
+            type: "condition", condition_type: "image_exists",
+            content: "", b64: "",
+            compare_var: "", compare_op: "eq", compare_value: "",
+            then_steps: [], else_steps: [],
+            status: null,
+        });
+        renderStepList();
+        updateGenerateBtn();
+    };
+
     window.retakeImage = function(idx) {
         _captureTargetStepIdx = idx;
         startImageCapture(idx);
@@ -1951,16 +1976,29 @@
         list.innerHTML = steps.map((s, i) => renderStepRow(s, i)).join("");
     }
 
-    function renderStepRow(s, i) {
+    function renderBranchList(parentIdx, branch, list) {
+        if (!list.length) {
+            return '<div class="step-branch-empty">Adım yok.</div>';
+        }
+        return list.map((s, bIdx) => renderStepRow(s, parentIdx, branch, bIdx)).join("");
+    }
+
+    function renderStepRow(s, i, branch, bIdx) {
+        // Üst seviye adım: branch=undefined → _a = "${i}" (eski, tek-argümanlı çağrı şekli).
+        // Dal içi adım: branch="then"|"else" → _a = "${i}, '${branch}', ${bIdx}".
+        const _a = branch !== undefined ? `${i}, '${branch}', ${bIdx}` : `${i}`;
+        const _rowId = branch !== undefined ? `step-row-${i}-${branch}-${bIdx}` : `step-row-${i}`;
+
         const statusClass = s.status || "";
         const statusIcon  = s.status === "running" ? "⟳" : s.status === "done" ? "✓" : s.status === "fail" ? "✕" : "·";
 
         const TYPE_META = {
-            text:    { label: "Metin",  cls: "text" },
-            image:   { label: "Görsel", cls: "image" },
-            sql:     { label: "SQL",    cls: "sql" },
-            api:     { label: "API",    cls: "api" },
-            comment: { label: "Yorum",  cls: "comment" },
+            text:      { label: "Metin",   cls: "text" },
+            image:     { label: "Görsel",  cls: "image" },
+            sql:       { label: "SQL",     cls: "sql" },
+            api:       { label: "API",     cls: "api" },
+            comment:   { label: "Yorum",   cls: "comment" },
+            condition: { label: "If/Else", cls: "condition" },
         };
         const meta    = TYPE_META[s.type] || TYPE_META.text;
         let extraClass = "";
@@ -1968,11 +2006,11 @@
 
         if (s.type === "text") {
             contentHtml = `<input class="step-content-input" type="text" value="${escHtml(s.content)}"
-                placeholder='Adım açıklaması...  (değişken: {{ad}} yaz / "hedef" oku {{ad}})' oninput="updateStepContent(${i}, this.value)">`;
+                placeholder='Adım açıklaması...  (değişken: {{ad}} yaz / "hedef" oku {{ad}})' oninput="updateStepContent(${_a}, this.value)">`;
 
         } else if (s.type === "comment") {
             contentHtml = `<input class="step-content-input" type="text" style="font-style:italic; opacity:0.75;"
-                value="${escHtml(s.content)}" placeholder="Yorum metni..." oninput="updateStepContent(${i}, this.value)">`;
+                value="${escHtml(s.content)}" placeholder="Yorum metni..." oninput="updateStepContent(${_a}, this.value)">`;
 
         } else if (s.type === "image") {
             const imgActionOpts = [
@@ -1982,50 +2020,50 @@
                 { v: "assert",       l: "Görünmeli" },
                 { v: "drag",         l: "🖱️ Sürükle" },
             ];
-            const imgSel = `<select class="step-action-select" onchange="updateStepAction(${i}, this.value)">
+            const imgSel = `<select class="step-action-select" onchange="updateStepAction(${_a}, this.value)">
                 ${imgActionOpts.map(o => `<option value="${o.v}"${(s.action||"click") === o.v ? " selected" : ""}>${o.l}</option>`).join("")}
             </select>`;
             if (s.b64) {
                 contentHtml = `
                     <img class="step-img-thumb" src="data:image/png;base64,${s.b64}"
-                        onclick="retakeImage(${i})" title="Tıkla → Farklı görsel yükle">
+                        onclick="previewStepImage(${_a})" title="Tıkla → Büyüt">
                     ${imgSel}
                     <input class="step-content-input" type="text" value="${escHtml(s.content)}"
-                        placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${i}, this.value)"
+                        placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${_a}, this.value)"
                         style="flex:1; min-width:80px;">`;
             } else {
-                contentHtml = `<span class="step-img-placeholder" onclick="retakeImage(${i})">📁 Tıkla → Görsel Yükle</span>`;
+                contentHtml = `<span class="step-img-placeholder" onclick="retakeImage(${_a})">📁 Tıkla → Görsel Yükle</span>`;
             }
 
         } else if (s.type === "sql") {
             extraClass = " extended";
-            const sqlActSel = `<select class="step-action-select" onchange="updateStepAction(${i}, this.value)">
+            const sqlActSel = `<select class="step-action-select" onchange="updateStepAction(${_a}, this.value)">
                 <option value="query_print"${(s.action||"query_print") === "query_print" ? " selected" : ""}>Sonuç Yazdır</option>
                 <option value="execute"${s.action === "execute" ? " selected" : ""}>Sadece Çalıştır</option>
             </select>`;
             contentHtml = `<div class="step-ext-body">
                 <div class="step-ext-row">
-                    <input class="step-content-input" type="text" value="${escHtml(s.content)}" placeholder="Açıklama" oninput="updateStepContent(${i}, this.value)" style="flex:1">
+                    <input class="step-content-input" type="text" value="${escHtml(s.content)}" placeholder="Açıklama" oninput="updateStepContent(${_a}, this.value)" style="flex:1">
                     ${sqlActSel}
                     <input class="step-ext-input" type="text" value="${escHtml(s.var_name||'')}"
-                        placeholder="Değişken adı (ör: agirlik)" oninput="updateStepField(${i}, 'var_name', this.value)"
+                        placeholder="Değişken adı (ör: agirlik)" oninput="updateStepField(${_a}, 'var_name', this.value)"
                         style="max-width:140px;" title="Dolu ise 1. satır 1. sütun → _VARS['ad'] kaydedilir. Metin adımında: {{ad}} yaz">
                 </div>
                 <input class="step-ext-input" type="text" value="${escHtml(s.db_connection||'')}"
                     placeholder="Bağlantı: sqlite:///dosya.db  veya  DRIVER={ODBC Driver 17 for SQL Server};SERVER=...;DATABASE=...;Trusted_Connection=yes"
-                    oninput="updateStepField(${i}, 'db_connection', this.value)">
+                    oninput="updateStepField(${_a}, 'db_connection', this.value)">
                 <textarea class="step-ext-textarea" placeholder="SQL sorgusu..."
                     title="İçinde {{değişken}} kullanabilirsiniz — önceki adımlarda kaydedilen değerlerle değiştirilir."
-                    oninput="updateStepField(${i}, 'sql_query', this.value)">${escText(s.sql_query||'')}</textarea>
+                    oninput="updateStepField(${_a}, 'sql_query', this.value)">${escText(s.sql_query||'')}</textarea>
             </div>`;
 
         } else if (s.type === "api") {
             extraClass = " extended";
             const methods = ["GET","POST","PUT","DELETE","PATCH"];
-            const methodSel = `<select class="step-action-select" onchange="updateStepField(${i}, 'api_method', this.value)" style="font-weight:600; color:var(--accent-primary);">
+            const methodSel = `<select class="step-action-select" onchange="updateStepField(${_a}, 'api_method', this.value)" style="font-weight:600; color:var(--accent-primary);">
                 ${methods.map(m => `<option value="${m}"${(s.api_method||"GET") === m ? " selected" : ""}>${m}</option>`).join("")}
             </select>`;
-            const apiActSel = `<select class="step-action-select" onchange="updateStepAction(${i}, this.value)">
+            const apiActSel = `<select class="step-action-select" onchange="updateStepAction(${_a}, this.value)">
                 <option value="print"${(s.action||"print") === "print" ? " selected" : ""}>Yanıt Yazdır</option>
                 <option value="execute"${s.action === "execute" ? " selected" : ""}>Sadece Çalıştır</option>
                 <option value="store"${s.action === "store" ? " selected" : ""}>Değişkene Kaydet</option>
@@ -2035,38 +2073,99 @@
                     ${methodSel}
                     <input class="step-content-input" type="text" value="${escHtml(s.api_url||'')}"
                         placeholder="https://api.example.com/endpoint"
-                        oninput="updateStepField(${i}, 'api_url', this.value)"
+                        oninput="updateStepField(${_a}, 'api_url', this.value)"
                         style="flex:1; font-family:'JetBrains Mono',monospace; font-size:0.8rem">
                     ${apiActSel}
                 </div>
                 <div class="step-ext-row">
                     <input class="step-ext-input" type="text" value="${escHtml(s.json_field||'')}"
                         placeholder="JSON alanı (ör: id  veya  user.name)"
-                        oninput="updateStepField(${i}, 'json_field', this.value)"
+                        oninput="updateStepField(${_a}, 'json_field', this.value)"
                         style="flex:1;" title="Yanıttan çekilecek alan (nokta ile iç içe: user.address.city)">
                     <input class="step-ext-input" type="text" value="${escHtml(s.var_name||'')}"
                         placeholder="Değişken adı (ör: postBasligi)"
-                        oninput="updateStepField(${i}, 'var_name', this.value)"
+                        oninput="updateStepField(${_a}, 'var_name', this.value)"
                         style="flex:1;" title="Dolu ise çekilen değer _VARS['ad']'a kaydedilir. Metin adımında: {{ad}} yaz">
                 </div>
                 <input class="step-ext-input" type="text" value="${escHtml(s.content||'')}"
-                    placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${i}, this.value)">
+                    placeholder="Açıklama (opsiyonel)" oninput="updateStepContent(${_a}, this.value)">
                 <textarea class="step-ext-textarea"
                     placeholder='Headers: {"Authorization": "Bearer token"} — opsiyonel'
-                    oninput="updateStepField(${i}, 'api_headers', this.value)">${escText(s.api_headers||'')}</textarea>
+                    oninput="updateStepField(${_a}, 'api_headers', this.value)">${escText(s.api_headers||'')}</textarea>
                 <textarea class="step-ext-textarea"
                     placeholder='Body: {"key": "value"} — POST / PUT / PATCH için'
-                    oninput="updateStepField(${i}, 'api_body', this.value)">${escText(s.api_body||'')}</textarea>
+                    oninput="updateStepField(${_a}, 'api_body', this.value)">${escText(s.api_body||'')}</textarea>
+            </div>`;
+
+        } else if (s.type === "condition") {
+            extraClass = " extended";
+            const condOpts = [
+                { v: "image_exists",     l: "🖼️ Görsel Var mı" },
+                { v: "element_exists",   l: "🔎 Element/Metin Var mı" },
+                { v: "variable_compare", l: "🔢 Değişken Karşılaştır" },
+            ];
+            const condSel = `<select class="step-action-select" onchange="updateStepField(${_a}, 'condition_type', this.value)">
+                ${condOpts.map(o => `<option value="${o.v}"${(s.condition_type||"image_exists") === o.v ? " selected" : ""}>${o.l}</option>`).join("")}
+            </select>`;
+
+            let condFieldsHtml = "";
+            if (s.condition_type === "element_exists") {
+                condFieldsHtml = `<input class="step-content-input" type="text" value="${escHtml(s.content)}"
+                    placeholder='Aranacak metin/element ipucu' oninput="updateStepContent(${_a}, this.value)" style="flex:1">`;
+            } else if (s.condition_type === "variable_compare") {
+                const opSel = `<select class="step-action-select" onchange="updateStepField(${_a}, 'compare_op', this.value)">
+                    <option value="eq"${(s.compare_op||"eq") === "eq" ? " selected" : ""}>Eşit</option>
+                    <option value="neq"${s.compare_op === "neq" ? " selected" : ""}>Eşit Değil</option>
+                    <option value="contains"${s.compare_op === "contains" ? " selected" : ""}>İçerir</option>
+                </select>`;
+                condFieldsHtml = `
+                    <input class="step-ext-input" type="text" value="${escHtml(s.compare_var||'')}"
+                        placeholder="{{degisken}}" oninput="updateStepField(${_a}, 'compare_var', this.value)" style="max-width:140px;">
+                    ${opSel}
+                    <input class="step-ext-input" type="text" value="${escHtml(s.compare_value||'')}"
+                        placeholder="değer" oninput="updateStepField(${_a}, 'compare_value', this.value)" style="max-width:140px;">`;
+            } else {
+                // image_exists (varsayılan)
+                condFieldsHtml = s.b64
+                    ? `<img class="step-img-thumb" src="data:image/png;base64,${s.b64}" onclick="previewStepImage(${_a})" title="Tıkla → Büyüt">`
+                    : `<span class="step-img-placeholder" onclick="retakeImage(${_a})">📁 Tıkla → Görsel Yükle</span>`;
+            }
+
+            contentHtml = `<div class="step-ext-body">
+                <div class="step-ext-row">
+                    ${condSel}
+                    ${condFieldsHtml}
+                </div>
+                <div class="step-branch">
+                    <div class="step-branch-label">✅ Eğer</div>
+                    <div class="step-branch-list" id="branch-${i}-then" ondragover="stepListDragOver(event)" ondrop="stepListDrop(event)">${renderBranchList(i, "then", s.then_steps || [])}</div>
+                    <div class="step-branch-add-row">
+                        <button class="btn-reset" onclick="addTextStep(${i}, 'then')">+ Metin</button>
+                        <button class="btn-reset" onclick="addImageStep(${i}, 'then')">+ Görsel</button>
+                        <button class="btn-reset" onclick="addSqlStep(${i}, 'then')">+ SQL</button>
+                        <button class="btn-reset" onclick="addApiStep(${i}, 'then')">+ API</button>
+                    </div>
+                </div>
+                <div class="step-branch">
+                    <div class="step-branch-label">❌ Değilse</div>
+                    <div class="step-branch-list" id="branch-${i}-else" ondragover="stepListDragOver(event)" ondrop="stepListDrop(event)">${renderBranchList(i, "else", s.else_steps || [])}</div>
+                    <div class="step-branch-add-row">
+                        <button class="btn-reset" onclick="addTextStep(${i}, 'else')">+ Metin</button>
+                        <button class="btn-reset" onclick="addImageStep(${i}, 'else')">+ Görsel</button>
+                        <button class="btn-reset" onclick="addSqlStep(${i}, 'else')">+ SQL</button>
+                        <button class="btn-reset" onclick="addApiStep(${i}, 'else')">+ API</button>
+                    </div>
+                </div>
             </div>`;
         }
 
         const disabledClass = s.disabled ? " disabled" : "";
-        const runBtn = (s.type === "comment" || s.disabled)
+        const runBtn = (s.type === "comment" || s.type === "condition" || s.disabled)
             ? ""
-            : `<button class="step-run-btn" onclick="runSingleStep(${i})" title="Sadece bu adımı çalıştır">▶</button>`;
-        return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}${disabledClass}" id="step-row-${i}"
+            : `<button class="step-run-btn" onclick="runSingleStep(${_a})" title="Sadece bu adımı çalıştır">▶</button>`;
+        return `<div class="step-item${extraClass}${statusClass ? " " + statusClass : ""}${disabledClass}" id="${_rowId}"
             draggable="true"
-            ondragstart="stepDragStart(event, ${i})"
+            ondragstart="stepDragStart(event, ${_a})"
             ondragend="stepDragEnd()">
             <span class="step-drag-handle" title="Sürükle">⠿</span>
             <span class="step-num">${i + 1}</span>
@@ -2074,9 +2173,9 @@
             ${contentHtml}
             <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
             ${runBtn}
-            <button class="step-toggle-btn" onclick="toggleStepDisabled(${i})"
+            <button class="step-toggle-btn" onclick="toggleStepDisabled(${_a})"
                 title="${s.disabled ? 'Etkinleştir' : 'Devre dışı bırak (yorum satırına al)'}">${s.disabled ? "▶" : "⏸"}</button>
-            <button class="step-del-btn" onclick="deleteStep(${i})" title="Sil">✕</button>
+            <button class="step-del-btn" onclick="deleteStep(${_a})" title="Sil">✕</button>
         </div>`;
     }
 
