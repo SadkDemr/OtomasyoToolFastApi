@@ -15,6 +15,10 @@ from pydantic import BaseModel
 from routers.auth import get_current_user
 from models.db_models import User
 from services.bdd_generator_service import generate_bdd_java, parse_java_custom_steps
+from services.appium_codegen_service import (
+    build_ios_template,
+    build_android_template,
+)
 
 router = APIRouter(prefix="/api/bdd-gen", tags=["bdd-generator"])
 
@@ -42,126 +46,9 @@ class BDDGenerateRequest(BaseModel):
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ŞABLONLAR
+# (appium_codegen_service.build_ios_template / build_android_template — Java
+#  Generator ile paylaşılıyor)
 # ══════════════════════════════════════════════════════════════════════════════
-
-def _safe_class(name: str) -> str:
-    return re.sub(r'[^a-zA-Z0-9_]', '', name or "BDDGeneratedTest") or "BDDGeneratedTest"
-
-
-def _build_ios_template(req: BDDGenerateRequest, steps_code: str) -> str:
-    bundle_id = req.bundle_id        or ""
-    udid      = req.udid             or ""
-    device    = req.device_name      or "iPhone Device"
-    version   = req.platform_version or "18"
-    appium    = req.appium_url       or "http://localhost:4723"
-    no_reset  = "true" if req.no_reset else "false"
-    cls_name  = _safe_class(req.class_name)
-
-    udid_line   = f'\ncapabilities.setCapability("udid", "{udid}");'          if udid      else ""
-    bundle_line = f'\ncapabilities.setCapability("bundleId", "{bundle_id}");' if bundle_id else ""
-    restart     = (
-        f'driver.terminateApp("{bundle_id}");\n    driver.activateApp("{bundle_id}");'
-        if bundle_id else "// bundle_id girilmedi"
-    )
-    terminate = f'driver.terminateApp("{bundle_id}");' if bundle_id else ""
-
-    return f"""\
-import io.appium.java_client.AppiumBy;
-import io.appium.java_client.ios.IOSDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.remote.DesiredCapabilities;
-import java.net.URL;
-import java.time.Duration;
-import java.util.Map;
-import java.util.HashMap;
-
-// ── CONFIG ────────────────────────────────────────────────────────
-DesiredCapabilities capabilities = new DesiredCapabilities();
-capabilities.setCapability("platformName", "iOS");
-capabilities.setCapability("platformVersion", "{version}");
-capabilities.setCapability("deviceName", "{device}");{udid_line}
-capabilities.setCapability("automationName", "XCUITest");{bundle_line}
-capabilities.setCapability("noReset", {no_reset});
-// ── CONFIG END ────────────────────────────────────────────────────
-
-IOSDriver driver = null;
-
-try {{
-    driver = new IOSDriver(new URL("{appium}"), capabilities);
-    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(5));
-
-    {restart}
-    Thread.sleep(2000);
-
-// ── TEST ADIMLARI ─────────────────────────────────────────────────
-{steps_code}
-
-// ── TEST SONU ─────────────────────────────────────────────────────
-}} catch (Exception e) {{
-    throw e;
-}} finally {{
-    if (driver != null) {{
-        try {{ {terminate} }} catch (Exception ignored) {{}}
-        driver.quit();
-    }}
-}}
-"""
-
-
-def _build_android_template(req: BDDGenerateRequest, steps_code: str) -> str:
-    pkg      = req.app_package      or ""
-    act      = req.app_activity     or ""
-    udid     = req.udid             or ""
-    device   = req.device_name      or "Android Device"
-    version  = req.platform_version or "15"
-    appium   = req.appium_url       or "http://localhost:4723"
-    no_reset = "true" if req.no_reset else "false"
-    cls_name = _safe_class(req.class_name)
-
-    udid_line = f'\ncapabilities.setCapability("udid", "{udid}");'         if udid else ""
-    act_line  = f'\ncapabilities.setCapability("appActivity", "{act}");'   if act  else ""
-    pkg_line  = f'\ncapabilities.setCapability("appPackage", "{pkg}");'    if pkg  else ""
-    restart   = (
-        f'driver.terminateApp("{pkg}");\ndriver.activateApp("{pkg}");'
-        if pkg else "// app_package girilmedi"
-    )
-    terminate = f'driver.terminateApp("{pkg}");' if pkg else ""
-
-    return f"""\
-import io.appium.java_client.android.AndroidDriver;
-import io.appium.java_client.android.nativekey.AndroidKey;
-import io.appium.java_client.android.nativekey.KeyEvent;
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.remote.DesiredCapabilities;
-import org.junit.Assert.*;
-import java.net.URL;
-import java.time.Duration;
-import java.util.Map;
-import com.google.common.collect.ImmutableMap;
-
-// ── CONFIG ────────────────────────────────────────────────────────
-DesiredCapabilities capabilities = new DesiredCapabilities();
-capabilities.setCapability("platformName", "Android");
-capabilities.setCapability("platformVersion", "{version}");
-capabilities.setCapability("deviceName", "{device}");{udid_line}
-capabilities.setCapability("automationName", "UiAutomator2");{pkg_line}{act_line}
-capabilities.setCapability("appium:noReset", {no_reset});
-// ── CONFIG END ────────────────────────────────────────────────────
-
-AndroidDriver driver = new AndroidDriver(new URL("{appium}"), capabilities);
-driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
-
-{restart}
-Thread.sleep(2000);
-
-// ── TEST ADIMLARI ─────────────────────────────────────────────────
-{steps_code}
-
-// ── TEST SONU ─────────────────────────────────────────────────────
-{terminate}
-driver.quit();
-"""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -269,9 +156,26 @@ async def generate_bdd(
 
     platform = (req.platform or "ios").lower()
     if platform == "android":
-        final_code = _build_android_template(req, result["steps_code"])
+        final_code = build_android_template(
+            steps_code=result["steps_code"],
+            app_package=req.app_package,
+            app_activity=req.app_activity,
+            udid=req.udid,
+            device_name=req.device_name,
+            platform_version=req.platform_version,
+            appium_url=req.appium_url,
+            no_reset=req.no_reset,
+        )
     else:
-        final_code = _build_ios_template(req, result["steps_code"])
+        final_code = build_ios_template(
+            steps_code=result["steps_code"],
+            bundle_id=req.bundle_id,
+            udid=req.udid,
+            device_name=req.device_name,
+            platform_version=req.platform_version,
+            appium_url=req.appium_url,
+            no_reset=req.no_reset,
+        )
 
     return {
         "success":            True,

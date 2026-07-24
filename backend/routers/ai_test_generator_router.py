@@ -3498,6 +3498,106 @@ async def parse_excel_ado(
         raise HTTPException(400, f"Excel parse hatası: {str(e)}")
 
 
+def _normalize_ado_cell(text: str) -> str:
+    """
+    Azure DevOps export'unda tırnaklar bazen ikileşmiş çıkar (standart CSV kaçışı
+    ya da Excel apostrof davranışı): "''X''" / 'X'' gibi. Fazladan tekrar eden
+    tırnak karakterlerini tekile indirger.
+    """
+    if not text:
+        return text
+    t = text.replace("\x00", "")
+    t = re.sub(r"'{2,}", "'", t)
+    t = re.sub(r'"{2,}', '"', t)
+    return t.strip()
+
+
+@router.post("/parse-csv-ado")
+async def parse_csv_ado(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Azure DevOps CSV export parse eder (parse_excel_ado'nun CSV eşleniği).
+    Bir CSV dosyası birden fazla Test Case içerebilir — her biri title+steps
+    olarak gruplanır.
+    Döndürür: { test_cases: [{ title, steps: [str] }] }
+    """
+    contents = await file.read()
+    fname = (file.filename or "").lower()
+    if not fname.endswith(".csv"):
+        raise HTTPException(400, "Sadece .csv dosyaları desteklenir.")
+
+    try:
+        import io as _io
+        import csv as _csv
+
+        decoded = None
+        for enc in ("utf-8-sig", "utf-8", "cp1254", "latin-1"):
+            try:
+                decoded = contents.decode(enc)
+                break
+            except Exception:
+                continue
+        if decoded is None:
+            decoded = contents.decode("utf-8", errors="replace")
+
+        rows = list(_csv.reader(_io.StringIO(decoded)))
+        if not rows:
+            raise HTTPException(400, "CSV dosyası boş.")
+
+        header_row_idx = None
+        col_map = {}
+        for ri, row in enumerate(rows):
+            cells = [c.strip() if c is not None else "" for c in row]
+            if "Work Item Type" in cells and "Step Action" in cells:
+                header_row_idx = ri
+                col_map = {v: i for i, v in enumerate(cells) if v}
+                break
+
+        if header_row_idx is None:
+            raise HTTPException(400, "ADO başlık satırı bulunamadı.")
+
+        ci_type     = col_map.get("Work Item Type", 1)
+        ci_title    = col_map.get("Title", 2)
+        ci_step     = col_map.get("Test Step", 3)
+        ci_action   = col_map.get("Step Action", 4)
+        ci_expected = col_map.get("Step Expected", 5)
+
+        def _cell(row, i):
+            return _normalize_ado_cell(row[i]) if len(row) > i and row[i] is not None else ""
+
+        test_cases = []
+        current_tc = None
+
+        for row in rows[header_row_idx + 1:]:
+            wtype  = _cell(row, ci_type)
+            title  = _cell(row, ci_title)
+            action = _cell(row, ci_action)
+            exp    = _cell(row, ci_expected)
+            has_step = len(row) > ci_step and str(row[ci_step]).strip() != ""
+
+            if wtype == "Test Case" and title:
+                current_tc = {"title": title, "steps": []}
+                test_cases.append(current_tc)
+            elif has_step and current_tc is not None:
+                if action:
+                    a = action.rstrip(".")
+                    current_tc["steps"].append(a + ".")
+                if exp:
+                    current_tc["steps"].extend(_ado_parse_expected(exp))
+
+        if not test_cases:
+            raise HTTPException(400, "CSV'de test case bulunamadı.")
+
+        return {"test_cases": test_cases}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"CSV parse hatası: {str(e)}")
+
+
 @router.get("/status")
 async def ollama_status():
     try:

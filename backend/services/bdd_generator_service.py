@@ -9,47 +9,11 @@ import re
 import textwrap
 from typing import Optional
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# BÖLÜM 1: XPATH DEĞER ÇIKARICI
-# ══════════════════════════════════════════════════════════════════════════════
-
-def extract_xpath_value(xpath: str) -> Optional[str]:
-    """
-    XPath içinden attribute değerini çıkarır.
-    Öncelik: @name > @label > @value > @text
-
-    "//XCUIElementTypeTextField[@name='textField']"        → "textField"
-    "(//XCUIElementTypeTextField[@name='textField'])[1]"   → "textField"
-    "//XCUIElementTypeButton[@value='Kullanıcı ayarları']" → "Kullanıcı ayarları"
-    """
-    clean = re.sub(r'^\((.+)\)\[\d+\]$', r'\1', xpath.strip())
-
-    for attr in ('name', 'label', 'value', 'text'):
-        m = re.search(rf"@{attr}='([^']+)'", clean)
-        if m:
-            return m.group(1)
-        m = re.search(rf'@{attr}="([^"]+)"', clean)
-        if m:
-            return m.group(1)
-
-    return None
-
-
-def extract_xpath_index(xpath: str) -> int:
-    """XPath sonundaki index değerini döner. Yoksa default 1."""
-    m = re.search(r'\)\[(\d+)\]$', xpath.strip())
-    return int(m.group(1)) if m else 1
-
-
-def _build_ios_xpath(value: str, index: int = 1) -> str:
-    v = value.replace("'", "\\'")
-    return f"(//*[@name='{v}' or @label='{v}' or @value='{v}'])[{index}]"
-
-
-def _build_android_xpath(value: str, index: int = 1) -> str:
-    v = value.replace("'", "\\'")
-    return f"(//*[@text='{v}' or @content-desc='{v}'])[{index}]"
+from services.appium_codegen_service import (
+    extract_xpath_value,
+    extract_xpath_index,
+    action_to_java as _action_to_java,
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -221,140 +185,8 @@ def classify_step(text: str) -> dict:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # BÖLÜM 4: JAVA SATIR ÜRETİCİ
+# (appium_codegen_service.action_to_java — Java Generator ile paylaşılıyor)
 # ══════════════════════════════════════════════════════════════════════════════
-
-def _je(s: str) -> str:
-    return s.replace('\\', '\\\\').replace('"', '\\"')
-
-
-def _action_to_java(
-    action:      str,
-    xpath_val:   Optional[str],
-    param:       Optional[str],
-    raw_step:    str,
-    platform:    str,
-    full_xpath:  Optional[str] = None,
-    xpath_index: int = 1,
-) -> tuple[list[str], str]:
-    """
-    Returns (java_lines, method)
-    method: "mapped" | "page" | "todo"
-    full_xpath: attribute çıkarılamadığında direkt kullanılacak ham XPath
-    xpath_index: XPath'teki index değeri (yoksa default 1)
-    """
-    is_ios = platform.lower() != "android"
-
-    # ── Page context ─────────────────────────────────────────────────────────
-    if action == "page_context":
-        return ([f'// PAGE: {param or ""}', 'Thread.sleep(500);'], "page")
-
-    # ── Klavye gizle ─────────────────────────────────────────────────────────
-    if action == "hide_keyboard":
-        return ([
-            f'// {raw_step}',
-            'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
-        ], "mapped")
-
-    # ── Ekran görüntüsü ───────────────────────────────────────────────────────
-    if action == "screenshot":
-        return ([
-            f'// {raw_step}',
-            '// File shot = driver.getScreenshotAs(OutputType.FILE);',
-        ], "mapped")
-
-    # ── Wait ─────────────────────────────────────────────────────────────────
-    if action == "wait":
-        return ([], "mapped")
-
-    # ── Scroll / Kaydır ───────────────────────────────────────────────────────
-    if action in ("scroll_down", "scroll_up"):
-        direction = "down" if action == "scroll_down" else "up"
-        if is_ios:
-            code = (f'{{ Map<String, Object> _sc = new HashMap<>();'
-                    f' _sc.put("direction", "{direction}");'
-                    f' driver.executeScript("mobile: scroll", _sc); }}')
-        else:
-            code = f'driver.executeScript("mobile:scroll", ImmutableMap.of("direction", "{direction}"));'
-        return ([f'// {raw_step}', code], "mapped")
-
-    # ── Sola / Sağa swipe ─────────────────────────────────────────────────────
-    if action in ("swipe_left", "swipe_right"):
-        direction = "left" if action == "swipe_left" else "right"
-        if is_ios:
-            code = (f'{{ Map<String, Object> _sw = new HashMap<>();'
-                    f' _sw.put("direction", "{direction}");'
-                    f' driver.executeScript("mobile: swipe", _sw); }}')
-        else:
-            code = f'driver.executeScript("mobile:scroll", ImmutableMap.of("direction", "{direction}"));'
-        return ([f'// {raw_step}', code], "mapped")
-
-    # ── Back ─────────────────────────────────────────────────────────────────
-    if action == "back":
-        if is_ios:
-            code = 'driver.navigate().back();'
-        else:
-            code = 'driver.pressKey(new KeyEvent(AndroidKey.BACK));'
-        return ([f'// {raw_step}', code], "mapped")
-
-    # ── Type (element lookup yok) ─────────────────────────────────────────────
-    if action == "type":
-        value = _je(param or "")
-        if is_ios:
-            type_line = f'driver.switchTo().activeElement().sendKeys("{value}");'
-        else:
-            type_line = f'driver.executeScript("mobile: type", Map.of("text", "{value}"));'
-        return ([
-            f'// {raw_step}',
-            type_line,
-            'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
-        ], "mapped")
-
-    # ── Element görünene kadar bekle (wait kullanılmaz, sade findElement) ───────
-    if action == "wait_for_element":
-        if xpath_val is None and full_xpath is None:
-            return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
-        if xpath_val is not None:
-            uxp = _build_ios_xpath(xpath_val, xpath_index) if is_ios else _build_android_xpath(xpath_val, xpath_index)
-        else:
-            uxp = _je(full_xpath)
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).isDisplayed();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).isDisplayed();'
-        return ([f'// {raw_step}', line], "mapped")
-
-    # ── Element gerektiren aksiyonlar ─────────────────────────────────────────
-    if xpath_val is None and full_xpath is None:
-        return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
-
-    # Attribute değeri varsa index ile XPath üret, yoksa ham XPath'i direkt kullan
-    if xpath_val is not None:
-        uxp = _build_ios_xpath(xpath_val, xpath_index) if is_ios else _build_android_xpath(xpath_val, xpath_index)
-    else:
-        uxp = _je(full_xpath)
-
-    if action == "click":
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).click();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).click();'
-        return ([f'// {raw_step}', line], "mapped")
-
-    if action == "clear":
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).clear();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).clear();'
-        return ([f'// {raw_step}', line], "mapped")
-
-    if action == "assert":
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).isDisplayed();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).isDisplayed();'
-        return ([f'// {raw_step}', line], "mapped")
-
-    return ([f'// TODO: {raw_step}'], "todo")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

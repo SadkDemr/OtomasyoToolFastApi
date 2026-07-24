@@ -574,20 +574,39 @@ Telefon alanına "05001234567" yaz
                 Toast.error("Dosya okunamadı: " + err.message);
             }
         } else if (isCsv) {
-            Toast.info("Dosya parse ediliyor...");
+            Toast.info("CSV parse ediliyor...");
             try {
                 const fd = new FormData();
                 fd.append("file", file);
-                const resp = await fetch(`${_JAVA_API}/ai-gen/parse-file`, {
+                const adoResp = await fetch(`${_JAVA_API}/ai-gen/parse-csv-ado`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${Auth.getToken()}` },
                     body: fd
                 });
-                if (resp.status === 401) { Auth.logout(); return; }
-                if (!resp.ok) { const e = await resp.json(); throw new Error(e.detail || "Parse hatası"); }
-                const data = await resp.json();
-                setTestCase(data.text, file.name, `${data.lines} satır`);
-                Toast.success(`"${file.name}" yüklendi (${data.lines} satır)`);
+                if (adoResp.status === 401) { Auth.logout(); return; }
+                if (adoResp.ok) {
+                    const data = await adoResp.json();
+                    const tcs = data.test_cases || [];
+                    if (tcs.length === 1) {
+                        _javaImportAdoTC(tcs[0]);
+                    } else if (tcs.length > 1) {
+                        _javaOpenAdoModal(tcs);
+                    }
+                    return;
+                }
+                // Azure DevOps CSV formatı değilse düz metin fallback
+                const fd2 = new FormData();
+                fd2.append("file", file);
+                const resp2 = await fetch(`${_JAVA_API}/ai-gen/parse-file`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                    body: fd2
+                });
+                if (resp2.status === 401) { Auth.logout(); return; }
+                if (!resp2.ok) { const e = await resp2.json(); throw new Error(e.detail || "Parse hatası"); }
+                const data2 = await resp2.json();
+                setTestCase(data2.text, file.name, `${data2.lines} satır`);
+                Toast.success(`"${file.name}" yüklendi (${data2.lines} satır)`);
             } catch (err) {
                 Toast.error("Dosya okunamadı: " + err.message);
             }
