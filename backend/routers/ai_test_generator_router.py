@@ -178,6 +178,10 @@ class GenerateRequest(BaseModel):
     app_package:  Optional[str] = ""
     app_activity: Optional[str] = ""
     appium_url:   Optional[str] = "http://localhost:4723"
+    # Paralel job hücrelerinde her cihaz için ayrı UiAutomator2 systemPort gerekir
+    # (aynı Appium sunucusunda eşzamanlı oturumlar varsayılan portta çakışır).
+    # Manuel tek-cihaz akışında None kalır → script'e systemPort yazılmaz (eski davranış).
+    system_port:  Optional[int] = None
     app_path:       Optional[str]  = ""
     window_title:   Optional[str]  = ""
     reuse_instance: Optional[bool] = True
@@ -2311,11 +2315,20 @@ time.sleep(3)
     if pre:
         lines += pre.splitlines() + [""]
 
-    lines += [
+    # Cihaz seçimi: Appium 2 / UiAutomator2'de deviceName güvenilir bir seçici DEĞİLDİR,
+    # asıl seçici udid'dir. device_id verilmişse udid de yazılır (ek satır — device_name
+    # davranışı aynen korunur). system_port yalnızca job motoru gönderdiğinde eklenir.
+    _opt_lines = [
         "options = UiAutomator2Options()",
         f'options.platform_name = "Android"',
         f'options.device_name   = "{device}"',
-    ] + caps.splitlines() + [
+    ]
+    if req.device_id:
+        _opt_lines.append(f'options.udid          = "{device}"')
+    if getattr(req, "system_port", None):
+        _opt_lines.append(f'options.system_port   = {int(req.system_port)}')
+
+    lines += _opt_lines + caps.splitlines() + [
         "",
         f'print("Appium baglaniyor: {appium}")',
         f'driver = webdriver.Remote("{appium}", options=options)',
