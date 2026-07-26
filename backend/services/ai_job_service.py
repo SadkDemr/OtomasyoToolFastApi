@@ -208,7 +208,7 @@ async def _run_cell(script: str, cell_id: int) -> dict:
     _active_procs[cell_id] = proc
     exit_code = -1
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         while True:
             line = await loop.run_in_executor(None, proc.stdout.readline)
             if not line:
@@ -254,47 +254,85 @@ async def _run_cell(script: str, cell_id: int) -> dict:
 # ══════════════════════════════════════════════════════════════
 
 async def _execute_cell(run_id: int, cell_id: int, steps_data: dict | None, device_id: str) -> None:
-    from database import SessionLocal
-    db = SessionLocal()
+    """Bu fonksiyon HİÇBİR istisnayı çağırana sızdırmamalıdır: run_job bunları
+    asyncio.gather(...) ile paralel bekliyor; burada yakalanmayan bir hata gather'ı
+    ve dolayısıyla tüm run_job'u kesintiye uğratıp AiJobRun'ı 'running' durumunda
+    kilitli bırakır. Bu yüzden dış try/except, script üretimi/koşumu için zaten var
+    olan iç try/except'in ÜSTÜNE, DB sorgusu/commit/_publish çağrılarını da kapsayacak
+    şekilde eklenmiştir."""
+    db = None
     try:
-        cell = db.query(AiJobRunResult).filter(AiJobRunResult.id == cell_id).first()
-        if not cell:
-            return
-
-        if run_id in _stopped_runs:
-            cell.status = "error"
-            cell.log_json = _json.dumps({"error": "Koşum durduruldu"})
-            db.commit()
-            await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "error"})
-            return
-
-        cell.status = "running"
-        cell.started_at = datetime.utcnow()
-        db.commit()
-        await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "running"})
-
-        if not steps_data:
-            cell.status = "error"
-            cell.ended_at = datetime.utcnow()
-            cell.log_json = _json.dumps({"error": "Senaryo dosyası okunamadı"})
-            db.commit()
-            await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "error"})
-            return
-
+        from database import SessionLocal
+        db = SessionLocal()
         try:
-            script = await _generate_cell_script(steps_data, device_id)
-            result = await _run_cell(script, cell_id)
-            cell.status = result["status"]
-            cell.log_json = _json.dumps(result)
-        except Exception as e:
-            cell.status = "error"
-            cell.log_json = _json.dumps({"error": str(e)})
+            cell = db.query(AiJobRunResult).filter(AiJobRunResult.id == cell_id).first()
+            if not cell:
+                return
 
-        cell.ended_at = datetime.utcnow()
-        db.commit()
-        await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": cell.status})
+            if run_id in _stopped_runs:
+                cell.status = "error"
+                cell.log_json = _json.dumps({"error": "Koşum durduruldu"})
+                db.commit()
+                await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "error"})
+                return
+
+            cell.status = "running"
+            cell.started_at = datetime.utcnow()
+            db.commit()
+            await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "running"})
+
+            if not steps_data:
+                cell.status = "error"
+                cell.ended_at = datetime.utcnow()
+                cell.log_json = _json.dumps({"error": "Senaryo dosyası okunamadı"})
+                db.commit()
+                await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "error"})
+                return
+
+            try:
+                script = await _generate_cell_script(steps_data, device_id)
+                result = await _run_cell(script, cell_id)
+                cell.status = result["status"]
+                cell.log_json = _json.dumps(result)
+            except Exception as e:
+                cell.status = "error"
+                cell.log_json = _json.dumps({"error": str(e)})
+
+            cell.ended_at = datetime.utcnow()
+            db.commit()
+            await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": cell.status})
+        except Exception as outer_e:
+            # Sorgu/status="running" commit/_publish gibi iç try/except'in DIŞINDA kalan
+            # bir adım patladı. Hücreyi en iyi çaba (best-effort) ile "error"a çek; bu
+            # fallback'in kendisi de patlarsa yut — hiçbir şekilde yukarı sızdırma.
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                cell = db.query(AiJobRunResult).filter(AiJobRunResult.id == cell_id).first()
+                if cell:
+                    cell.status = "error"
+                    cell.ended_at = datetime.utcnow()
+                    cell.log_json = _json.dumps({"error": f"Hücre çalıştırılamadı: {outer_e}"})
+                    db.commit()
+            except Exception:
+                pass
+            try:
+                await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "error"})
+            except Exception:
+                pass
+    except Exception:
+        # SessionLocal() açılışı bile başarısız olursa buraya düşer; bu fonksiyon için
+        # "hiçbir istisna sızdırma" garantisini korumak amacıyla yutulur. run_job kendi
+        # try/finally'sinde AiJobRun'ı yine de terminal bir duruma taşıyacaktır.
+        pass
     finally:
-        db.close()
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                pass
 
 
 async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int:
@@ -325,47 +363,76 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
     db.commit()
     db.refresh(run)
 
-    scenario_data: dict[str, dict] = {}
-    for folder in scenario_folders:
-        steps_file = Path(ws.local_path) / "ai_scenarios" / folder / "steps.json"
-        if steps_file.exists():
-            scenario_data[folder] = _json.loads(steps_file.read_text(encoding="utf-8"))
-
+    # Bu noktadan sonra AiJobRun DB'de status="running" olarak var. Aşağıdaki blokta
+    # (senaryo okuma, hücre oluşturma, asyncio.gather, tally) HERHANGİ bir istisna
+    # oluşursa, run zaten "running"a kilitli kalmasın: try/finally ile run'ı her
+    # koşulda (başarı/hata) terminal bir duruma taşıyıp öyle çıkıyoruz. run_job'un
+    # eski davranışını korumak için orijinal istisna finally sonrası yeniden fırlatılır.
+    gather_error: Exception | None = None
     cells: list[AiJobRunResult] = []
-    for folder in scenario_folders:
-        data = scenario_data.get(folder)
-        name = data.get("name", folder) if data else folder
-        for device_id, device_name in devices:
-            cell = AiJobRunResult(
-                job_run_id=run.id, scenario_folder=folder, scenario_name=name,
-                device_id=device_id, device_name=device_name or device_id, status="queued",
-            )
-            db.add(cell)
-            cells.append(cell)
-    db.commit()
-    for c in cells:
-        db.refresh(c)
+    scenario_data: dict[str, dict] = {}
+    try:
+        for folder in scenario_folders:
+            steps_file = Path(ws.local_path) / "ai_scenarios" / folder / "steps.json"
+            if steps_file.exists():
+                scenario_data[folder] = _json.loads(steps_file.read_text(encoding="utf-8"))
 
-    await _publish(run.id, {"type": "run_started", "run_id": run.id, "total": len(cells)})
+        for folder in scenario_folders:
+            data = scenario_data.get(folder)
+            name = data.get("name", folder) if data else folder
+            for device_id, device_name in devices:
+                cell = AiJobRunResult(
+                    job_run_id=run.id, scenario_folder=folder, scenario_name=name,
+                    device_id=device_id, device_name=device_name or device_id, status="queued",
+                )
+                db.add(cell)
+                cells.append(cell)
+        db.commit()
+        for c in cells:
+            db.refresh(c)
 
-    await asyncio.gather(*[
-        _execute_cell(run.id, cell.id, scenario_data.get(cell.scenario_folder), cell.device_id)
-        for cell in cells
-    ])
+        await _publish(run.id, {"type": "run_started", "run_id": run.id, "total": len(cells)})
 
-    _stopped_runs.discard(run.id)
+        await asyncio.gather(*[
+            _execute_cell(run.id, cell.id, scenario_data.get(cell.scenario_folder), cell.device_id)
+            for cell in cells
+        ])
+    except Exception as e:
+        gather_error = e
+    finally:
+        _stopped_runs.discard(run.id)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            results = db.query(AiJobRunResult).filter(AiJobRunResult.job_run_id == run.id).all()
+            run.passed_cells = sum(1 for r in results if r.status == "pass")
+            run.failed_cells = sum(1 for r in results if r.status in ("fail", "error"))
+            run.status = "completed"
+        except Exception:
+            # Tally'nin kendisi (DB sorgusu) başarısız oldu — tam sonucu hesaplayamadık,
+            # ama run'ı "running"da bırakmamak için elde ne varsa onunla "interrupted"
+            # olarak işaretle.
+            run.status = "interrupted"
+        run.ended_at = datetime.utcnow()
+        try:
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        try:
+            await _publish(run.id, {
+                "type": "run_completed", "run_id": run.id,
+                "passed": run.passed_cells, "failed": run.failed_cells, "total": run.total_cells,
+            })
+        except Exception:
+            pass
 
-    results = db.query(AiJobRunResult).filter(AiJobRunResult.job_run_id == run.id).all()
-    run.passed_cells = sum(1 for r in results if r.status == "pass")
-    run.failed_cells = sum(1 for r in results if r.status in ("fail", "error"))
-    run.status = "completed"
-    run.ended_at = datetime.utcnow()
-    db.commit()
-
-    await _publish(run.id, {
-        "type": "run_completed", "run_id": run.id,
-        "passed": run.passed_cells, "failed": run.failed_cells, "total": run.total_cells,
-    })
+    if gather_error is not None:
+        raise gather_error
     return run.id
 
 
