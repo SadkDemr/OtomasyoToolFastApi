@@ -307,3 +307,87 @@ class UserWorkspace(Base):
     # İlişkiler
     user = relationship("User", back_populates="workspaces")
     repository = relationship("Repository", back_populates="workspaces")
+
+
+# --- AI TEST GENERATOR: JOB SISTEMI (Faz 1: Mobil) ---
+class AiJob(Base):
+    __tablename__ = "ai_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String, index=True)
+    platform = Column(String, default="mobile")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    scenarios = relationship("AiJobScenario", back_populates="job", cascade="all, delete-orphan")
+    devices   = relationship("AiJobDevice",   back_populates="job", cascade="all, delete-orphan")
+    schedule  = relationship("AiJobSchedule", back_populates="job", cascade="all, delete-orphan")
+    runs      = relationship("AiJobRun",      back_populates="job", cascade="all, delete-orphan")
+
+
+class AiJobScenario(Base):
+    __tablename__ = "ai_job_scenarios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ai_jobs.id"))
+    scenario_folder = Column(String)
+
+    job = relationship("AiJob", back_populates="scenarios")
+
+
+class AiJobDevice(Base):
+    __tablename__ = "ai_job_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ai_jobs.id"))
+    device_id = Column(String)
+    device_name = Column(String, nullable=True)
+
+    job = relationship("AiJob", back_populates="devices")
+
+
+class AiJobSchedule(Base):
+    __tablename__ = "ai_job_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ai_jobs.id"))
+    schedule_type = Column(String)  # 'once' | 'daily' | 'weekly'
+    run_at = Column(DateTime)
+    enabled = Column(Boolean, default=True)
+    last_triggered_at = Column(DateTime, nullable=True)
+
+    job = relationship("AiJob", back_populates="schedule")
+
+
+class AiJobRun(Base):
+    __tablename__ = "ai_job_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ai_jobs.id"))
+    started_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime, nullable=True)
+    status = Column(String, default="running")       # running | completed | interrupted
+    trigger_type = Column(String, default="manual")  # manual | scheduled
+    total_cells = Column(Integer, default=0)
+    passed_cells = Column(Integer, default=0)
+    failed_cells = Column(Integer, default=0)
+
+    job = relationship("AiJob", back_populates="runs")
+    results = relationship("AiJobRunResult", back_populates="job_run", cascade="all, delete-orphan")
+
+
+class AiJobRunResult(Base):
+    __tablename__ = "ai_job_run_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_run_id = Column(Integer, ForeignKey("ai_job_runs.id"))
+    scenario_folder = Column(String)
+    scenario_name = Column(String, nullable=True)
+    device_id = Column(String)
+    device_name = Column(String, nullable=True)
+    status = Column(String, default="queued")  # queued | running | pass | fail | error
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    log_json = Column(Text, nullable=True)
+
+    job_run = relationship("AiJobRun", back_populates="results")
