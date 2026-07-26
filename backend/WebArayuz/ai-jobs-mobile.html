@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobil Job'lar - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .page-content { padding: 24px; width: 100%; max-width: 1200px; box-sizing: border-box; }
+        .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+        .toolbar-title { font-weight: 600; font-size: 1rem; flex: 1; }
+        .btn-primary {
+            padding: 8px 16px; background: var(--accent-primary); border: none;
+            border-radius: var(--radius-md); color: #fff; font-size: 0.85rem;
+            font-weight: 500; cursor: pointer;
+        }
+        .btn-secondary {
+            padding: 8px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--radius-md); color: var(--text-secondary); font-size: 0.85rem; cursor: pointer;
+        }
+        .job-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--radius-md); padding: 16px; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        }
+        .job-card-name { font-weight: 600; flex: 1; min-width: 160px; }
+        .job-card-meta { font-size: 0.8rem; color: var(--text-muted); }
+        .job-card-actions { display: flex; gap: 6px; }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 0.9rem; }
+
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+        }
+        .modal-box {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg); padding: 24px; width: 100%; max-width: 640px;
+            max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+        }
+        .modal-header { display: flex; align-items: center; justify-content: space-between; }
+        .form-row { display: flex; flex-direction: column; gap: 6px; }
+        .form-row label { font-size: 0.82rem; color: var(--text-secondary); font-weight: 500; }
+        .form-row input, .form-row select {
+            padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;
+        }
+        .checkbox-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;
+            border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 8px; }
+        .checkbox-list label { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 400; }
+
+        .matrix-wrap { overflow-x: auto; }
+        table.matrix { border-collapse: collapse; width: 100%; }
+        table.matrix th, table.matrix td { border: 1px solid var(--border-color); padding: 8px 10px; font-size: 0.82rem; text-align: center; }
+        table.matrix th { background: var(--bg-secondary); }
+        table.matrix td.scenario-name { text-align: left; font-weight: 500; white-space: nowrap; }
+        .cell-status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+        .cell-queued  { background: rgba(148,163,184,0.2); color: #94a3b8; }
+        .cell-running { background: rgba(59,130,246,0.18); color: #3b82f6; animation: pulse 1.2s infinite; }
+        .cell-pass    { background: rgba(16,185,129,0.15); color: #10b981; }
+        .cell-fail    { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .cell-error   { background: rgba(245,158,11,0.18); color: #f59e0b; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+<div id="app-root">
+    <div id="sidebar-container"></div>
+    <div class="main-content">
+        <header class="top-bar"><span class="top-bar-title">🗓️ Mobil Job'lar</span></header>
+        <div class="page-content">
+
+            <div class="toolbar">
+                <span class="toolbar-title">Job Listesi</span>
+                <button class="btn-secondary" onclick="loadJobs()">↺ Yenile</button>
+                <button class="btn-primary" onclick="openJobModal()">+ Yeni Job</button>
+            </div>
+            <div id="jobListWrap"><div class="empty-state">Yükleniyor...</div></div>
+
+            <div class="toolbar" style="margin-top:28px;">
+                <span class="toolbar-title">Koşum Matrisi</span>
+                <button class="btn-secondary" id="stopRunBtn" style="display:none;" onclick="stopCurrentRun()">⏹ Durdur</button>
+            </div>
+            <div id="matrixWrap"><div class="empty-state">Bir job çalıştırınca burada görünecek.</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Job Olustur/Duzenle Modal -->
+<div id="jobModal" class="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-header">
+            <strong id="jobModalTitle">Yeni Job</strong>
+            <button class="btn-secondary" onclick="closeJobModal()">✕</button>
+        </div>
+        <input type="hidden" id="jobEditId" value="">
+        <div class="form-row">
+            <label>Job Adı</label>
+            <input type="text" id="jobName" placeholder="Ör: Sabah Regresyon Paketi">
+        </div>
+        <div class="form-row">
+            <label>Senaryolar (mobil)</label>
+            <div class="checkbox-list" id="scenarioCheckList"></div>
+        </div>
+        <div class="form-row">
+            <label>Cihazlar (ADB)</label>
+            <div class="checkbox-list" id="deviceCheckList"></div>
+        </div>
+        <div class="form-row">
+            <label>Zamanlama</label>
+            <select id="scheduleType" onchange="onScheduleTypeChange()">
+                <option value="">Zamanlama yok (manuel çalıştır)</option>
+                <option value="once">Tek seferlik</option>
+                <option value="daily">Her gün tekrarla</option>
+                <option value="weekly">Her hafta tekrarla</option>
+            </select>
+        </div>
+        <div class="form-row" id="scheduleAtRow" style="display:none;">
+            <label>İlk çalışma zamanı</label>
+            <input type="datetime-local" id="scheduleAt">
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="btn-secondary" onclick="closeJobModal()">Vazgeç</button>
+            <button class="btn-primary" onclick="saveJob()">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<!-- Hucre Detay Modal -->
+<div id="cellModal" class="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-header">
+            <strong id="cellModalTitle">Hücre Detayı</strong>
+            <button class="btn-secondary" onclick="closeCellModal()">✕</button>
+        </div>
+        <div id="cellModalBody"></div>
+    </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    if (!Auth.checkAuth()) return;
+
+    let mobileScenarios = [];
+    let adbDevices = [];
+    let currentRunId = null;
+    let currentRunCells = {};   // cell_id -> cell dict
+    let ws = null;
+
+    async function init() {
+        await Promise.all([loadJobs(), loadScenariosAndDevices()]);
+    }
+
+    async function loadScenariosAndDevices() {
+        try {
+            const sRes = await API.get('/ai-gen/scenarios');
+            mobileScenarios = (sRes.scenarios || []).filter(s => s.platform === 'mobile');
+        } catch (e) { mobileScenarios = []; }
+        try {
+            const dRes = await API.get('/ai-gen/adb/devices');
+            adbDevices = dRes.devices || [];
+        } catch (e) { adbDevices = []; }
+    }
+
+    window.loadJobs = async function loadJobs() {
+        const wrap = document.getElementById('jobListWrap');
+        wrap.innerHTML = '<div class="empty-state">Yükleniyor...</div>';
+        try {
+            const res = await API.get('/ai-jobs');
+            const jobs = res.jobs || [];
+            if (!jobs.length) {
+                wrap.innerHTML = '<div class="empty-state">Henüz job yok. "+ Yeni Job" ile oluşturun.</div>';
+                return;
+            }
+            wrap.innerHTML = jobs.map(renderJobCard).join('');
+        } catch (e) {
+            wrap.innerHTML = `<div class="empty-state">Hata: ${e.message}</div>`;
+        }
+    };
+
+    function renderJobCard(job) {
+        const schedText = job.schedule
+            ? `${job.schedule.schedule_type} — ${new Date(job.schedule.run_at).toLocaleString('tr-TR')} ${job.schedule.enabled ? '' : '(pasif)'}`
+            : 'Zamanlama yok';
+        return `
+            <div class="job-card">
+                <div class="job-card-name">${escapeHtml(job.name)}
+                    <div class="job-card-meta">${job.scenarios.length} senaryo × ${job.devices.length} cihaz — ${schedText}</div>
+                </div>
+                <div class="job-card-actions">
+                    <button class="btn-primary" onclick="runJob(${job.id})">▶ Çalıştır</button>
+                    <button class="btn-secondary" onclick="editJob(${job.id})">Düzenle</button>
+                    <button class="btn-secondary" onclick="showRuns(${job.id})">Geçmiş</button>
+                    <button class="btn-secondary" onclick="deleteJob(${job.id})">Sil</button>
+                </div>
+            </div>`;
+    }
+
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s || '';
+        return d.innerHTML;
+    }
+
+    window.openJobModal = function openJobModal(job) {
+        document.getElementById('jobEditId').value = job ? job.id : '';
+        document.getElementById('jobModalTitle').textContent = job ? 'Job Düzenle' : 'Yeni Job';
+        document.getElementById('jobName').value = job ? job.name : '';
+
+        const scList = document.getElementById('scenarioCheckList');
+        scList.innerHTML = mobileScenarios.length
+            ? mobileScenarios.map(s => `<label><input type="checkbox" value="${s.folder}" ${job && job.scenarios.includes(s.folder) ? 'checked' : ''}> ${escapeHtml(s.name)}</label>`).join('')
+            : '<span style="color:var(--text-muted);font-size:0.82rem;">Mobil senaryo bulunamadı</span>';
+
+        const devList = document.getElementById('deviceCheckList');
+        const jobDeviceIds = job ? job.devices.map(d => d.device_id) : [];
+        devList.innerHTML = adbDevices.length
+            ? adbDevices.map(id => `<label><input type="checkbox" value="${id}" ${jobDeviceIds.includes(id) ? 'checked' : ''}> ${id}</label>`).join('')
+            : '<span style="color:var(--text-muted);font-size:0.82rem;">Bağlı ADB cihazı yok</span>';
+
+        const schedSel = document.getElementById('scheduleType');
+        schedSel.value = job && job.schedule ? job.schedule.schedule_type : '';
+        onScheduleTypeChange();
+        if (job && job.schedule) {
+            document.getElementById('scheduleAt').value = job.schedule.run_at.slice(0, 16);
+        } else {
+            document.getElementById('scheduleAt').value = '';
+        }
+
+        document.getElementById('jobModal').style.display = 'flex';
+    };
+
+    window.closeJobModal = function closeJobModal() {
+        document.getElementById('jobModal').style.display = 'none';
+    };
+
+    window.onScheduleTypeChange = function onScheduleTypeChange() {
+        const type = document.getElementById('scheduleType').value;
+        document.getElementById('scheduleAtRow').style.display = type ? 'flex' : 'none';
+    };
+
+    window.editJob = async function editJob(jobId) {
+        const job = await API.get(`/ai-jobs/${jobId}`);
+        openJobModal(job);
+    };
+
+    window.saveJob = async function saveJob() {
+        const editId = document.getElementById('jobEditId').value;
+        const name = document.getElementById('jobName').value.trim();
+        const scenario_folders = Array.from(document.querySelectorAll('#scenarioCheckList input:checked')).map(el => el.value);
+        const device_ids = Array.from(document.querySelectorAll('#deviceCheckList input:checked')).map(el => el.value);
+        const schedType = document.getElementById('scheduleType').value;
+
+        if (!name) { alert('Job adı gerekli'); return; }
+        if (!scenario_folders.length) { alert('En az bir senaryo seçin'); return; }
+        if (!device_ids.length) { alert('En az bir cihaz seçin'); return; }
+
+        let schedule = null;
+        if (schedType) {
+            const at = document.getElementById('scheduleAt').value;
+            if (!at) { alert('Zamanlama seçtiyseniz bir tarih/saat girin'); return; }
+            schedule = { schedule_type: schedType, run_at: new Date(at).toISOString() };
+        }
+
+        const body = { name, scenario_folders, device_ids, schedule };
+        try {
+            if (editId) {
+                await API.put(`/ai-jobs/${editId}`, body);
+            } else {
+                await API.post('/ai-jobs', body);
+            }
+            closeJobModal();
+            loadJobs();
+        } catch (e) {
+            alert('Kaydedilemedi: ' + e.message);
+        }
+    };
+
+    window.deleteJob = async function deleteJob(jobId) {
+        if (!confirm('Bu job silinsin mi?')) return;
+        await API.delete(`/ai-jobs/${jobId}`);
+        loadJobs();
+    };
+
+    window.runJob = async function runJob(jobId) {
+        try {
+            const res = await API.post(`/ai-jobs/${jobId}/run`, {});
+            openRunMatrix(res.run_id);
+        } catch (e) {
+            alert('Çalıştırılamadı: ' + e.message);
+        }
+    };
+
+    window.showRuns = async function showRuns(jobId) {
+        const res = await API.get(`/ai-jobs/${jobId}/runs`);
+        const runs = res.runs || [];
+        if (!runs.length) { alert('Bu job için henüz koşum yok'); return; }
+        openRunMatrix(runs[0].id);
+    };
+
+    async function openRunMatrix(runId) {
+        currentRunId = runId;
+        const run = await API.get(`/ai-jobs/runs/${runId}`);
+        currentRunCells = {};
+        run.cells.forEach(c => currentRunCells[c.id] = c);
+        renderMatrix();
+        connectWs(runId);
+        document.getElementById('stopRunBtn').style.display = run.status === 'running' ? 'inline-block' : 'none';
+    }
+
+    window.stopCurrentRun = async function stopCurrentRun() {
+        if (!currentRunId) return;
+        await API.post(`/ai-jobs/runs/${currentRunId}/stop`, {});
+        document.getElementById('stopRunBtn').style.display = 'none';
+    };
+
+    function renderMatrix() {
+        const cells = Object.values(currentRunCells);
+        const wrap = document.getElementById('matrixWrap');
+        if (!cells.length) {
+            wrap.innerHTML = '<div class="empty-state">Hücre bulunamadı.</div>';
+            return;
+        }
+        const scenarios = [...new Set(cells.map(c => c.scenario_folder))];
+        const devices = [...new Set(cells.map(c => c.device_id))];
+
+        let html = '<div class="matrix-wrap"><table class="matrix"><thead><tr><th>Senaryo</th>';
+        devices.forEach(d => html += `<th>${escapeHtml(d)}</th>`);
+        html += '</tr></thead><tbody>';
+        scenarios.forEach(sc => {
+            const scName = cells.find(c => c.scenario_folder === sc)?.scenario_name || sc;
+            html += `<tr><td class="scenario-name">${escapeHtml(scName)}</td>`;
+            devices.forEach(d => {
+                const cell = cells.find(c => c.scenario_folder === sc && c.device_id === d);
+                html += `<td>${cell ? cellBadge(cell) : '-'}</td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        wrap.innerHTML = html;
+    }
+
+    function cellBadge(cell) {
+        const labelMap = { queued: 'Bekliyor', running: 'Koşuyor', pass: 'Başarılı', fail: 'Başarısız', error: 'Hata' };
+        return `<span class="cell-status cell-${cell.status}" onclick="showCellDetail(${cell.id})">${labelMap[cell.status] || cell.status}</span>`;
+    }
+
+    window.showCellDetail = function showCellDetail(cellId) {
+        const cell = currentRunCells[cellId];
+        if (!cell) return;
+        document.getElementById('cellModalTitle').textContent = `${cell.scenario_name} — ${cell.device_id}`;
+        const steps = (cell.log && cell.log.steps) || [];
+        const terminal = (cell.log && cell.log.terminal) || (cell.log && cell.log.error) || '';
+        let body = `<div style="font-size:0.82rem;color:var(--text-muted);">Durum: ${cell.status}</div>`;
+        if (steps.length) {
+            body += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">';
+            steps.forEach(s => {
+                body += `<div>Adım ${s.index}: ${s.status === 'pass' ? '✓' : '✗'} ${s.status}</div>`;
+            });
+            body += '</div>';
+        }
+        if (terminal) {
+            body += `<pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:8px;overflow:auto;max-height:300px;font-size:0.78rem;margin-top:10px;">${escapeHtml(terminal)}</pre>`;
+        }
+        document.getElementById('cellModalBody').innerHTML = body;
+        document.getElementById('cellModal').style.display = 'flex';
+    };
+
+    window.closeCellModal = function closeCellModal() {
+        document.getElementById('cellModal').style.display = 'none';
+    };
+
+    function connectWs(runId) {
+        if (ws) { try { ws.close(); } catch (e) {} }
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(`${proto}://${window.location.hostname}:8000/api/ai-jobs/ws/${runId}`);
+        ws.onmessage = (ev) => {
+            const event = JSON.parse(ev.data);
+            if (event.type === 'cell_update' && currentRunCells[event.cell_id]) {
+                currentRunCells[event.cell_id].status = event.status;
+                renderMatrix();
+            } else if (event.type === 'run_completed') {
+                document.getElementById('stopRunBtn').style.display = 'none';
+                openRunMatrix(runId);  // final hali cek (log_json dahil)
+            }
+        };
+    }
+
+    init();
+})();
+</script>
+</body>
+</html>
