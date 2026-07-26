@@ -361,7 +361,6 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
     )
     db.add(run)
     db.commit()
-    db.refresh(run)
 
     # Bu noktadan sonra AiJobRun DB'de status="running" olarak var. Aşağıdaki blokta
     # (senaryo okuma, hücre oluşturma, asyncio.gather, tally) HERHANGİ bir istisna
@@ -372,6 +371,7 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
     cells: list[AiJobRunResult] = []
     scenario_data: dict[str, dict] = {}
     try:
+        db.refresh(run)
         for folder in scenario_folders:
             steps_file = Path(ws.local_path) / "ai_scenarios" / folder / "steps.json"
             if steps_file.exists():
@@ -409,7 +409,9 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
             results = db.query(AiJobRunResult).filter(AiJobRunResult.job_run_id == run.id).all()
             run.passed_cells = sum(1 for r in results if r.status == "pass")
             run.failed_cells = sum(1 for r in results if r.status in ("fail", "error"))
-            run.status = "completed"
+            # Eğer gather aşamasında (senaryo okuma, hücre oluşturma, paralel koşum)
+            # bir istisna fırlatıldıysa, sonuç "interrupted"; aksi halde normal tamamlanış.
+            run.status = "interrupted" if gather_error is not None else "completed"
         except Exception:
             # Tally'nin kendisi (DB sorgusu) başarısız oldu — tam sonucu hesaplayamadık,
             # ama run'ı "running"da bırakmamak için elde ne varsa onunla "interrupted"
