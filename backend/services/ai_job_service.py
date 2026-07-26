@@ -5,6 +5,7 @@ CRUD + çalıştırma motoru + zamanlayıcı.
 import asyncio
 import json as _json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,29 @@ class JobAlreadyRunningError(Exception):
 
 
 # ══════════════════════════════════════════════════════════════
+# GUVENLIK: SENARYO KLASOR ADI DOGRULAMA
+# ══════════════════════════════════════════════════════════════
+# Senaryo klasörleri diskte ai_scenarios/{folder} olarak tutuluyor ve klasör adı
+# ai_test_generator_router._sanitize_folder_name() ile üretiliyor (yalnız \w, - ve
+# boşluk→_ ). Job kaydında ise klasör adı kullanıcıdan gelen serbest bir string;
+# doğrulanmazsa "../../baska_kullanici/..." gibi bir değerle workspace dışına
+# çıkılabilir (path traversal). Bu yüzden kabul anında (create_job/update_job)
+# aynı desene uymayan değerler reddedilir.
+_SAFE_FOLDER_RE = re.compile(r'^[\w-]{1,64}$', re.UNICODE)
+
+
+def _validate_scenario_folders(folders: list[str]) -> list[str]:
+    """Klasör adlarını doğrular; güvenli olmayan değerde ValueError fırlatır."""
+    clean: list[str] = []
+    for f in folders:
+        s = (f or "").strip()
+        if not _SAFE_FOLDER_RE.match(s):
+            raise ValueError(f"Geçersiz senaryo klasör adı: {f!r}")
+        clean.append(s)
+    return clean
+
+
+# ══════════════════════════════════════════════════════════════
 # CRUD
 # ══════════════════════════════════════════════════════════════
 
@@ -32,6 +56,7 @@ def create_job(
     scenario_folders: list[str], device_ids: list[str],
     schedule: dict | None,
 ) -> AiJob:
+    scenario_folders = _validate_scenario_folders(scenario_folders)
     job = AiJob(user_id=user_id, name=name, platform="mobile")
     db.add(job)
     db.commit()
@@ -66,6 +91,7 @@ def update_job(
     scenario_folders: list[str], device_ids: list[str],
     schedule: dict | None,
 ) -> AiJob:
+    scenario_folders = _validate_scenario_folders(scenario_folders)
     job = db.query(AiJob).filter(AiJob.id == job_id).first()
     job.name = name
 
@@ -108,7 +134,10 @@ def job_to_dict(job: AiJob) -> dict:
         "devices": [{"device_id": d.device_id, "device_name": d.device_name} for d in job.devices],
         "schedule": ({
             "schedule_type": sched.schedule_type,
-            "run_at": sched.run_at.isoformat(),
+            # run_at DB'de UTC duvar saati olarak (naive) tutuluyor. Sonuna "Z"
+            # eklenmezse tarayıcıdaki new Date(...) bunu YEREL saat sanar ve
+            # gösterim UTC farkı kadar kayar.
+            "run_at": sched.run_at.isoformat() + "Z",
             "enabled": sched.enabled,
             "last_triggered_at": sched.last_triggered_at.isoformat() if sched.last_triggered_at else None,
         } if sched else None),
@@ -120,8 +149,12 @@ def job_to_dict(job: AiJob) -> dict:
 # ══════════════════════════════════════════════════════════════
 
 _run_event_queues: dict[int, list[asyncio.Queue]] = {}
-_active_procs: dict[int, "subprocess.Popen"] = {}   # cell_id -> proc
+_active_procs: dict[int, "asyncio.subprocess.Process"] = {}   # cell_id -> proc
 _stopped_runs: set[int] = set()
+
+# Paralel cihaz slotları için UiAutomator2 systemPort taban değeri.
+# Aynı Appium sunucusunda eşzamanlı oturumlar varsayılan portu (8200) paylaşamaz.
+_SYSTEM_PORT_BASE = 8200
 
 
 def subscribe(run_id: int) -> asyncio.Queue:
@@ -155,8 +188,13 @@ def stop_run(run_id: int) -> None:
         ).all()
         for c in cells:
             proc = _active_procs.get(c.id)
-            if proc and proc.poll() is None:
-                proc.terminate()
+            # asyncio.subprocess.Process'te poll() yok; süreç hâlâ çalışıyorsa
+            # returncode None'dır.
+            if proc is not None and proc.returncode is None:
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    pass
     finally:
         db.close()
 
@@ -165,8 +203,11 @@ def stop_run(run_id: int) -> None:
 # TEK HUCRE: SCRIPT URETIMI + SUBPROCESS KOSUMU
 # ══════════════════════════════════════════════════════════════
 
-async def _generate_cell_script(steps_data: dict, device_id: str) -> str:
-    """steps.json icerigini hedef cihaza gore script'e derler (kayitli script.py KULLANILMAZ)."""
+async def _generate_cell_script(steps_data: dict, device_id: str, system_port: int | None = None) -> str:
+    """steps.json icerigini hedef cihaza gore script'e derler (kayitli script.py KULLANILMAZ).
+
+    system_port: paralel koşan cihaz slotuna ayrılmış UiAutomator2 systemPort'u.
+    None ise script'e yazılmaz (manuel tek cihaz akışıyla aynı davranış)."""
     from routers.ai_test_generator_router import (
         GenerateRequest, StepItem, _generate_steps, _build_mobile_template,
     )
@@ -176,6 +217,7 @@ async def _generate_cell_script(steps_data: dict, device_id: str) -> str:
         steps_list=steps_list,
         platform="mobile",
         device_id=device_id,
+        system_port=system_port,
         app_package=params.get("app_package", ""),
         app_activity=params.get("app_activity", ""),
         appium_url=params.get("appium_url") or "http://localhost:4723",
@@ -196,21 +238,31 @@ async def _run_cell(script: str, cell_id: int) -> dict:
         f.write(script)
         tmp = f.name
 
-    popen_kw: dict = dict(
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+    # NOT: Burada bilerek subprocess.Popen + run_in_executor(None, readline) KULLANILMIYOR.
+    # run_in_executor(None, ...) asyncio'nun paylaşılan varsayılan ThreadPoolExecutor'ını
+    # kullanır; her hücre bir thread'i tüm ömrü boyunca işgal eder ve yeterli sayıda
+    # eşzamanlı hücrede havuz tükenerek uygulamanın geri kalanını (ör. "adb devices")
+    # bloklar. asyncio'nun kendi subprocess desteği thread havuzuna hiç dokunmaz.
+    exec_kw: dict = dict(
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
         env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+        limit=1024 * 1024,   # uzun satırlar readline limitine takılmasın
     )
     if sys.platform == "win32":
-        popen_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        exec_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
-    proc = subprocess.Popen([sys.executable, tmp], **popen_kw)
+    proc = await asyncio.create_subprocess_exec(sys.executable, tmp, **exec_kw)
     _active_procs[cell_id] = proc
     exit_code = -1
     try:
-        loop = asyncio.get_running_loop()
         while True:
-            line = await loop.run_in_executor(None, proc.stdout.readline)
+            try:
+                line = await proc.stdout.readline()
+            except ValueError:
+                # Satır limitin üstünde — StreamReader veriyi tüketip ValueError atar,
+                # sonsuz döngü riski yok; bu satırı atlayıp devam ediyoruz.
+                continue
             if not line:
                 break
             text = line.decode("utf-8", errors="replace").rstrip()
@@ -225,8 +277,7 @@ async def _run_cell(script: str, cell_id: int) -> dict:
             elif not text.startswith("STEP_START:"):
                 terminal_lines.append(text)
 
-        await loop.run_in_executor(None, proc.wait)
-        exit_code = proc.returncode
+        exit_code = await proc.wait()
     finally:
         _active_procs.pop(cell_id, None)
         try:
@@ -253,7 +304,10 @@ async def _run_cell(script: str, cell_id: int) -> dict:
 # HUCRE KOORDINASYONU + RUN_JOB MOTORU
 # ══════════════════════════════════════════════════════════════
 
-async def _execute_cell(run_id: int, cell_id: int, steps_data: dict | None, device_id: str) -> None:
+async def _execute_cell(
+    run_id: int, cell_id: int, steps_data: dict | None,
+    device_id: str, system_port: int | None = None,
+) -> None:
     """Bu fonksiyon HİÇBİR istisnayı çağırana sızdırmamalıdır: run_job bunları
     asyncio.gather(...) ile paralel bekliyor; burada yakalanmayan bir hata gather'ı
     ve dolayısıyla tüm run_job'u kesintiye uğratıp AiJobRun'ı 'running' durumunda
@@ -290,7 +344,7 @@ async def _execute_cell(run_id: int, cell_id: int, steps_data: dict | None, devi
                 return
 
             try:
-                script = await _generate_cell_script(steps_data, device_id)
+                script = await _generate_cell_script(steps_data, device_id, system_port)
                 result = await _run_cell(script, cell_id)
                 cell.status = result["status"]
                 cell.log_json = _json.dumps(result)
@@ -324,8 +378,8 @@ async def _execute_cell(run_id: int, cell_id: int, steps_data: dict | None, devi
                 pass
     except Exception:
         # SessionLocal() açılışı bile başarısız olursa buraya düşer; bu fonksiyon için
-        # "hiçbir istisna sızdırma" garantisini korumak amacıyla yutulur. run_job kendi
-        # try/finally'sinde AiJobRun'ı yine de terminal bir duruma taşıyacaktır.
+        # "hiçbir istisna sızdırma" garantisini korumak amacıyla yutulur. _run_job_cells
+        # kendi try/finally'sinde AiJobRun'ı yine de terminal bir duruma taşıyacaktır.
         pass
     finally:
         if db is not None:
@@ -335,7 +389,117 @@ async def _execute_cell(run_id: int, cell_id: int, steps_data: dict | None, devi
                 pass
 
 
+def _read_scenario_steps(ws_local_path: str, folder: str) -> dict | None:
+    """ai_scenarios/{folder}/steps.json okur.
+
+    Savunma amaçlı ikinci katman: klasör adları create_job/update_job'da zaten
+    doğrulanıyor, burada ayrıca çözümlenmiş yolun ai_scenarios tabanının ALTINDA
+    kaldığı doğrulanır (eski kayıtlar / DB'ye başka yoldan girmiş değerler için)."""
+    try:
+        base = (Path(ws_local_path) / "ai_scenarios").resolve()
+        steps_file = (base / folder / "steps.json").resolve()
+        if base not in steps_file.parents:
+            print(f"[AI-JOB] Güvenli olmayan senaryo klasörü atlandı: {folder!r}")
+            return None
+        if not steps_file.exists():
+            return None
+        return _json.loads(steps_file.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[AI-JOB] Senaryo okunamadı ({folder!r}): {e}")
+        return None
+
+
+async def _finalize_run(run_id: int, interrupted: bool) -> None:
+    """AiJobRun'ı HER koşulda terminal duruma taşır ve run_completed yayınlar.
+
+    Kendi DB oturumunu açar (arka plan görevinden çağrıldığı için istek kapsamındaki
+    session artık kapalı olabilir) ve hiçbir istisna sızdırmaz."""
+    from database import SessionLocal
+    db = None
+    passed = failed = total = 0
+    status = "interrupted" if interrupted else "completed"
+    try:
+        db = SessionLocal()
+        run = db.query(AiJobRun).filter(AiJobRun.id == run_id).first()
+        if run is not None:
+            try:
+                results = db.query(AiJobRunResult).filter(AiJobRunResult.job_run_id == run_id).all()
+                run.passed_cells = sum(1 for r in results if r.status == "pass")
+                run.failed_cells = sum(1 for r in results if r.status in ("fail", "error"))
+            except Exception:
+                # Tally'nin kendisi patladı — run'ı yine de "running"da bırakma.
+                status = "interrupted"
+            run.status = status
+            run.ended_at = datetime.utcnow()
+            try:
+                db.commit()
+            except Exception:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+            passed, failed, total = run.passed_cells or 0, run.failed_cells or 0, run.total_cells or 0
+    except Exception as e:
+        print(f"[AI-JOB] run {run_id} sonlandırılamadı: {e}")
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                pass
+    try:
+        await _publish(run_id, {
+            "type": "run_completed", "run_id": run_id,
+            "passed": passed, "failed": failed, "total": total,
+        })
+    except Exception:
+        pass
+
+
+async def _run_job_cells(run_id: int, device_groups: list[list[dict]], scenario_data: dict[str, dict]) -> None:
+    """FAZ 2 (arka plan): hücreleri koşturur ve run'ı sonlandırır.
+
+    device_groups: her eleman TEK bir cihaza ait hücre listesidir. Gruplar birbirine
+    paralel, grup İÇİ hücreler ise SIRAYLA koşar — tek bir fiziksel cihaz aynı anda
+    birden fazla bağımsız UI otomasyon oturumunu doğru şekilde koşturamaz (ekran
+    odağı/dokunma girdisi çakışır).
+
+    Bu fonksiyon asyncio.create_task ile fire-and-forget çağrıldığı için HİÇBİR
+    istisnayı dışarı sızdırmamalıdır (aksi halde "Task exception was never retrieved").
+    """
+    interrupted = False
+    try:
+        async def _device_sequence(cells: list[dict]) -> None:
+            for c in cells:
+                await _execute_cell(
+                    run_id, c["cell_id"], scenario_data.get(c["scenario_folder"]),
+                    c["device_id"], c["system_port"],
+                )
+
+        await asyncio.gather(*[_device_sequence(g) for g in device_groups])
+    except Exception as e:
+        interrupted = True
+        print(f"[AI-JOB] run {run_id} koşumu kesintiye uğradı: {e}")
+    finally:
+        _stopped_runs.discard(run_id)
+        try:
+            await _finalize_run(run_id, interrupted)
+        except Exception as e:
+            print(f"[AI-JOB] run {run_id} finalize hatası: {e}")
+
+
 async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int:
+    """FAZ 1 (hızlı): doğrulama + AiJobRun/hücre kayıtları + run_started yayını.
+
+    Hücrelerin asıl koşumu asyncio.create_task ile ARKA PLANDA sürer; bu fonksiyon
+    run_id'yi neredeyse anında döndürür. Böylece HTTP yanıtı hemen döner, frontend
+    WebSocket'e bağlanıp canlı matrisi ve "Durdur" butonunu görebilir; zamanlayıcı da
+    bir job'ı beklemeden diğer zamanı gelmiş job'lara geçer.
+
+    NOT: Buradaki `db` istek kapsamlı bir session'dır (FastAPI yanıt dönünce kapatır),
+    bu yüzden arka plan fazı ASLA bu session'ı kullanmaz — _execute_cell ve
+    _finalize_run kendi SessionLocal()'larını açar.
+    """
     from routers.ai_test_generator_router import _get_user_workspace
 
     job = db.query(AiJob).filter(AiJob.id == job_id).first()
@@ -361,28 +525,30 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
     )
     db.add(run)
     db.commit()
+    db.refresh(run)
+    run_id = run.id
 
-    # Bu noktadan sonra AiJobRun DB'de status="running" olarak var. Aşağıdaki blokta
-    # (senaryo okuma, hücre oluşturma, asyncio.gather, tally) HERHANGİ bir istisna
-    # oluşursa, run zaten "running"a kilitli kalmasın: try/finally ile run'ı her
-    # koşulda (başarı/hata) terminal bir duruma taşıyıp öyle çıkıyoruz. run_job'un
-    # eski davranışını korumak için orijinal istisna finally sonrası yeniden fırlatılır.
-    gather_error: Exception | None = None
-    cells: list[AiJobRunResult] = []
-    scenario_data: dict[str, dict] = {}
+    # Bu noktadan sonra AiJobRun DB'de status="running". Faz 1'in geri kalanında bir
+    # hata olursa run "running"a kilitli kalmasın diye _finalize_run ile terminal
+    # duruma taşınır ve hata yukarı fırlatılır (router 400/500'e çevirir).
     try:
-        db.refresh(run)
+        ws_path = ws.local_path
+        scenario_data: dict[str, dict] = {}
         for folder in scenario_folders:
-            steps_file = Path(ws.local_path) / "ai_scenarios" / folder / "steps.json"
-            if steps_file.exists():
-                scenario_data[folder] = _json.loads(steps_file.read_text(encoding="utf-8"))
+            data = _read_scenario_steps(ws_path, folder)
+            if data is not None:
+                scenario_data[folder] = data
 
+        # Cihaz slot indeksi -> systemPort (aynı anda aktif olabilecek her cihaz için ayrı)
+        device_slots = {device_id: i for i, (device_id, _n) in enumerate(devices)}
+
+        cells: list[AiJobRunResult] = []
         for folder in scenario_folders:
             data = scenario_data.get(folder)
             name = data.get("name", folder) if data else folder
             for device_id, device_name in devices:
                 cell = AiJobRunResult(
-                    job_run_id=run.id, scenario_folder=folder, scenario_name=name,
+                    job_run_id=run_id, scenario_folder=folder, scenario_name=name,
                     device_id=device_id, device_name=device_name or device_id, status="queued",
                 )
                 db.add(cell)
@@ -391,51 +557,35 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
         for c in cells:
             db.refresh(c)
 
-        await _publish(run.id, {"type": "run_started", "run_id": run.id, "total": len(cells)})
+        # Hücreleri cihaza göre grupla (cihaz sırası korunur)
+        device_groups: list[list[dict]] = []
+        group_index: dict[str, int] = {}
+        for c in cells:
+            plan = {
+                "cell_id": c.id,
+                "scenario_folder": c.scenario_folder,
+                "device_id": c.device_id,
+                "system_port": _SYSTEM_PORT_BASE + device_slots.get(c.device_id, 0),
+            }
+            if c.device_id not in group_index:
+                group_index[c.device_id] = len(device_groups)
+                device_groups.append([])
+            device_groups[group_index[c.device_id]].append(plan)
 
-        await asyncio.gather(*[
-            _execute_cell(run.id, cell.id, scenario_data.get(cell.scenario_folder), cell.device_id)
-            for cell in cells
-        ])
-    except Exception as e:
-        gather_error = e
-    finally:
-        _stopped_runs.discard(run.id)
+        await _publish(run_id, {"type": "run_started", "run_id": run_id, "total": len(cells)})
+
+        # FAZ 2: arka plana devret — çağıran (router/zamanlayıcı) beklemez.
+        asyncio.create_task(_run_job_cells(run_id, device_groups, scenario_data))
+    except Exception:
         try:
             db.rollback()
         except Exception:
             pass
-        try:
-            results = db.query(AiJobRunResult).filter(AiJobRunResult.job_run_id == run.id).all()
-            run.passed_cells = sum(1 for r in results if r.status == "pass")
-            run.failed_cells = sum(1 for r in results if r.status in ("fail", "error"))
-            # Eğer gather aşamasında (senaryo okuma, hücre oluşturma, paralel koşum)
-            # bir istisna fırlatıldıysa, sonuç "interrupted"; aksi halde normal tamamlanış.
-            run.status = "interrupted" if gather_error is not None else "completed"
-        except Exception:
-            # Tally'nin kendisi (DB sorgusu) başarısız oldu — tam sonucu hesaplayamadık,
-            # ama run'ı "running"da bırakmamak için elde ne varsa onunla "interrupted"
-            # olarak işaretle.
-            run.status = "interrupted"
-        run.ended_at = datetime.utcnow()
-        try:
-            db.commit()
-        except Exception:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-        try:
-            await _publish(run.id, {
-                "type": "run_completed", "run_id": run.id,
-                "passed": run.passed_cells, "failed": run.failed_cells, "total": run.total_cells,
-            })
-        except Exception:
-            pass
+        _stopped_runs.discard(run_id)
+        await _finalize_run(run_id, interrupted=True)
+        raise
 
-    if gather_error is not None:
-        raise gather_error
-    return run.id
+    return run_id
 
 
 def list_runs(db: Session, job_id: int) -> list[AiJobRun]:
@@ -497,6 +647,25 @@ def cleanup_interrupted_runs() -> None:
         db.close()
 
 
+def _advance_schedule(sched: AiJobSchedule, now: datetime) -> None:
+    """Tetiklenen bir zamanlamayı BİR SONRAKİ gelecek zamana taşır.
+
+    Sunucu uzun süre kapalı kaldıysa (ya da run_at bir şekilde eskidiyse) tek tek
+    ilerletmek her 30sn'lik turda bir koşum başlatır (30 gün geride kalan bir daily
+    zamanlama 30 koşum tetikler). Bu yüzden kaçırılan TÜM aralıklar tek adımda atlanır.
+    """
+    if sched.schedule_type == "once":
+        sched.enabled = False
+        return
+    delta = timedelta(days=1) if sched.schedule_type == "daily" else (
+        timedelta(days=7) if sched.schedule_type == "weekly" else None
+    )
+    if delta is None:
+        return
+    while sched.run_at <= now:
+        sched.run_at = sched.run_at + delta
+
+
 async def ai_job_scheduler_loop() -> None:
     """30sn'de bir zamanı gelmis job'lari tetikler. main.py'deki _session_idle_reaper deseniyle ayni."""
     from database import SessionLocal
@@ -512,17 +681,15 @@ async def ai_job_scheduler_loop() -> None:
             ).all()
             for sched in due:
                 try:
+                    # run_job artık hücreleri arka planda koşturur ve run_id'yi hemen
+                    # döndürür → bir job'ın bitmesi beklenmeden diğer zamanı gelmiş
+                    # job'lar tetiklenir.
                     await run_job(sched.job_id, db, trigger_type="scheduled")
                 except Exception as e:
                     print(f"[AI-JOB-SCHEDULER] job {sched.job_id} tetiklenemedi: {e}")
 
                 sched.last_triggered_at = now
-                if sched.schedule_type == "once":
-                    sched.enabled = False
-                elif sched.schedule_type == "daily":
-                    sched.run_at = sched.run_at + timedelta(days=1)
-                elif sched.schedule_type == "weekly":
-                    sched.run_at = sched.run_at + timedelta(days=7)
+                _advance_schedule(sched, now)
                 db.commit()
         except Exception as e:
             print(f"[AI-JOB-SCHEDULER] döngü hatası: {e}")
