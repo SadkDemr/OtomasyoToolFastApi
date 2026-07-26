@@ -212,13 +212,13 @@
 
         const scList = document.getElementById('scenarioCheckList');
         scList.innerHTML = mobileScenarios.length
-            ? mobileScenarios.map(s => `<label><input type="checkbox" value="${s.folder}" ${job && job.scenarios.includes(s.folder) ? 'checked' : ''}> ${escapeHtml(s.name)}</label>`).join('')
+            ? mobileScenarios.map(s => `<label><input type="checkbox" value="${escapeHtml(s.folder)}" ${job && job.scenarios.includes(s.folder) ? 'checked' : ''}> ${escapeHtml(s.name)}</label>`).join('')
             : '<span style="color:var(--text-muted);font-size:0.82rem;">Mobil senaryo bulunamadı</span>';
 
         const devList = document.getElementById('deviceCheckList');
         const jobDeviceIds = job ? job.devices.map(d => d.device_id) : [];
         devList.innerHTML = adbDevices.length
-            ? adbDevices.map(id => `<label><input type="checkbox" value="${id}" ${jobDeviceIds.includes(id) ? 'checked' : ''}> ${id}</label>`).join('')
+            ? adbDevices.map(id => `<label><input type="checkbox" value="${escapeHtml(id)}" ${jobDeviceIds.includes(id) ? 'checked' : ''}> ${escapeHtml(id)}</label>`).join('')
             : '<span style="color:var(--text-muted);font-size:0.82rem;">Bağlı ADB cihazı yok</span>';
 
         const schedSel = document.getElementById('scheduleType');
