@@ -205,6 +205,15 @@
         return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    // UTC ISO string ("2026-07-26T09:00:00Z") -> datetime-local degeri ("2026-07-26T09:00" yerel saatte)
+    function utcToLocalInput(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
     window.openJobModal = function openJobModal(job) {
         document.getElementById('jobEditId').value = job ? job.id : '';
         document.getElementById('jobModalTitle').textContent = job ? 'Job Düzenle' : 'Yeni Job';
@@ -225,7 +234,10 @@
         schedSel.value = job && job.schedule ? job.schedule.schedule_type : '';
         onScheduleTypeChange();
         if (job && job.schedule) {
-            document.getElementById('scheduleAt').value = job.schedule.run_at.slice(0, 16);
+            // run_at UTC ("...Z") geliyor; datetime-local girdisi YEREL saat bekler.
+            // saveJob'daki yerel→UTC (toISOString) dönüşümünün tersi yapılır, aksi
+            // halde her düzenlemede kayıt UTC farkı kadar kayardı.
+            document.getElementById('scheduleAt').value = utcToLocalInput(job.schedule.run_at);
         } else {
             document.getElementById('scheduleAt').value = '';
         }

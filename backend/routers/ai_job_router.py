@@ -2,6 +2,7 @@
 AI Test Generator — Job Router (Faz 1: Mobil)
 Job CRUD, manuel tetikleme, kosum gecmisi, canli WebSocket.
 """
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -32,10 +33,13 @@ class JobIn(BaseModel):
 async def create_job(body: JobIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not body.scenario_folders or not body.device_ids:
         raise HTTPException(400, "En az bir senaryo ve bir cihaz seçilmeli")
-    job = ai_job_service.create_job(
-        db, current_user.id, body.name, body.scenario_folders, body.device_ids,
-        body.schedule.dict() if body.schedule else None,
-    )
+    try:
+        job = ai_job_service.create_job(
+            db, current_user.id, body.name, body.scenario_folders, body.device_ids,
+            body.schedule.dict() if body.schedule else None,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return ai_job_service.job_to_dict(job)
 
 
@@ -60,10 +64,13 @@ async def update_job(job_id: int, body: JobIn, current_user: User = Depends(get_
         raise HTTPException(404, "Job bulunamadı")
     if not body.scenario_folders or not body.device_ids:
         raise HTTPException(400, "En az bir senaryo ve bir cihaz seçilmeli")
-    job = ai_job_service.update_job(
-        db, job_id, body.name, body.scenario_folders, body.device_ids,
-        body.schedule.dict() if body.schedule else None,
-    )
+    try:
+        job = ai_job_service.update_job(
+            db, job_id, body.name, body.scenario_folders, body.device_ids,
+            body.schedule.dict() if body.schedule else None,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return ai_job_service.job_to_dict(job)
 
 
@@ -118,15 +125,54 @@ async def stop_run(run_id: int, current_user: User = Depends(get_current_user), 
 
 @router.websocket("/ws/{run_id}")
 async def job_run_ws(websocket: WebSocket, run_id: int):
+    """Koşum olaylarını yayınlar.
+
+    Sadece kuyruğu beklemek yetmez: Starlette istemci kopmasını yalnızca receive
+    kanalı üzerinden bildirir. Tarayıcı sekmesi kapandığında `q.get()` sonsuza kadar
+    beklerdi ve finally'deki unsubscribe hiç çalışmayıp kuyruk sızardı. Bu yüzden
+    kuyruk ve receive aynı anda beklenir (FIRST_COMPLETED).
+    """
     await websocket.accept()
     q = ai_job_service.subscribe(run_id)
+    get_task: asyncio.Task | None = None
+    recv_task: asyncio.Task | None = None
     try:
         while True:
-            event = await q.get()
-            await websocket.send_json(event)
-            if event.get("type") == "run_completed":
-                break
+            # Tamamlanan task her turda yeniden kurulur; tamamlanmayan task İPTAL
+            # EDİLMEZ, bir sonraki tura taşınır → olay/mesaj kaybı olmaz.
+            if get_task is None:
+                get_task = asyncio.ensure_future(q.get())
+            if recv_task is None:
+                recv_task = asyncio.ensure_future(websocket.receive())
+
+            done, _pending = await asyncio.wait(
+                {get_task, recv_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+
+            if recv_task in done:
+                try:
+                    msg = recv_task.result()
+                except Exception:
+                    break              # bağlantı koptu / receive hata verdi
+                recv_task = None
+                if msg.get("type") == "websocket.disconnect":
+                    break
+                # istemciden gelen diğer mesajlar (ping vb.) yok sayılır
+
+            if get_task in done:
+                event = get_task.result()
+                get_task = None
+                await websocket.send_json(event)
+                if event.get("type") == "run_completed":
+                    break
     except WebSocketDisconnect:
         pass
+    except Exception:
+        pass
     finally:
+        pending = [t for t in (get_task, recv_task) if t is not None]
+        for t in pending:
+            t.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         ai_job_service.unsubscribe(run_id, q)
