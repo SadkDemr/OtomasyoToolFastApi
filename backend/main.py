@@ -314,6 +314,10 @@ if __name__ == "__main__":
     # Geliştirme modunda auto-reload istiyorsanız: DEV_RELOAD=1 python main.py
     # Prodüksiyonda reload=False — senaryo script.py kaydedince sunucu düşmesin
     _dev_reload = _os_main.environ.get("DEV_RELOAD", "0") == "1"
+    if _dev_reload and sys.platform == "win32":
+        # uvicorn reload=True Windows'ta SelectorEventLoop'u zorlar; asyncio subprocess
+        # orada desteklenmez, AI Job hucreleri thread havuzlu yedek yola duser.
+        print("[UYARI] DEV_RELOAD=1: AI Job hucreleri thread havuzlu yedek yolu kullanacak.")
     uvicorn.run(
         "main:app",
         host="0.0.0.0",

@@ -149,12 +149,50 @@ def job_to_dict(job: AiJob) -> dict:
 # ══════════════════════════════════════════════════════════════
 
 _run_event_queues: dict[int, list[asyncio.Queue]] = {}
-_active_procs: dict[int, "asyncio.subprocess.Process"] = {}   # cell_id -> proc
+# cell_id -> süreç tutamacı. İki farklı tip olabilir (bkz. _start_cell_process):
+# asyncio.subprocess.Process veya _ClassicProcHandle. Her ikisi de aynı arayüzü
+# sunar: .returncode (çalışıyorsa None) ve .terminate().
+_active_procs: dict[int, object] = {}
 _stopped_runs: set[int] = set()
 
-# Paralel cihaz slotları için UiAutomator2 systemPort taban değeri.
-# Aynı Appium sunucusunda eşzamanlı oturumlar varsayılan portu (8200) paylaşamaz.
-_SYSTEM_PORT_BASE = 8200
+# ── UiAutomator2 systemPort ayrımı ─────────────────────────────
+# Aynı Appium sunucusunda eşzamanlı oturumlar aynı systemPort'u paylaşamaz.
+# Port tahsisi KOŞUMA değil CİHAZA bağlıdır: koşum başına (base + slot) şeklinde
+# hesaplansaydı eşzamanlı iki koşum (ör. aynı turda tetiklenen iki zamanlanmış job
+# ya da zamanlanmış bir koşumla çakışan manuel koşum) FARKLI cihazlar için AYNI
+# portu (ikisi de slot 0 → 8200) tahsis edip çakışırdı. Bu yüzden atama process
+# ömrü boyunca global ve cihaz kimliğine göre kalıcıdır.
+# Taban 8200 DEĞİL 8201'dir: systemPort verilmeyen akışlar (manuel /execute) için
+# UiAutomator2 varsayılanı 8200'dür; havuzu 8201'den başlatmak job hücrelerinin
+# ilgisiz bir manuel koşumla çakışmasını da engeller.
+_SYSTEM_PORT_BASE = 8201
+_SYSTEM_PORT_RANGE = 100
+_device_system_ports: dict[str, int] = {}
+
+
+def _acquire_system_port(device_id: str) -> int:
+    """Cihaza kalıcı bir systemPort atar (process ömrü boyunca aynı kalır).
+
+    Aynı cihaz her zaman aynı portu alır (hata ayıklamayı öngörülebilir kılar ve
+    hücre bitince "port serbest bırakma" ihtiyacını ortadan kaldırır: aynı cihazın
+    hücreleri zaten sırayla koşuyor). Farklı cihazlar asla aynı portu almaz.
+
+    Fonksiyon içinde `await` YOKTUR; tek thread'li asyncio altında kontrol-ve-atama
+    bölümü bölünemez, bu yüzden ayrıca kilide gerek kalmaz.
+    """
+    port = _device_system_ports.get(device_id)
+    if port is not None:
+        return port
+    used = set(_device_system_ports.values())
+    for candidate in range(_SYSTEM_PORT_BASE, _SYSTEM_PORT_BASE + _SYSTEM_PORT_RANGE):
+        if candidate not in used:
+            _device_system_ports[device_id] = candidate
+            return candidate
+    # Havuz tükendi (>100 farklı cihaz): deterministik bir değere düş. Teorik olarak
+    # çakışabilir ama bu ölçekte tek bir Appium sunucusu zaten yetmez.
+    fallback = _SYSTEM_PORT_BASE + (abs(hash(device_id)) % _SYSTEM_PORT_RANGE)
+    _device_system_ports[device_id] = fallback
+    return fallback
 
 
 def subscribe(run_id: int) -> asyncio.Queue:
@@ -188,12 +226,14 @@ def stop_run(run_id: int) -> None:
         ).all()
         for c in cells:
             proc = _active_procs.get(c.id)
-            # asyncio.subprocess.Process'te poll() yok; süreç hâlâ çalışıyorsa
-            # returncode None'dır.
+            # Tutamaç asyncio.subprocess.Process ya da _ClassicProcHandle olabilir;
+            # ikisinde de süreç hâlâ çalışıyorsa returncode None'dır.
             if proc is not None and proc.returncode is None:
                 try:
                     proc.terminate()
-                except ProcessLookupError:
+                except OSError:
+                    # ProcessLookupError (POSIX) / PermissionError (Windows, süreç
+                    # aramızda sonlandıysa) — yarış durumu, yok sayılır.
                     pass
     finally:
         db.close()
@@ -206,7 +246,7 @@ def stop_run(run_id: int) -> None:
 async def _generate_cell_script(steps_data: dict, device_id: str, system_port: int | None = None) -> str:
     """steps.json icerigini hedef cihaza gore script'e derler (kayitli script.py KULLANILMAZ).
 
-    system_port: paralel koşan cihaz slotuna ayrılmış UiAutomator2 systemPort'u.
+    system_port: cihaza tahsis edilmiş UiAutomator2 systemPort'u (bkz. _acquire_system_port).
     None ise script'e yazılmaz (manuel tek cihaz akışıyla aynı davranış)."""
     from routers.ai_test_generator_router import (
         GenerateRequest, StepItem, _generate_steps, _build_mobile_template,
@@ -226,6 +266,115 @@ async def _generate_cell_script(steps_data: dict, device_id: str, system_port: i
     return _build_mobile_template(req, steps_code)
 
 
+class _ClassicProcHandle:
+    """subprocess.Popen'i asyncio.subprocess.Process ile AYNI arayüze sarar.
+
+    stop_run tek bir arayüz üzerinden çalışabilsin diye: .returncode (çalışıyorsa
+    None) ve .terminate(). Popen.returncode yalnızca poll()/wait() sonrası güncellenir,
+    bu yüzden property içinde poll() çağrılır.
+    """
+
+    __slots__ = ("_p",)
+
+    def __init__(self, popen: subprocess.Popen):
+        self._p = popen
+
+    @property
+    def returncode(self) -> int | None:
+        return self._p.poll()
+
+    def terminate(self) -> None:
+        self._p.terminate()
+
+
+# asyncio.create_subprocess_exec bu event loop'ta desteklenmiyorsa (bkz. aşağıdaki
+# açıklama) her hücrede yeniden denemeyelim: ilk NotImplementedError'da işaretlenir.
+_async_subprocess_unsupported = False
+
+
+async def _start_cell_process(tmp: str):
+    """Hücre script'i için subprocess başlatır ve (tutamaç, satırlar, bekle) döndürür.
+
+    HIZLI YOL — asyncio.create_subprocess_exec: burada bilerek subprocess.Popen +
+    run_in_executor(None, readline) KULLANILMAZ. run_in_executor(None, ...) asyncio'nun
+    paylaşılan varsayılan ThreadPoolExecutor'ını kullanır; her hücre bir thread'i tüm
+    ömrü boyunca işgal eder ve yeterli sayıda eşzamanlı hücrede havuz tükenerek
+    uygulamanın geri kalanını (ör. "adb devices") bloklar.
+
+    YEDEK YOL — Popen + run_in_executor: Windows'ta SelectorEventLoop altında
+    asyncio.create_subprocess_exec NotImplementedError fırlatır. uvicorn reload=True
+    (projede `DEV_RELOAD=1 python main.py`) Windows'ta WindowsSelectorEventLoopPolicy'yi
+    zorlar; bu modda hızlı yol HER hücrede patlar ve tüm özellik bozuk görünürdü.
+    Bu durumda eski thread havuzlu yönteme düşülür — geliştirme modunda daha az
+    verimli ama çalışır.
+
+    Dönüş: (handle, lines, wait)
+      handle: _active_procs'a konacak, .returncode/.terminate() sunan nesne
+      lines : ham (bytes) satırları veren async generator
+      wait  : çıkış kodunu döndüren coroutine fonksiyonu
+    """
+    global _async_subprocess_unsupported
+
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+
+    if not _async_subprocess_unsupported:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, tmp,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+                limit=1024 * 1024,   # uzun satırlar readline limitine takılmasın
+                creationflags=creationflags,
+            )
+        except NotImplementedError:
+            _async_subprocess_unsupported = True
+            print("[AI-JOB] asyncio subprocess bu event loop'ta desteklenmiyor "
+                  "(muhtemelen Windows + reload/SelectorEventLoop); "
+                  "thread havuzlu yedek yola geçiliyor.")
+        else:
+            async def _async_lines():
+                while True:
+                    try:
+                        line = await proc.stdout.readline()
+                    except ValueError:
+                        # Satır limitin üstünde — StreamReader veriyi tüketip ValueError
+                        # atar, sonsuz döngü riski yok; bu satırı atlayıp devam ediyoruz.
+                        continue
+                    if not line:
+                        break
+                    yield line
+
+            return proc, _async_lines(), proc.wait
+
+    popen = subprocess.Popen(
+        [sys.executable, tmp],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        creationflags=creationflags,
+    )
+    loop = asyncio.get_running_loop()
+
+    async def _classic_lines():
+        while True:
+            line = await loop.run_in_executor(None, popen.stdout.readline)
+            if not line:
+                break
+            yield line
+
+    async def _classic_wait():
+        code = await loop.run_in_executor(None, popen.wait)
+        try:
+            popen.stdout.close()
+        except Exception:
+            pass
+        return code
+
+    return _ClassicProcHandle(popen), _classic_lines(), _classic_wait
+
+
 async def _run_cell(script: str, cell_id: int) -> dict:
     """Script'i bagimsiz bir subprocess olarak calistirir, adim sonuclarini toplar.
     /execute endpoint'inden bagimsizdir (SSE yok) — job motoru paralel hucreler icin bunu kullanir."""
@@ -238,33 +387,12 @@ async def _run_cell(script: str, cell_id: int) -> dict:
         f.write(script)
         tmp = f.name
 
-    # NOT: Burada bilerek subprocess.Popen + run_in_executor(None, readline) KULLANILMIYOR.
-    # run_in_executor(None, ...) asyncio'nun paylaşılan varsayılan ThreadPoolExecutor'ını
-    # kullanır; her hücre bir thread'i tüm ömrü boyunca işgal eder ve yeterli sayıda
-    # eşzamanlı hücrede havuz tükenerek uygulamanın geri kalanını (ör. "adb devices")
-    # bloklar. asyncio'nun kendi subprocess desteği thread havuzuna hiç dokunmaz.
-    exec_kw: dict = dict(
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
-        limit=1024 * 1024,   # uzun satırlar readline limitine takılmasın
-    )
-    if sys.platform == "win32":
-        exec_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-
-    proc = await asyncio.create_subprocess_exec(sys.executable, tmp, **exec_kw)
+    proc, lines, wait = await _start_cell_process(tmp)
     _active_procs[cell_id] = proc
     exit_code = -1
     try:
-        while True:
-            try:
-                line = await proc.stdout.readline()
-            except ValueError:
-                # Satır limitin üstünde — StreamReader veriyi tüketip ValueError atar,
-                # sonsuz döngü riski yok; bu satırı atlayıp devam ediyoruz.
-                continue
-            if not line:
-                break
+        # Ayrıştırma döngüsü TEK: satır kaynağı hangi yoldan geldiğinden bağımsız.
+        async for line in lines:
             text = line.decode("utf-8", errors="replace").rstrip()
             if text.startswith("STEP_DONE:"):
                 idx_s = text.split(":", 1)[1].strip()
@@ -277,7 +405,7 @@ async def _run_cell(script: str, cell_id: int) -> dict:
             elif not text.startswith("STEP_START:"):
                 terminal_lines.append(text)
 
-        exit_code = await proc.wait()
+        exit_code = await wait()
     finally:
         _active_procs.pop(cell_id, None)
         try:
@@ -539,9 +667,6 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
             if data is not None:
                 scenario_data[folder] = data
 
-        # Cihaz slot indeksi -> systemPort (aynı anda aktif olabilecek her cihaz için ayrı)
-        device_slots = {device_id: i for i, (device_id, _n) in enumerate(devices)}
-
         cells: list[AiJobRunResult] = []
         for folder in scenario_folders:
             data = scenario_data.get(folder)
@@ -565,7 +690,9 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
                 "cell_id": c.id,
                 "scenario_folder": c.scenario_folder,
                 "device_id": c.device_id,
-                "system_port": _SYSTEM_PORT_BASE + device_slots.get(c.device_id, 0),
+                # Port CİHAZA bağlı ve process genelinde global — eşzamanlı koşumlar
+                # farklı cihazlar için asla aynı portu almaz (bkz. _acquire_system_port).
+                "system_port": _acquire_system_port(c.device_id),
             }
             if c.device_id not in group_index:
                 group_index[c.device_id] = len(device_groups)
