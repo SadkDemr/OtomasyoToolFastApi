@@ -39,8 +39,12 @@ from routers.java_generator_router import router as java_gen_router
 from routers.bdd_generator_router import router as bdd_gen_router
 # 📁 Genel Dosya Yukleme
 from routers.uploads_router import router as uploads_router
+# 🗓️ AI Test Generator - Job sistemi (Faz 1: Mobil)
+from routers.ai_job_router import router as ai_job_router
 # 🔁 AI Test Generator - idle oturum reaper
 from routers.ai_test_generator_router import _session_idle_reaper
+# 🗓️ AI Job Sistemi - zamanlayici + baslangic temizligi
+from services.ai_job_service import ai_job_scheduler_loop, cleanup_interrupted_runs
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,6 +52,8 @@ async def lifespan(app: FastAPI):
     print("--- SISTEM BASLATILIYOR ---")
     init_db()
     asyncio.create_task(_session_idle_reaper())
+    cleanup_interrupted_runs()
+    asyncio.create_task(ai_job_scheduler_loop())
     print("Swagger: http://localhost:8000/docs")
     print("Web UI: http://localhost:8000/ui")
     print("="*50)
@@ -82,6 +88,8 @@ app.include_router(java_gen_router)
 app.include_router(bdd_gen_router)
 # 📁 Genel Dosya Yukleme
 app.include_router(uploads_router)
+# 🗓️ AI Job Sistemi
+app.include_router(ai_job_router)
 
 web_ui = os.path.join(BASE_DIR, "WebArayuz")
 if os.path.exists(web_ui):
@@ -306,6 +314,10 @@ if __name__ == "__main__":
     # Geliştirme modunda auto-reload istiyorsanız: DEV_RELOAD=1 python main.py
     # Prodüksiyonda reload=False — senaryo script.py kaydedince sunucu düşmesin
     _dev_reload = _os_main.environ.get("DEV_RELOAD", "0") == "1"
+    if _dev_reload and sys.platform == "win32":
+        # uvicorn reload=True Windows'ta SelectorEventLoop'u zorlar; asyncio subprocess
+        # orada desteklenmez, AI Job hucreleri thread havuzlu yedek yola duser.
+        print("[UYARI] DEV_RELOAD=1: AI Job hucreleri thread havuzlu yedek yolu kullanacak.")
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
