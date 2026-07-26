@@ -7,60 +7,165 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .page-content { padding: 24px; width: 100%; max-width: 1200px; box-sizing: border-box; }
-        .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-        .toolbar-title { font-weight: 600; font-size: 1rem; flex: 1; }
-        .btn-primary {
-            padding: 8px 16px; background: var(--accent-primary); border: none;
-            border-radius: var(--radius-md); color: #fff; font-size: 0.85rem;
-            font-weight: 500; cursor: pointer;
-        }
-        .btn-secondary {
-            padding: 8px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color);
-            border-radius: var(--radius-md); color: var(--text-secondary); font-size: 0.85rem; cursor: pointer;
-        }
-        .job-card {
-            background: var(--bg-secondary); border: 1px solid var(--border-color);
-            border-radius: var(--radius-md); padding: 16px; margin-bottom: 12px;
-            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-        }
-        .job-card-name { font-weight: 600; flex: 1; min-width: 160px; }
-        .job-card-meta { font-size: 0.8rem; color: var(--text-muted); }
-        .job-card-actions { display: flex; gap: 6px; }
-        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 0.9rem; }
+        /* NOT: Tum ozel siniflar "aijob-" onekli — site genelindeki css/style.css'te
+           ayni isimli siniflar (ornegin .modal-overlay + .active toggle konvansiyonu)
+           mevcut oldugu icin isim carpismasini onlemek amacli (bkz. test-history.html'in
+           kendi "hist-" onek konvansiyonu). */
 
-        .modal-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-            display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
-        }
-        .modal-box {
-            background: var(--bg-secondary); border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg); padding: 24px; width: 100%; max-width: 640px;
-            max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
-        }
-        .modal-header { display: flex; align-items: center; justify-content: space-between; }
-        .form-row { display: flex; flex-direction: column; gap: 6px; }
-        .form-row label { font-size: 0.82rem; color: var(--text-secondary); font-weight: 500; }
-        .form-row input, .form-row select {
-            padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md);
-            background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem;
-        }
-        .checkbox-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;
-            border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 8px; }
-        .checkbox-list label { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 400; }
+        .page-content { padding: 28px; width: 100%; max-width: 1200px; box-sizing: border-box; }
 
-        .matrix-wrap { overflow-x: auto; }
-        table.matrix { border-collapse: collapse; width: 100%; }
-        table.matrix th, table.matrix td { border: 1px solid var(--border-color); padding: 8px 10px; font-size: 0.82rem; text-align: center; }
-        table.matrix th { background: var(--bg-secondary); }
-        table.matrix td.scenario-name { text-align: left; font-weight: 500; white-space: nowrap; }
-        .cell-status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
-        .cell-queued  { background: rgba(148,163,184,0.2); color: #94a3b8; }
-        .cell-running { background: rgba(59,130,246,0.18); color: #3b82f6; animation: pulse 1.2s infinite; }
-        .cell-pass    { background: rgba(16,185,129,0.15); color: #10b981; }
-        .cell-fail    { background: rgba(239,68,68,0.15); color: #ef4444; }
-        .cell-error   { background: rgba(245,158,11,0.18); color: #f59e0b; }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .aijob-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+        .aijob-toolbar-title { font-weight: 600; font-size: 1.05rem; flex: 1; display: flex; align-items: center; gap: 8px; }
+        .aijob-toolbar-count {
+            font-size: 0.72rem; font-weight: 600; color: var(--text-muted);
+            background: var(--bg-tertiary); border-radius: 999px; padding: 2px 9px;
+        }
+
+        .aijob-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 9px 16px; border-radius: var(--radius-md);
+            font-size: 0.85rem; font-weight: 500; cursor: pointer;
+            border: 1px solid transparent; transition: var(--transition);
+            line-height: 1.2;
+        }
+        .aijob-btn:active { transform: scale(0.97); }
+        .aijob-btn-primary { background: var(--accent-primary); color: #fff; box-shadow: var(--shadow-sm); }
+        .aijob-btn-primary:hover { background: var(--accent-hover); box-shadow: var(--shadow-md); }
+        .aijob-btn-secondary { background: var(--bg-secondary); border-color: var(--border-color); color: var(--text-secondary); }
+        .aijob-btn-secondary:hover { background: var(--bg-hover, var(--bg-tertiary)); border-color: var(--accent-primary); color: var(--accent-primary); }
+        .aijob-btn-danger { background: transparent; border-color: var(--border-color); color: var(--text-muted); }
+        .aijob-btn-danger:hover { background: rgba(239,68,68,0.08); border-color: var(--danger); color: var(--danger); }
+        .aijob-btn-sm { padding: 6px 12px; font-size: 0.78rem; }
+        .aijob-btn[disabled] { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+        /* ── Job kartlari ─────────────────────────────────────────────── */
+        .aijob-list { display: flex; flex-direction: column; gap: 10px; }
+        .aijob-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg); padding: 16px 18px;
+            display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+            transition: var(--transition);
+            animation: aijob-fade-up 0.25s ease both;
+        }
+        .aijob-card:hover { box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-color)); }
+        .aijob-card-icon {
+            width: 42px; height: 42px; min-width: 42px; border-radius: var(--radius-md);
+            background: rgba(16,185,129,0.12); color: var(--success);
+            display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+        }
+        .aijob-card-body { flex: 1; min-width: 180px; }
+        .aijob-card-name { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+        .aijob-card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
+        .aijob-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 0.74rem; font-weight: 500; color: var(--text-muted);
+            background: var(--bg-tertiary); border-radius: 999px; padding: 3px 10px;
+        }
+        .aijob-chip-schedule { color: var(--accent-primary); background: rgba(79,70,229,0.1); }
+        .aijob-chip-schedule.is-paused { color: var(--text-muted); background: var(--bg-tertiary); }
+        .aijob-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+        /* ── Bos durum (site genelindeki .empty-state-icon konvansiyonuyla ayni) ── */
+        .aijob-empty { text-align: center; padding: 54px 20px; }
+        .aijob-empty .empty-state-icon { font-size: 2rem; }
+        .aijob-empty-title { font-size: 1.02rem; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+        .aijob-empty-desc { color: var(--text-muted); font-size: 0.86rem; }
+        .aijob-empty-err { color: var(--danger); }
+
+        /* ── Modal ────────────────────────────────────────────────────── */
+        .aijob-modal-overlay {
+            position: fixed; inset: 0; background: rgba(15,15,26,0.55); backdrop-filter: blur(3px);
+            display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+            opacity: 0; visibility: hidden; transition: var(--transition);
+        }
+        .aijob-modal-overlay.active { opacity: 1; visibility: visible; }
+        .aijob-modal-box {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+            padding: 24px; width: 100%; max-width: 640px;
+            max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
+            transform: scale(0.94) translateY(8px); transition: var(--transition);
+        }
+        .aijob-modal-overlay.active .aijob-modal-box { transform: scale(1) translateY(0); }
+        .aijob-modal-header { display: flex; align-items: center; justify-content: space-between; }
+        .aijob-modal-title { font-size: 1.05rem; font-weight: 600; }
+        .aijob-modal-close {
+            width: 32px; height: 32px; border-radius: var(--radius-md);
+            border: none; background: transparent; color: var(--text-muted);
+            cursor: pointer; font-size: 1.05rem; transition: var(--transition);
+        }
+        .aijob-modal-close:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+        .aijob-form-row { display: flex; flex-direction: column; gap: 6px; }
+        .aijob-form-row label { font-size: 0.82rem; color: var(--text-secondary); font-weight: 600; }
+        .aijob-form-row input, .aijob-form-row select {
+            padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md);
+            background: var(--bg-primary); color: var(--text-primary); font-size: 0.88rem;
+            transition: var(--transition); font-family: inherit;
+        }
+        .aijob-form-row input:focus, .aijob-form-row select:focus {
+            outline: none; border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
+        }
+
+        .aijob-check-list {
+            display: flex; flex-direction: column; gap: 4px; max-height: 168px; overflow-y: auto;
+            border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 6px;
+            background: var(--bg-primary);
+        }
+        .aijob-check-list label {
+            display: flex; align-items: center; gap: 10px; font-size: 0.86rem; font-weight: 400;
+            padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition);
+        }
+        .aijob-check-list label:hover { background: var(--bg-tertiary); }
+        .aijob-check-list input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-primary); cursor: pointer; }
+        .aijob-check-empty { color: var(--text-muted); font-size: 0.82rem; padding: 10px; }
+
+        .aijob-modal-footer { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; border-top: 1px solid var(--border-color); margin-top: 2px; }
+
+        /* ── Kosum matrisi ────────────────────────────────────────────── */
+        .aijob-matrix-wrap { overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-secondary); }
+        table.aijob-matrix { border-collapse: collapse; width: 100%; }
+        table.aijob-matrix th, table.aijob-matrix td {
+            border-bottom: 1px solid var(--border-color); padding: 11px 14px; font-size: 0.84rem; text-align: center;
+        }
+        table.aijob-matrix th {
+            background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 600;
+            font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em;
+            position: sticky; top: 0;
+        }
+        table.aijob-matrix tbody tr:last-child td { border-bottom: none; }
+        table.aijob-matrix tbody tr:hover td { background: var(--bg-primary); }
+        table.aijob-matrix td.aijob-scenario-name { text-align: left; font-weight: 500; white-space: nowrap; color: var(--text-primary); }
+
+        .aijob-cell-status {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+            cursor: pointer; transition: var(--transition); border: 1px solid transparent;
+        }
+        .aijob-cell-status:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+        .aijob-cell-queued  { background: var(--bg-tertiary); color: var(--text-muted); }
+        .aijob-cell-running { background: rgba(245,158,11,0.14); color: var(--warning); animation: runPulse 1.2s infinite; }
+        .aijob-cell-pass    { background: rgba(16,185,129,0.14); color: var(--success); }
+        .aijob-cell-fail    { background: rgba(239,68,68,0.14); color: var(--danger); }
+        .aijob-cell-error   { background: rgba(245,158,11,0.2); color: #b45309; }
+
+        @keyframes aijob-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        .aijob-step-line { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--radius-sm); background: var(--bg-primary); font-size: 0.85rem; }
+        .aijob-step-line.pass { border-left: 3px solid var(--success); }
+        .aijob-step-line.fail { border-left: 3px solid var(--danger); }
+        .aijob-terminal {
+            background: #0d1117; color: #e6edf3; padding: 14px; border-radius: var(--radius-md);
+            overflow: auto; max-height: 300px; font-size: 0.78rem; margin-top: 4px;
+            font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; line-height: 1.6;
+        }
+
+        @media (max-width: 640px) {
+            .page-content { padding: 16px; }
+            .aijob-card { flex-direction: column; align-items: flex-start; }
+            .aijob-card-actions { width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -70,44 +175,44 @@
         <header class="top-bar"><span class="top-bar-title">🗓️ Mobil Job'lar</span></header>
         <div class="page-content">
 
-            <div class="toolbar">
-                <span class="toolbar-title">Job Listesi</span>
-                <button class="btn-secondary" onclick="loadJobs()">↺ Yenile</button>
-                <button class="btn-primary" onclick="openJobModal()">+ Yeni Job</button>
+            <div class="aijob-toolbar">
+                <span class="aijob-toolbar-title">📋 Job Listesi <span class="aijob-toolbar-count" id="jobCount">0</span></span>
+                <button class="aijob-btn aijob-btn-secondary" onclick="loadJobs()">↺ Yenile</button>
+                <button class="aijob-btn aijob-btn-primary" onclick="openJobModal()">+ Yeni Job</button>
             </div>
-            <div id="jobListWrap"><div class="empty-state">Yükleniyor...</div></div>
+            <div id="jobListWrap"><div class="aijob-empty">Yükleniyor...</div></div>
 
-            <div class="toolbar" style="margin-top:28px;">
-                <span class="toolbar-title">Koşum Matrisi</span>
-                <button class="btn-secondary" id="stopRunBtn" style="display:none;" onclick="stopCurrentRun()">⏹ Durdur</button>
+            <div class="aijob-toolbar" style="margin-top:32px;">
+                <span class="aijob-toolbar-title">🧩 Koşum Matrisi</span>
+                <button class="aijob-btn aijob-btn-danger" id="stopRunBtn" style="display:none;" onclick="stopCurrentRun()">⏹ Durdur</button>
             </div>
-            <div id="matrixWrap"><div class="empty-state">Bir job çalıştırınca burada görünecek.</div></div>
+            <div id="matrixWrap"><div class="aijob-empty"><div class="empty-state-icon">🧩</div><div class="aijob-empty-desc">Bir job çalıştırınca burada görünecek.</div></div></div>
         </div>
     </div>
 </div>
 
 <!-- Job Olustur/Duzenle Modal -->
-<div id="jobModal" class="modal-overlay">
-    <div class="modal-box">
-        <div class="modal-header">
-            <strong id="jobModalTitle">Yeni Job</strong>
-            <button class="btn-secondary" onclick="closeJobModal()">✕</button>
+<div id="jobModal" class="aijob-modal-overlay">
+    <div class="aijob-modal-box">
+        <div class="aijob-modal-header">
+            <strong class="aijob-modal-title" id="jobModalTitle">Yeni Job</strong>
+            <button class="aijob-modal-close" onclick="closeJobModal()" aria-label="Kapat">✕</button>
         </div>
         <input type="hidden" id="jobEditId" value="">
-        <div class="form-row">
-            <label>Job Adı</label>
+        <div class="aijob-form-row">
+            <label for="jobName">Job Adı</label>
             <input type="text" id="jobName" placeholder="Ör: Sabah Regresyon Paketi">
         </div>
-        <div class="form-row">
+        <div class="aijob-form-row">
             <label>Senaryolar (mobil)</label>
-            <div class="checkbox-list" id="scenarioCheckList"></div>
+            <div class="aijob-check-list" id="scenarioCheckList"></div>
         </div>
-        <div class="form-row">
+        <div class="aijob-form-row">
             <label>Cihazlar (ADB)</label>
-            <div class="checkbox-list" id="deviceCheckList"></div>
+            <div class="aijob-check-list" id="deviceCheckList"></div>
         </div>
-        <div class="form-row">
-            <label>Zamanlama</label>
+        <div class="aijob-form-row">
+            <label for="scheduleType">Zamanlama</label>
             <select id="scheduleType" onchange="onScheduleTypeChange()">
                 <option value="">Zamanlama yok (manuel çalıştır)</option>
                 <option value="once">Tek seferlik</option>
@@ -115,23 +220,23 @@
                 <option value="weekly">Her hafta tekrarla</option>
             </select>
         </div>
-        <div class="form-row" id="scheduleAtRow" style="display:none;">
-            <label>İlk çalışma zamanı</label>
+        <div class="aijob-form-row" id="scheduleAtRow" style="display:none;">
+            <label for="scheduleAt">İlk çalışma zamanı</label>
             <input type="datetime-local" id="scheduleAt">
         </div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button class="btn-secondary" onclick="closeJobModal()">Vazgeç</button>
-            <button class="btn-primary" onclick="saveJob()">Kaydet</button>
+        <div class="aijob-modal-footer">
+            <button class="aijob-btn aijob-btn-secondary" onclick="closeJobModal()">Vazgeç</button>
+            <button class="aijob-btn aijob-btn-primary" onclick="saveJob()">Kaydet</button>
         </div>
     </div>
 </div>
 
 <!-- Hucre Detay Modal -->
-<div id="cellModal" class="modal-overlay">
-    <div class="modal-box">
-        <div class="modal-header">
-            <strong id="cellModalTitle">Hücre Detayı</strong>
-            <button class="btn-secondary" onclick="closeCellModal()">✕</button>
+<div id="cellModal" class="aijob-modal-overlay">
+    <div class="aijob-modal-box">
+        <div class="aijob-modal-header">
+            <strong class="aijob-modal-title" id="cellModalTitle">Hücre Detayı</strong>
+            <button class="aijob-modal-close" onclick="closeCellModal()" aria-label="Kapat">✕</button>
         </div>
         <div id="cellModalBody"></div>
     </div>
@@ -167,36 +272,49 @@
 
     window.loadJobs = async function loadJobs() {
         const wrap = document.getElementById('jobListWrap');
-        wrap.innerHTML = '<div class="empty-state">Yükleniyor...</div>';
+        wrap.innerHTML = '<div class="aijob-empty">Yükleniyor...</div>';
         try {
             const res = await API.get('/ai-jobs');
             const jobs = res.jobs || [];
+            document.getElementById('jobCount').textContent = jobs.length;
             if (!jobs.length) {
-                wrap.innerHTML = '<div class="empty-state">Henüz job yok. "+ Yeni Job" ile oluşturun.</div>';
+                wrap.innerHTML = '<div class="aijob-empty"><div class="empty-state-icon">📅</div><div class="aijob-empty-title">Henüz job yok</div><div class="aijob-empty-desc">"+ Yeni Job" ile senaryo × cihaz koşum paketi oluşturun.</div></div>';
                 return;
             }
-            wrap.innerHTML = jobs.map(renderJobCard).join('');
+            wrap.innerHTML = '<div class="aijob-list">' + jobs.map(renderJobCard).join('') + '</div>';
         } catch (e) {
-            wrap.innerHTML = `<div class="empty-state">Hata: ${e.message}</div>`;
+            wrap.innerHTML = `<div class="aijob-empty"><div class="empty-state-icon">⚠️</div><div class="aijob-empty-desc aijob-empty-err">Hata: ${escapeHtml(e.message)}</div></div>`;
         }
     };
 
     function renderJobCard(job) {
-        const schedText = job.schedule
-            ? `${job.schedule.schedule_type} — ${new Date(job.schedule.run_at).toLocaleString('tr-TR')} ${job.schedule.enabled ? '' : '(pasif)'}`
-            : 'Zamanlama yok';
+        const schedChip = job.schedule
+            ? `<span class="aijob-chip aijob-chip-schedule${job.schedule.enabled ? '' : ' is-paused'}">⏱ ${scheduleLabel(job.schedule)}</span>`
+            : `<span class="aijob-chip">🖐 Manuel</span>`;
         return `
-            <div class="job-card">
-                <div class="job-card-name">${escapeHtml(job.name)}
-                    <div class="job-card-meta">${job.scenarios.length} senaryo × ${job.devices.length} cihaz — ${schedText}</div>
+            <div class="aijob-card">
+                <div class="aijob-card-icon">📱</div>
+                <div class="aijob-card-body">
+                    <div class="aijob-card-name">${escapeHtml(job.name)}</div>
+                    <div class="aijob-card-meta">
+                        <span class="aijob-chip">🧪 ${job.scenarios.length} senaryo</span>
+                        <span class="aijob-chip">📶 ${job.devices.length} cihaz</span>
+                        ${schedChip}
+                    </div>
                 </div>
-                <div class="job-card-actions">
-                    <button class="btn-primary" onclick="runJob(${job.id})">▶ Çalıştır</button>
-                    <button class="btn-secondary" onclick="editJob(${job.id})">Düzenle</button>
-                    <button class="btn-secondary" onclick="showRuns(${job.id})">Geçmiş</button>
-                    <button class="btn-secondary" onclick="deleteJob(${job.id})">Sil</button>
+                <div class="aijob-card-actions">
+                    <button class="aijob-btn aijob-btn-primary aijob-btn-sm" onclick="runJob(${job.id})">▶ Çalıştır</button>
+                    <button class="aijob-btn aijob-btn-secondary aijob-btn-sm" onclick="editJob(${job.id})">✎ Düzenle</button>
+                    <button class="aijob-btn aijob-btn-secondary aijob-btn-sm" onclick="showRuns(${job.id})">🕒 Geçmiş</button>
+                    <button class="aijob-btn aijob-btn-danger aijob-btn-sm" onclick="deleteJob(${job.id})">🗑</button>
                 </div>
             </div>`;
+    }
+
+    function scheduleLabel(sched) {
+        const typeMap = { once: 'Tek seferlik', daily: 'Her gün', weekly: 'Her hafta' };
+        const dt = new Date(sched.run_at).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
+        return `${typeMap[sched.schedule_type] || sched.schedule_type} — ${dt}${sched.enabled ? '' : ' (pasif)'}`;
     }
 
     function escapeHtml(s) {
@@ -222,13 +340,13 @@
         const scList = document.getElementById('scenarioCheckList');
         scList.innerHTML = mobileScenarios.length
             ? mobileScenarios.map(s => `<label><input type="checkbox" value="${escapeHtml(s.folder)}" ${job && job.scenarios.includes(s.folder) ? 'checked' : ''}> ${escapeHtml(s.name)}</label>`).join('')
-            : '<span style="color:var(--text-muted);font-size:0.82rem;">Mobil senaryo bulunamadı</span>';
+            : '<div class="aijob-check-empty">Mobil senaryo bulunamadı — önce AI Test Generator\'da bir senaryo kaydedin.</div>';
 
         const devList = document.getElementById('deviceCheckList');
         const jobDeviceIds = job ? job.devices.map(d => d.device_id) : [];
         devList.innerHTML = adbDevices.length
             ? adbDevices.map(id => `<label><input type="checkbox" value="${escapeHtml(id)}" ${jobDeviceIds.includes(id) ? 'checked' : ''}> ${escapeHtml(id)}</label>`).join('')
-            : '<span style="color:var(--text-muted);font-size:0.82rem;">Bağlı ADB cihazı yok</span>';
+            : '<div class="aijob-check-empty">Bağlı ADB cihazı yok — bir telefon/emülatör bağlayın.</div>';
 
         const schedSel = document.getElementById('scheduleType');
         schedSel.value = job && job.schedule ? job.schedule.schedule_type : '';
@@ -242,11 +360,11 @@
             document.getElementById('scheduleAt').value = '';
         }
 
-        document.getElementById('jobModal').style.display = 'flex';
+        document.getElementById('jobModal').classList.add('active');
     };
 
     window.closeJobModal = function closeJobModal() {
-        document.getElementById('jobModal').style.display = 'none';
+        document.getElementById('jobModal').classList.remove('active');
     };
 
     window.onScheduleTypeChange = function onScheduleTypeChange() {
@@ -320,7 +438,7 @@
         run.cells.forEach(c => currentRunCells[c.id] = c);
         renderMatrix();
         connectWs(runId);
-        document.getElementById('stopRunBtn').style.display = run.status === 'running' ? 'inline-block' : 'none';
+        document.getElementById('stopRunBtn').style.display = run.status === 'running' ? 'inline-flex' : 'none';
     }
 
     window.stopCurrentRun = async function stopCurrentRun() {
@@ -333,18 +451,18 @@
         const cells = Object.values(currentRunCells);
         const wrap = document.getElementById('matrixWrap');
         if (!cells.length) {
-            wrap.innerHTML = '<div class="empty-state">Hücre bulunamadı.</div>';
+            wrap.innerHTML = '<div class="aijob-empty"><div class="empty-state-icon">🧩</div><div class="aijob-empty-desc">Hücre bulunamadı.</div></div>';
             return;
         }
         const scenarios = [...new Set(cells.map(c => c.scenario_folder))];
         const devices = [...new Set(cells.map(c => c.device_id))];
 
-        let html = '<div class="matrix-wrap"><table class="matrix"><thead><tr><th>Senaryo</th>';
+        let html = '<div class="aijob-matrix-wrap"><table class="aijob-matrix"><thead><tr><th>Senaryo</th>';
         devices.forEach(d => html += `<th>${escapeHtml(d)}</th>`);
         html += '</tr></thead><tbody>';
         scenarios.forEach(sc => {
             const scName = cells.find(c => c.scenario_folder === sc)?.scenario_name || sc;
-            html += `<tr><td class="scenario-name">${escapeHtml(scName)}</td>`;
+            html += `<tr><td class="aijob-scenario-name">${escapeHtml(scName)}</td>`;
             devices.forEach(d => {
                 const cell = cells.find(c => c.scenario_folder === sc && c.device_id === d);
                 html += `<td>${cell ? cellBadge(cell) : '-'}</td>`;
@@ -356,8 +474,8 @@
     }
 
     function cellBadge(cell) {
-        const labelMap = { queued: 'Bekliyor', running: 'Koşuyor', pass: 'Başarılı', fail: 'Başarısız', error: 'Hata' };
-        return `<span class="cell-status cell-${cell.status}" onclick="showCellDetail(${cell.id})">${labelMap[cell.status] || cell.status}</span>`;
+        const labelMap = { queued: '⏳ Bekliyor', running: '⚡ Koşuyor', pass: '✓ Başarılı', fail: '✗ Başarısız', error: '⚠ Hata' };
+        return `<span class="aijob-cell-status aijob-cell-${cell.status}" onclick="showCellDetail(${cell.id})">${labelMap[cell.status] || cell.status}</span>`;
     }
 
     window.showCellDetail = function showCellDetail(cellId) {
@@ -366,24 +484,37 @@
         document.getElementById('cellModalTitle').textContent = `${cell.scenario_name} — ${cell.device_id}`;
         const steps = (cell.log && cell.log.steps) || [];
         const terminal = (cell.log && cell.log.terminal) || (cell.log && cell.log.error) || '';
-        let body = `<div style="font-size:0.82rem;color:var(--text-muted);">Durum: ${cell.status}</div>`;
+        let body = `<div style="font-size:0.82rem;color:var(--text-muted);">Durum: ${escapeHtml(cell.status)}</div>`;
         if (steps.length) {
             body += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">';
             steps.forEach(s => {
-                body += `<div>Adım ${s.index}: ${s.status === 'pass' ? '✓' : '✗'} ${s.status}</div>`;
+                const ok = s.status === 'pass';
+                body += `<div class="aijob-step-line ${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'}&nbsp; Adım ${s.index}</div>`;
             });
             body += '</div>';
         }
         if (terminal) {
-            body += `<pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:8px;overflow:auto;max-height:300px;font-size:0.78rem;margin-top:10px;">${escapeHtml(terminal)}</pre>`;
+            body += `<pre class="aijob-terminal">${escapeHtml(terminal)}</pre>`;
         }
         document.getElementById('cellModalBody').innerHTML = body;
-        document.getElementById('cellModal').style.display = 'flex';
+        document.getElementById('cellModal').classList.add('active');
     };
 
     window.closeCellModal = function closeCellModal() {
-        document.getElementById('cellModal').style.display = 'none';
+        document.getElementById('cellModal').classList.remove('active');
     };
+
+    // Backdrop tiklamasi ve ESC ile kapatma (her iki modal icin ortak)
+    document.querySelectorAll('.aijob-modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (ev) => {
+            if (ev.target === overlay) overlay.classList.remove('active');
+        });
+    });
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') {
+            document.querySelectorAll('.aijob-modal-overlay.active').forEach(o => o.classList.remove('active'));
+        }
+    });
 
     function connectWs(runId) {
         if (ws) { try { ws.close(); } catch (e) {} }
