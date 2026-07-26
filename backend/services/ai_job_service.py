@@ -474,3 +474,57 @@ def run_to_dict(run: AiJobRun, include_cells: bool = False) -> dict:
             for c in run.results
         ]
     return d
+
+
+# ══════════════════════════════════════════════════════════════
+# ZAMANLAYICI (main.py lifespan'de asyncio.create_task ile başlatılır)
+# ══════════════════════════════════════════════════════════════
+
+def cleanup_interrupted_runs() -> None:
+    """Sunucu yeniden başlarken yarım kalan koşumları 'interrupted' işaretler."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        stuck_runs = db.query(AiJobRun).filter(AiJobRun.status == "running").all()
+        for r in stuck_runs:
+            r.status = "interrupted"
+            r.ended_at = datetime.utcnow()
+        db.query(AiJobRunResult).filter(
+            AiJobRunResult.status.in_(["queued", "running"])
+        ).update({"status": "error"}, synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+async def ai_job_scheduler_loop() -> None:
+    """30sn'de bir zamanı gelmis job'lari tetikler. main.py'deki _session_idle_reaper deseniyle ayni."""
+    from database import SessionLocal
+
+    while True:
+        await asyncio.sleep(30)
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            due = db.query(AiJobSchedule).filter(
+                AiJobSchedule.enabled == True,   # noqa: E712
+                AiJobSchedule.run_at <= now,
+            ).all()
+            for sched in due:
+                try:
+                    await run_job(sched.job_id, db, trigger_type="scheduled")
+                except Exception as e:
+                    print(f"[AI-JOB-SCHEDULER] job {sched.job_id} tetiklenemedi: {e}")
+
+                sched.last_triggered_at = now
+                if sched.schedule_type == "once":
+                    sched.enabled = False
+                elif sched.schedule_type == "daily":
+                    sched.run_at = sched.run_at + timedelta(days=1)
+                elif sched.schedule_type == "weekly":
+                    sched.run_at = sched.run_at + timedelta(days=7)
+                db.commit()
+        except Exception as e:
+            print(f"[AI-JOB-SCHEDULER] döngü hatası: {e}")
+        finally:
+            db.close()
