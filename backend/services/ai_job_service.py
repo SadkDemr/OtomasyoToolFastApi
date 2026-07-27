@@ -495,7 +495,7 @@ async def _run_cell(script: str, cell_id: int) -> dict:
 
 async def _execute_cell(
     run_id: int, cell_id: int, steps_data: dict | None,
-    device_id: str, system_port: int | None = None,
+    device_id: str, system_port: int | None, platform: str,
 ) -> None:
     """Bu fonksiyon HİÇBİR istisnayı çağırana sızdırmamalıdır: run_job bunları
     asyncio.gather(...) ile paralel bekliyor; burada yakalanmayan bir hata gather'ı
@@ -533,7 +533,7 @@ async def _execute_cell(
                 return
 
             try:
-                script = await _generate_cell_script(steps_data, device_id, system_port)
+                script = await _generate_cell_script(platform, steps_data, device_id, system_port)
                 result = await _run_cell(script, cell_id)
                 cell.status = result["status"]
                 cell.log_json = _json.dumps(result)
@@ -645,24 +645,34 @@ async def _finalize_run(run_id: int, interrupted: bool) -> None:
         pass
 
 
-async def _run_job_cells(run_id: int, device_groups: list[list[dict]], scenario_data: dict[str, dict]) -> None:
+async def _run_job_cells(
+    run_id: int, device_groups: list[list[dict]], scenario_data: dict[str, dict], platform: str,
+) -> None:
     """FAZ 2 (arka plan): hücreleri koşturur ve run'ı sonlandırır.
 
-    device_groups: her eleman TEK bir cihaza ait hücre listesidir. Gruplar birbirine
-    paralel, grup İÇİ hücreler ise SIRAYLA koşar — tek bir fiziksel cihaz aynı anda
-    birden fazla bağımsız UI otomasyon oturumunu doğru şekilde koşturamaz (ekran
-    odağı/dokunma girdisi çakışır).
+    device_groups: her eleman TEK bir cihaza/tarayıcıya ait hücre listesidir. Gruplar
+    birbirine paralel, grup İÇİ hücreler ise SIRAYLA koşar. Desktop'ta grup sayısı
+    her zaman 1'dir (tek sözde-birim) — bu yüzden desktop zaten doğal olarak tam
+    sıralı çalışır; global _get_desktop_lock() burada AYRICA tutulur ki bu run
+    sürerken manuel bir "Test Et" çalıştırması (AI Test Generator sayfası) veya
+    başka bir desktop job'ı araya giremesin.
 
     Bu fonksiyon asyncio.create_task ile fire-and-forget çağrıldığı için HİÇBİR
     istisnayı dışarı sızdırmamalıdır (aksi halde "Task exception was never retrieved").
     """
     interrupted = False
+    desktop_lock = None
     try:
+        if platform == "desktop":
+            from routers.ai_test_generator_router import _get_desktop_lock
+            desktop_lock = _get_desktop_lock()
+            await desktop_lock.acquire()
+
         async def _device_sequence(cells: list[dict]) -> None:
             for c in cells:
                 await _execute_cell(
                     run_id, c["cell_id"], scenario_data.get(c["scenario_folder"]),
-                    c["device_id"], c["system_port"],
+                    c["device_id"], c["system_port"], platform,
                 )
 
         await asyncio.gather(*[_device_sequence(g) for g in device_groups])
@@ -670,6 +680,11 @@ async def _run_job_cells(run_id: int, device_groups: list[list[dict]], scenario_
         interrupted = True
         print(f"[AI-JOB] run {run_id} koşumu kesintiye uğradı: {e}")
     finally:
+        if desktop_lock is not None and desktop_lock.locked():
+            try:
+                desktop_lock.release()
+            except RuntimeError:
+                pass
         _stopped_runs.discard(run_id)
         try:
             await _finalize_run(run_id, interrupted)
@@ -698,6 +713,11 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
     already = db.query(AiJobRun).filter(AiJobRun.job_id == job_id, AiJobRun.status == "running").first()
     if already:
         raise JobAlreadyRunningError(f"Job {job_id} zaten çalışıyor (run_id={already.id})")
+
+    if job.platform == "desktop":
+        from routers.ai_test_generator_router import _get_desktop_lock
+        if _get_desktop_lock().locked():
+            raise JobAlreadyRunningError("Başka bir desktop testi şu anda çalışıyor, lütfen bekleyin")
 
     scenario_folders = [s.scenario_folder for s in job.scenarios]
     devices = [(d.device_id, d.device_name) for d in job.devices]
@@ -751,9 +771,9 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
                 "cell_id": c.id,
                 "scenario_folder": c.scenario_folder,
                 "device_id": c.device_id,
-                # Port CİHAZA bağlı ve process genelinde global — eşzamanlı koşumlar
-                # farklı cihazlar için asla aynı portu almaz (bkz. _acquire_system_port).
-                "system_port": _acquire_system_port(c.device_id),
+                # Port yalnizca mobile'da anlamlidir (UiAutomator2 systemPort). Web/desktop
+                # icin gereksiz port tahsis etmeyelim (bkz. _acquire_system_port).
+                "system_port": _acquire_system_port(c.device_id) if job.platform == "mobile" else None,
             }
             if c.device_id not in group_index:
                 group_index[c.device_id] = len(device_groups)
@@ -763,7 +783,7 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
         await _publish(run_id, {"type": "run_started", "run_id": run_id, "total": len(cells)})
 
         # FAZ 2: arka plana devret — çağıran (router/zamanlayıcı) beklemez.
-        asyncio.create_task(_run_job_cells(run_id, device_groups, scenario_data))
+        asyncio.create_task(_run_job_cells(run_id, device_groups, scenario_data, job.platform))
     except Exception:
         try:
             db.rollback()
