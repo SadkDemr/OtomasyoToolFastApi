@@ -14,6 +14,11 @@ env/
 # Workspace verisi
 backend/workspaces/
 
+# Calisma zamani uretilen veri (kullaniciya ozel, kaynak kod degil)
+backend/logs/
+backend/desktop_data/
+backend/screenshots/
+
 # OS
 .DS_Store
 Thumbs.db
