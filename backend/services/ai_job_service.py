@@ -47,6 +47,67 @@ def _validate_scenario_folders(folders: list[str]) -> list[str]:
     return clean
 
 
+_WEB_BROWSERS = {"chrome", "firefox", "edge"}
+
+
+def _normalize_device_ids(platform: str, device_ids: list[str]) -> list[tuple[str, str]]:
+    """Platforma gore (device_id, device_name) ciftleri uretir.
+
+    - mobile: ADB serial'i hem id hem ad olarak kullanilir, en az bir tane sarttir.
+    - web: sadece {chrome, firefox, edge} kabul edilir (kucuk harfe normalize edilir),
+      en az bir tane sarttir.
+    - desktop: kullanicidan device_ids gelse bile yok sayilir — global desktop kilidi
+      yuzunden paralellik yok, tek sabit sozde-birim doner.
+    """
+    if platform == "desktop":
+        return [("desktop", "Masaüstü")]
+
+    if platform == "web":
+        clean: list[tuple[str, str]] = []
+        for d in device_ids:
+            name = (d or "").strip().lower()
+            if name not in _WEB_BROWSERS:
+                raise ValueError(f"Geçersiz tarayıcı: {d!r}")
+            clean.append((name, name))
+        if not clean:
+            raise ValueError("En az bir tarayıcı seçilmeli")
+        return clean
+
+    # mobile (varsayilan)
+    if not device_ids:
+        raise ValueError("En az bir cihaz seçilmeli")
+    return [(d, d) for d in device_ids]
+
+
+def _build_job_generate_request(
+    platform: str, steps_list: list, params: dict, device_id: str, system_port: int | None,
+):
+    """Job hucresi icin GenerateRequest olusturur. Salt Python — DB/network/async yok,
+    bu yuzden bagimsiz test edilebilir. GenerateRequest import'u fonksiyon ici (lazy):
+    ai_test_generator_router agir bir modul, module-level import ai_job_service'i
+    gereksiz yere ona baglar (bkz. _generate_cell_script'teki ayni desen)."""
+    from routers.ai_test_generator_router import GenerateRequest
+
+    if platform == "mobile":
+        return GenerateRequest(
+            steps_list=steps_list, platform="mobile", device_id=device_id, system_port=system_port,
+            app_package=params.get("app_package", ""), app_activity=params.get("app_activity", ""),
+            appium_url=params.get("appium_url") or "http://localhost:4723",
+        )
+    if platform == "web":
+        return GenerateRequest(
+            steps_list=steps_list, platform="web", browser=device_id,
+            target_url=params.get("target_url", ""),
+        )
+    if platform == "desktop":
+        return GenerateRequest(
+            steps_list=steps_list, platform="desktop",
+            app_path=params.get("app_path", ""), window_title=params.get("window_title", ""),
+            reuse_instance=params.get("reuse_instance", True),
+        )
+    raise ValueError(f"Bilinmeyen platform: {platform!r}")
+
+
 # ══════════════════════════════════════════════════════════════
 # CRUD
 # ══════════════════════════════════════════════════════════════
