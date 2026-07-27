@@ -2916,19 +2916,30 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str, vars_seed: di
 # BÖLÜM 4: ANA DÖNÜŞÜM MOTORU
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _image_click_code(idx: int, desc: str, b64: str, click_x: int, click_y: int, action: str, platform: str) -> str:
+def _image_click_code(idx: int, desc: str, b64: str, click_x: int, click_y: int, action: str, platform: str, browser: str = "") -> str:
     """Görsel tıklama adımı için Desktop+Web ortak kod üretir."""
     refocus_line = "    _refocus_window()\n" if platform == "desktop" else ""
     action_str = {"double_click": "double_click", "right_click": "right_click"}.get(action, "click")
+    is_web_cdp = platform == "web" and browser in ("chrome", "edge")
+    is_web_firefox = platform == "web" and browser not in ("chrome", "edge")
 
     if click_x >= 0 and click_y >= 0:
+        if is_web_firefox:
+            return (
+                f"# [NOKTA TIKLAMA] {desc}\n"
+                f"print('STEP_START:{idx}')\n"
+                f"print('STEP_FAIL:{idx}')\n"
+                f"raise Exception('Görsel adımlar şu anda Firefox\\'ta desteklenmiyor. Chrome veya Edge kullanın.')"
+            )
+        click_fn = "_find_b64_and_click_point_web" if is_web_cdp else "_find_b64_and_click_point"
+        click_args = f"driver, _img_b64_{idx}, {click_x}, {click_y}, action='{action_str}')" if is_web_cdp else f"_img_b64_{idx}, {click_x}, {click_y}, action='{action_str}')"
         return (
             f"# [NOKTA TIKLAMA] {desc}\n"
             f"print('STEP_START:{idx}')\n"
             f"try:\n"
             f"{refocus_line}"
             f"    _img_b64_{idx} = '{b64}'\n"
-            f"    _ok_{idx} = _find_b64_and_click_point(_img_b64_{idx}, {click_x}, {click_y}, action='{action_str}')\n"
+            f"    _ok_{idx} = {click_fn}({click_args}\n"
             f"    if not _ok_{idx}: raise Exception('Nokta tiklanamiyor: {desc}')\n"
             f"    time.sleep(0.5)\n"
             f"    print('STEP_DONE:{idx}')\n"
@@ -2938,18 +2949,35 @@ def _image_click_code(idx: int, desc: str, b64: str, click_x: int, click_y: int,
             f"    raise"
         )
 
-    find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
-    click_line = {
-        "double_click": f"    import pyautogui as _pag_i; _pag_i.doubleClick(_coords_{idx}[0], _coords_{idx}[1])",
-        "right_click":  f"    import pyautogui as _pag_i; _pag_i.rightClick(_coords_{idx}[0], _coords_{idx}[1])",
-    }.get(action, f"    _do_robust_click(_coords_{idx}[0], _coords_{idx}[1])")
+    if is_web_firefox:
+        return (
+            f"# [GÖRSEL TIKLAMA] {desc}\n"
+            f"print('STEP_START:{idx}')\n"
+            f"print('STEP_FAIL:{idx}')\n"
+            f"raise Exception('Görsel adımlar şu anda Firefox\\'ta desteklenmiyor. Chrome veya Edge kullanın.')"
+        )
+
+    if is_web_cdp:
+        find_fn = "_find_b64_in_page_web"
+        find_args = f"driver, _img_b64_{idx}, timeout=10)"
+        click_line = {
+            "double_click": f"    _cdp_click(driver, _coords_{idx}[0], _coords_{idx}[1], click_count=2)",
+            "right_click":  f"    _cdp_click(driver, _coords_{idx}[0], _coords_{idx}[1], button='right')",
+        }.get(action, f"    _cdp_click(driver, _coords_{idx}[0], _coords_{idx}[1])")
+    else:
+        find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
+        find_args = f"_img_b64_{idx}, timeout=10)"
+        click_line = {
+            "double_click": f"    import pyautogui as _pag_i; _pag_i.doubleClick(_coords_{idx}[0], _coords_{idx}[1])",
+            "right_click":  f"    import pyautogui as _pag_i; _pag_i.rightClick(_coords_{idx}[0], _coords_{idx}[1])",
+        }.get(action, f"    _do_robust_click(_coords_{idx}[0], _coords_{idx}[1])")
     return (
         f"# [GÖRSEL TIKLAMA] {desc}\n"
         f"print('STEP_START:{idx}')\n"
         f"try:\n"
         f"{refocus_line}"
         f"    _img_b64_{idx} = '{b64}'\n"
-        f"    _coords_{idx} = {find_fn}(_img_b64_{idx}, timeout=10)\n"
+        f"    _coords_{idx} = {find_fn}({find_args}\n"
         f"    if not _coords_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
         f"{click_line}\n"
         f"    print('[OK] Gorsel tiklandi: {desc}')\n"
@@ -2962,20 +2990,35 @@ def _image_click_code(idx: int, desc: str, b64: str, click_x: int, click_y: int,
     )
 
 
-def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
+def _image_step_code(item: "StepItem", platform: str, idx: int, browser: str = "") -> str:
     """Görsel adımı için Python kodu üretir. base64 scripte gömülür."""
     b64  = item.image_b64
     desc = item.content or f"Görsel adım {idx+1}"
+    is_web_cdp = platform == "web" and browser in ("chrome", "edge")
+    is_web_firefox = platform == "web" and browser not in ("chrome", "edge")
 
     if item.action == "drag":
+        if is_web_firefox:
+            return (
+                f"# [GÖRSEL SÜRÜKLE] {desc}\n"
+                f"print('STEP_START:{idx}')\n"
+                f"print('STEP_FAIL:{idx}')\n"
+                f"raise Exception('Görsel adımlar şu anda Firefox\\'ta desteklenmiyor. Chrome veya Edge kullanın.')"
+            )
         refocus_line = "    _refocus_window()\n" if platform == "desktop" else ""
+        drag_fn = "_find_b64_and_drag_web" if is_web_cdp else "_find_b64_and_drag"
+        drag_args = (
+            f"driver, _img_b64_{idx}, {item.click_x}, {item.click_y}, {item.drag_x}, {item.drag_y})"
+            if is_web_cdp else
+            f"_img_b64_{idx}, {item.click_x}, {item.click_y}, {item.drag_x}, {item.drag_y})"
+        )
         return (
             f"# [GÖRSEL SÜRÜKLE] {desc}\n"
             f"print('STEP_START:{idx}')\n"
             f"try:\n"
             f"{refocus_line}"
             f"    _img_b64_{idx} = '{b64}'\n"
-            f"    _ok_{idx} = _find_b64_and_drag(_img_b64_{idx}, {item.click_x}, {item.click_y}, {item.drag_x}, {item.drag_y})\n"
+            f"    _ok_{idx} = {drag_fn}({drag_args}\n"
             f"    if not _ok_{idx}: raise Exception('Surukleme yapilamadi: {desc}')\n"
             f"    time.sleep(0.5)\n"
             f"    print('STEP_DONE:{idx}')\n"
@@ -2986,15 +3029,27 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
         )
 
     if item.action == "assert":
-        find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
+        if is_web_firefox:
+            return (
+                f"# [GÖRSEL DOĞRULA] {desc}\n"
+                f"print('STEP_START:{idx}')\n"
+                f"print('STEP_FAIL:{idx}')\n"
+                f"raise Exception('Görsel adımlar şu anda Firefox\\'ta desteklenmiyor. Chrome veya Edge kullanın.')"
+            )
         refocus_line = "    _refocus_window()\n" if platform == "desktop" else ""
+        if is_web_cdp:
+            find_fn = "_find_b64_in_page_web"
+            find_args = f"driver, _img_b64_{idx}, timeout=8)"
+        else:
+            find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
+            find_args = f"_img_b64_{idx}, timeout=8)"
         return (
             f"# [GÖRSEL DOĞRULA] {desc}\n"
             f"print('STEP_START:{idx}')\n"
             f"try:\n"
             f"{refocus_line}"
             f"    _img_b64_{idx} = '{b64}'\n"
-            f"    _res_{idx} = {find_fn}(_img_b64_{idx}, timeout=8)\n"
+            f"    _res_{idx} = {find_fn}({find_args}\n"
             f"    if not _res_{idx}: raise Exception('Gorsel bulunamadi: {desc}')\n"
             f"    print('[OK] Gorsel dogrulandi: {desc}')\n"
             f"    print('STEP_DONE:{idx}')\n"
@@ -3004,7 +3059,7 @@ def _image_step_code(item: "StepItem", platform: str, idx: int) -> str:
             f"    raise"
         )
 
-    return _image_click_code(idx, desc, b64, item.click_x, item.click_y, item.action, platform)
+    return _image_click_code(idx, desc, b64, item.click_x, item.click_y, item.action, platform, browser)
 
 
 # Yaygından en yeniye, script'in ÇALIŞTIĞI makinede kurulu ilk uyumlu sürücü seçilir
@@ -3352,10 +3407,14 @@ def _ensure_block_body(code: str, indent: str) -> str:
     return f"{code}\n{pass_line}" if code else pass_line
 
 
-def _condition_expr(item: "StepItem", platform: str, idx: int) -> str:
+def _condition_expr(item: "StepItem", platform: str, idx: int, browser: str = "") -> str:
     """Bir condition StepItem'ı, raise etmeyen bool döndüren tek satırlık bir Python ifadesine çevirir."""
     ctype = item.condition_type
     if ctype == "image_exists":
+        if platform == "web" and browser in ("chrome", "edge"):
+            return f"bool(_find_b64_in_page_web(driver, '{item.image_b64}', timeout=8))"
+        if platform == "web":
+            return "False  # Gorsel kosullar Firefox'ta desteklenmiyor"
         find_fn = "_find_b64_on_screen" if platform == "desktop" else "_find_b64_on_screen_web"
         return f"bool({find_fn}('{item.image_b64}', timeout=8))"
     if ctype == "element_exists":
@@ -3377,7 +3436,7 @@ def _condition_expr(item: "StepItem", platform: str, idx: int) -> str:
     return "False"  # condition_type boş/bilinmeyen — güvenli varsayılan
 
 
-def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: str = "") -> tuple[str, list, list]:
+def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: str = "", browser: str = "") -> tuple[str, list, list]:
     """items (üst seviye ya da bir then/else dalı) için Python kodu üretir.
     counter=[n] paylaşılan/mutable sayaç — dal içindeki adımlar da aynı artan idx'i kullanır.
     Returns: (indent'li kod string'i, code_lines rapor listesi, unrecognized metin listesi)
@@ -3396,11 +3455,11 @@ def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: s
             continue
 
         if item.type == "condition":
-            cond_expr = _condition_expr(item, platform, idx)
+            cond_expr = _condition_expr(item, platform, idx, browser)
             then_code, then_lines, then_unrec = _steps_to_code(
-                item.then_steps, platform, counter, rule_fn, indent + "    ")
+                item.then_steps, platform, counter, rule_fn, indent + "    ", browser)
             else_code, else_lines, else_unrec = _steps_to_code(
-                item.else_steps, platform, counter, rule_fn, indent + "    ")
+                item.else_steps, platform, counter, rule_fn, indent + "    ", browser)
             then_code = _ensure_block_body(then_code, indent)
             else_code = _ensure_block_body(else_code, indent)
             label = item.content or f"Koşul {idx+1}"
@@ -3421,7 +3480,7 @@ def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: s
             continue
 
         if item.type == "image":
-            code = _indent_code("_check_stop()\n" + _image_step_code(item, platform, idx), indent)
+            code = _indent_code("_check_stop()\n" + _image_step_code(item, platform, idx, browser), indent)
             blocks.append(code)
             code_lines.append(("image", item.content or f"Görsel {idx+1}", code))
         elif item.type == "sql":
@@ -3482,7 +3541,7 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
         ]
 
     counter = [0]
-    steps_code, code_lines, unrecognized = _steps_to_code(structured, req.platform, counter, rule_fn)
+    steps_code, code_lines, unrecognized = _steps_to_code(structured, req.platform, counter, rule_fn, browser=req.browser or "")
 
     # LLM'e toplu sor (üst seviye + dal içi tüm tanınmayan metin adımları)
     llm_results = {}
@@ -3508,7 +3567,7 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                 report_out.append({"step": label, "method": "comment", "code": block, "index": idx})
                 continue
             if item.type == "condition":
-                cond_expr = _condition_expr(item, req.platform, idx)
+                cond_expr = _condition_expr(item, req.platform, idx, req.browser or "")
                 then_code = _ensure_block_body(_fill_llm(item.then_steps, counter2, indent + "    ", report_out), indent)
                 else_code = _ensure_block_body(_fill_llm(item.else_steps, counter2, indent + "    ", report_out), indent)
                 label = item.content or f"Koşul {idx+1}"
@@ -3527,7 +3586,7 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                 # Bu tipler zaten _steps_to_code içinde tam üretildi (LLM'e hiç düşmezler),
                 # burada sadece idx senkronizasyonu için tekrar üretiyoruz.
                 if item.type == "image":
-                    block  = _indent_code("_check_stop()\n" + _image_step_code(item, req.platform, idx), indent)
+                    block  = _indent_code("_check_stop()\n" + _image_step_code(item, req.platform, idx, req.browser or ""), indent)
                     method = "image"
                     label  = item.content or f"Görsel {idx+1}"
                 elif item.type == "sql":
