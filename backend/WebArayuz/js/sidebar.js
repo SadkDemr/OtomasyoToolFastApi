@@ -67,7 +67,7 @@
                   )
                 + section("AI Araçlar",
                     item("ai-generator",   "&#129302;", "AI Test Generator")
-                    + item("ai-jobs-mobile","&#128197;", "Mobil Job'lar")
+                    + item("ai-jobs",       "&#128197;", "AI Job'lar")
                     + item("java-generator","&#9749;",  "Java Generator")
                     + item("bdd-generator","&#129405;", "BDD Generator")
                     + item("test-history", "&#128203;", "Test Geçmişi")

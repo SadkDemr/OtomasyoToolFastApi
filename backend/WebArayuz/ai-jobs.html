@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobil Job'lar - Test Otomasyon Platformu</title>
+    <title>AI Job'lar - Test Otomasyon Platformu</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
@@ -13,6 +13,15 @@
            kendi "hist-" onek konvansiyonu). */
 
         .page-content { padding: 28px; width: 100%; max-width: 1200px; box-sizing: border-box; }
+
+        .aijob-tabs { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid var(--border-color); }
+        .aijob-tab {
+            padding: 10px 18px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted);
+            background: transparent; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+            transition: var(--transition); display: flex; align-items: center; gap: 6px;
+        }
+        .aijob-tab:hover { color: var(--text-primary); }
+        .aijob-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
 
         .aijob-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
         .aijob-toolbar-title { font-weight: 600; font-size: 1.05rem; flex: 1; display: flex; align-items: center; gap: 8px; }
@@ -172,8 +181,14 @@
 <div id="app-root">
     <div id="sidebar-container"></div>
     <div class="main-content">
-        <header class="top-bar"><span class="top-bar-title">🗓️ Mobil Job'lar</span></header>
+        <header class="top-bar"><span class="top-bar-title" id="topBarTitle">🗓️ Mobil Job'lar</span></header>
         <div class="page-content">
+
+            <div class="aijob-tabs" id="platformTabs">
+                <button class="aijob-tab active" data-platform="mobile" onclick="switchPlatform('mobile')">📱 Mobil</button>
+                <button class="aijob-tab" data-platform="web" onclick="switchPlatform('web')">🌐 Web</button>
+                <button class="aijob-tab" data-platform="desktop" onclick="switchPlatform('desktop')">🖥️ Desktop</button>
+            </div>
 
             <div class="aijob-toolbar">
                 <span class="aijob-toolbar-title">📋 Job Listesi <span class="aijob-toolbar-count" id="jobCount">0</span></span>
@@ -204,11 +219,11 @@
             <input type="text" id="jobName" placeholder="Ör: Sabah Regresyon Paketi">
         </div>
         <div class="aijob-form-row">
-            <label>Senaryolar (mobil)</label>
+            <label>Senaryolar</label>
             <div class="aijob-check-list" id="scenarioCheckList"></div>
         </div>
-        <div class="aijob-form-row">
-            <label>Cihazlar (ADB)</label>
+        <div class="aijob-form-row" id="unitFormRow">
+            <label id="unitLabel">Cihazlar (ADB)</label>
             <div class="aijob-check-list" id="deviceCheckList"></div>
         </div>
         <div class="aijob-form-row">
@@ -249,36 +264,67 @@
     "use strict";
     if (!Auth.checkAuth()) return;
 
-    let mobileScenarios = [];
-    let adbDevices = [];
+    const PLATFORM_META = {
+        mobile:  { title: "Mobil Job'lar",  icon: '📱', unitLabel: 'Cihazlar (ADB)', emptyUnit: 'Bağlı ADB cihazı yok — bir telefon/emülatör bağlayın.' },
+        web:     { title: "Web Job'lar",    icon: '🌐', unitLabel: 'Tarayıcılar',    emptyUnit: 'Tarayıcı bulunamadı.' },
+        desktop: { title: "Desktop Job'lar", icon: '🖥️', unitLabel: '',              emptyUnit: '' },
+    };
+    const WEB_BROWSERS = [
+        { id: 'chrome',  name: 'Chrome' },
+        { id: 'firefox', name: 'Firefox' },
+        { id: 'edge',    name: 'Edge' },
+    ];
+
+    let currentPlatform = 'mobile';
+    let scenarios = [];
+    let units = [];   // mobile: ADB cihazlari [{id,name}]; web: WEB_BROWSERS; desktop: []
     let currentRunId = null;
     let currentRunCells = {};   // cell_id -> cell dict
     let ws = null;
 
     async function init() {
-        await Promise.all([loadJobs(), loadScenariosAndDevices()]);
+        await Promise.all([loadJobs(), loadScenariosAndUnits()]);
     }
 
-    async function loadScenariosAndDevices() {
+    window.switchPlatform = async function switchPlatform(platform) {
+        currentPlatform = platform;
+        document.querySelectorAll('.aijob-tab').forEach(t => t.classList.toggle('active', t.dataset.platform === platform));
+        document.getElementById('topBarTitle').textContent = `🗓️ ${PLATFORM_META[platform].title}`;
+        currentRunId = null;
+        currentRunCells = {};
+        if (ws) { try { ws.close(); } catch (e) {} }
+        document.getElementById('matrixWrap').innerHTML = '<div class="aijob-empty"><div class="empty-state-icon">🧩</div><div class="aijob-empty-desc">Bir job çalıştırınca burada görünecek.</div></div>';
+        document.getElementById('stopRunBtn').style.display = 'none';
+        await Promise.all([loadJobs(), loadScenariosAndUnits()]);
+    };
+
+    async function loadScenariosAndUnits() {
         try {
             const sRes = await API.get('/ai-gen/scenarios');
-            mobileScenarios = (sRes.scenarios || []).filter(s => s.platform === 'mobile');
-        } catch (e) { mobileScenarios = []; }
-        try {
-            const dRes = await API.get('/ai-gen/adb/devices');
-            adbDevices = dRes.devices || [];
-        } catch (e) { adbDevices = []; }
+            scenarios = (sRes.scenarios || []).filter(s => s.platform === currentPlatform);
+        } catch (e) { scenarios = []; }
+
+        if (currentPlatform === 'mobile') {
+            try {
+                const dRes = await API.get('/ai-gen/adb/devices');
+                units = (dRes.devices || []).map(id => ({ id, name: id }));
+            } catch (e) { units = []; }
+        } else if (currentPlatform === 'web') {
+            units = WEB_BROWSERS;
+        } else {
+            units = [];
+        }
     }
 
     window.loadJobs = async function loadJobs() {
         const wrap = document.getElementById('jobListWrap');
         wrap.innerHTML = '<div class="aijob-empty">Yükleniyor...</div>';
         try {
-            const res = await API.get('/ai-jobs');
+            const res = await API.get(`/ai-jobs?platform=${currentPlatform}`);
             const jobs = res.jobs || [];
             document.getElementById('jobCount').textContent = jobs.length;
             if (!jobs.length) {
-                wrap.innerHTML = '<div class="aijob-empty"><div class="empty-state-icon">📅</div><div class="aijob-empty-title">Henüz job yok</div><div class="aijob-empty-desc">"+ Yeni Job" ile senaryo × cihaz koşum paketi oluşturun.</div></div>';
+                wrap.innerHTML = '<div class="aijob-empty"><div class="empty-state-icon">📅</div><div class="aijob-empty-title">Henüz job yok</div><div class="aijob-empty-desc">"+ Yeni Job" ile senaryo × koşum paketi oluşturun.</div></div>';
                 return;
             }
             wrap.innerHTML = '<div class="aijob-list">' + jobs.map(renderJobCard).join('') + '</div>';
@@ -291,14 +337,15 @@
         const schedChip = job.schedule
             ? `<span class="aijob-chip aijob-chip-schedule${job.schedule.enabled ? '' : ' is-paused'}">⏱ ${scheduleLabel(job.schedule)}</span>`
             : `<span class="aijob-chip">🖐 Manuel</span>`;
+        const unitChip = job.platform === 'desktop' ? '' : `<span class="aijob-chip">📶 ${job.devices.length} ${job.platform === 'web' ? 'tarayıcı' : 'cihaz'}</span>`;
         return `
             <div class="aijob-card">
-                <div class="aijob-card-icon">📱</div>
+                <div class="aijob-card-icon">${(PLATFORM_META[job.platform] || {}).icon || '🧪'}</div>
                 <div class="aijob-card-body">
                     <div class="aijob-card-name">${escapeHtml(job.name)}</div>
                     <div class="aijob-card-meta">
                         <span class="aijob-chip">🧪 ${job.scenarios.length} senaryo</span>
-                        <span class="aijob-chip">📶 ${job.devices.length} cihaz</span>
+                        ${unitChip}
                         ${schedChip}
                     </div>
                 </div>
@@ -338,15 +385,22 @@
         document.getElementById('jobName').value = job ? job.name : '';
 
         const scList = document.getElementById('scenarioCheckList');
-        scList.innerHTML = mobileScenarios.length
-            ? mobileScenarios.map(s => `<label><input type="checkbox" value="${escapeHtml(s.folder)}" ${job && job.scenarios.includes(s.folder) ? 'checked' : ''}> ${escapeHtml(s.name)}</label>`).join('')
-            : '<div class="aijob-check-empty">Mobil senaryo bulunamadı — önce AI Test Generator\'da bir senaryo kaydedin.</div>';
+        scList.innerHTML = scenarios.length
+            ? scenarios.map(s => `<label><input type="checkbox" value="${escapeHtml(s.folder)}" ${job && job.scenarios.includes(s.folder) ? 'checked' : ''}> ${escapeHtml(s.name)}</label>`).join('')
+            : `<div class="aijob-check-empty">${currentPlatform} senaryosu bulunamadı — önce AI Test Generator'da bir senaryo kaydedin.</div>`;
 
-        const devList = document.getElementById('deviceCheckList');
-        const jobDeviceIds = job ? job.devices.map(d => d.device_id) : [];
-        devList.innerHTML = adbDevices.length
-            ? adbDevices.map(id => `<label><input type="checkbox" value="${escapeHtml(id)}" ${jobDeviceIds.includes(id) ? 'checked' : ''}> ${escapeHtml(id)}</label>`).join('')
-            : '<div class="aijob-check-empty">Bağlı ADB cihazı yok — bir telefon/emülatör bağlayın.</div>';
+        const unitRow = document.getElementById('unitFormRow');
+        if (currentPlatform === 'desktop') {
+            unitRow.style.display = 'none';
+        } else {
+            unitRow.style.display = 'flex';
+            document.getElementById('unitLabel').textContent = PLATFORM_META[currentPlatform].unitLabel;
+            const unitList = document.getElementById('deviceCheckList');
+            const jobUnitIds = job ? job.devices.map(d => d.device_id) : [];
+            unitList.innerHTML = units.length
+                ? units.map(u => `<label><input type="checkbox" value="${escapeHtml(u.id)}" ${jobUnitIds.includes(u.id) ? 'checked' : ''}> ${escapeHtml(u.name)}</label>`).join('')
+                : `<div class="aijob-check-empty">${PLATFORM_META[currentPlatform].emptyUnit}</div>`;
+        }
 
         const schedSel = document.getElementById('scheduleType');
         schedSel.value = job && job.schedule ? job.schedule.schedule_type : '';
@@ -381,12 +435,17 @@
         const editId = document.getElementById('jobEditId').value;
         const name = document.getElementById('jobName').value.trim();
         const scenario_folders = Array.from(document.querySelectorAll('#scenarioCheckList input:checked')).map(el => el.value);
-        const device_ids = Array.from(document.querySelectorAll('#deviceCheckList input:checked')).map(el => el.value);
+        const device_ids = currentPlatform === 'desktop'
+            ? []
+            : Array.from(document.querySelectorAll('#deviceCheckList input:checked')).map(el => el.value);
         const schedType = document.getElementById('scheduleType').value;
 
         if (!name) { alert('Job adı gerekli'); return; }
         if (!scenario_folders.length) { alert('En az bir senaryo seçin'); return; }
-        if (!device_ids.length) { alert('En az bir cihaz seçin'); return; }
+        if (currentPlatform !== 'desktop' && !device_ids.length) {
+            alert(currentPlatform === 'web' ? 'En az bir tarayıcı seçin' : 'En az bir cihaz seçin');
+            return;
+        }
 
         let schedule = null;
         if (schedType) {
@@ -395,7 +454,7 @@
             schedule = { schedule_type: schedType, run_at: new Date(at).toISOString() };
         }
 
-        const body = { name, scenario_folders, device_ids, schedule };
+        const body = { name, platform: currentPlatform, scenario_folders, device_ids, schedule };
         try {
             if (editId) {
                 await API.put(`/ai-jobs/${editId}`, body);
@@ -454,13 +513,13 @@
             wrap.innerHTML = '<div class="aijob-empty"><div class="empty-state-icon">🧩</div><div class="aijob-empty-desc">Hücre bulunamadı.</div></div>';
             return;
         }
-        const scenarios = [...new Set(cells.map(c => c.scenario_folder))];
+        const scenarioFolders = [...new Set(cells.map(c => c.scenario_folder))];
         const devices = [...new Set(cells.map(c => c.device_id))];
 
         let html = '<div class="aijob-matrix-wrap"><table class="aijob-matrix"><thead><tr><th>Senaryo</th>';
-        devices.forEach(d => html += `<th>${escapeHtml(d)}</th>`);
+        devices.forEach(d => html += `<th>${d === 'desktop' ? 'Sonuç' : escapeHtml(d)}</th>`);
         html += '</tr></thead><tbody>';
-        scenarios.forEach(sc => {
+        scenarioFolders.forEach(sc => {
             const scName = cells.find(c => c.scenario_folder === sc)?.scenario_name || sc;
             html += `<tr><td class="aijob-scenario-name">${escapeHtml(scName)}</td>`;
             devices.forEach(d => {
@@ -481,7 +540,7 @@
     window.showCellDetail = function showCellDetail(cellId) {
         const cell = currentRunCells[cellId];
         if (!cell) return;
-        document.getElementById('cellModalTitle').textContent = `${cell.scenario_name} — ${cell.device_id}`;
+        document.getElementById('cellModalTitle').textContent = `${cell.scenario_name} — ${cell.device_id === 'desktop' ? 'Masaüstü' : cell.device_id}`;
         const steps = (cell.log && cell.log.steps) || [];
         const terminal = (cell.log && cell.log.terminal) || (cell.log && cell.log.error) || '';
         let body = `<div style="font-size:0.82rem;color:var(--text-muted);">Durum: ${escapeHtml(cell.status)}</div>`;
