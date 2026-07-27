@@ -1737,6 +1737,174 @@ def _find_b64_and_drag(b64_data, x1, y1, x2, y2, drag_duration=0.4, threshold=0.
         except Exception: pass
 '''
 
+IMAGE_HELPER_WEB_CDP = '''
+def _find_image_in_page(driver, target_path, threshold=0.80, return_bbox=False):
+    """Chrome/Edge (CDP) icin: OS ekrani degil, sayfanin KENDI screenshot'ini kullanir.
+    Headless'ta da calisir, paralel tarayicilar birbirini etkilemez (her biri sadece
+    kendi render buffer'ini gorur)."""
+    try:
+        import cv2 as _cv2w, numpy as _npw, io as _iiow
+        from PIL import Image as _PILW
+        _png = driver.get_screenshot_as_png()
+        _img = _PILW.open(_iiow.BytesIO(_png)).convert("RGB")
+        _screen = _npw.array(_img)
+        _screen_bgr = _cv2w.cvtColor(_screen, _cv2w.COLOR_RGB2BGR)
+        _screen_gray = _cv2w.cvtColor(_screen_bgr, _cv2w.COLOR_BGR2GRAY)
+        _screen_gray = _cv2w.GaussianBlur(_screen_gray, (3, 3), 0)
+        _tmpl_bgr = _cv2w.imread(target_path)
+        if _tmpl_bgr is None:
+            return None
+        _tmpl_gray = _cv2w.cvtColor(_tmpl_bgr, _cv2w.COLOR_BGR2GRAY)
+        _tmpl_gray = _cv2w.GaussianBlur(_tmpl_gray, (3, 3), 0)
+        _h, _w = _tmpl_gray.shape[:2]
+        _best = None
+        _best_val = -1
+        for _sc in _npw.linspace(0.6, 1.7, 25):
+            _rw, _rh = int(_w * _sc), int(_h * _sc)
+            if _rw < 8 or _rh < 8:
+                continue
+            if _rw > _screen_gray.shape[1] or _rh > _screen_gray.shape[0]:
+                continue
+            _res = _cv2w.matchTemplate(_screen_gray, _cv2w.resize(_tmpl_gray, (_rw, _rh)), _cv2w.TM_CCOEFF_NORMED)
+            _, _val, _, _loc = _cv2w.minMaxLoc(_res)
+            if _val > _best_val:
+                _best_val = _val
+                _best = (_loc, _rw, _rh)
+        if _best_val >= threshold and _best:
+            _loc, _rw, _rh = _best
+            if return_bbox:
+                return (_loc[0], _loc[1], _rw, _rh)
+            return (_loc[0] + _rw // 2, _loc[1] + _rh // 2)
+    except Exception as _e:
+        print(f"[WARN] Sayfa goruntusunde gorsel arama hatasi: {_e}")
+    return None
+
+
+def _cdp_click(driver, x, y, button="left", click_count=1):
+    """Gercek OS faresine dokunmadan, tarayicinin icine dogrudan mouse event basar."""
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+        "type": "mouseMoved", "x": x, "y": y,
+    })
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+        "type": "mousePressed", "x": x, "y": y, "button": button, "clickCount": click_count,
+    })
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+        "type": "mouseReleased", "x": x, "y": y, "button": button, "clickCount": click_count,
+    })
+
+
+def _cdp_drag(driver, x1, y1, x2, y2, steps=10):
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x1, "y": y1})
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+        "type": "mousePressed", "x": x1, "y": y1, "button": "left", "clickCount": 1,
+    })
+    for _i in range(1, steps + 1):
+        _ix = x1 + (x2 - x1) * _i / steps
+        _iy = y1 + (y2 - y1) * _i / steps
+        driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+            "type": "mouseMoved", "x": _ix, "y": _iy, "buttons": 1,
+        })
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+        "type": "mouseReleased", "x": x2, "y": y2, "button": "left", "clickCount": 1,
+    })
+
+
+def _find_b64_in_page_web(driver, b64_data, threshold=0.80, timeout=10):
+    """Base64 gorseli sayfa screenshot'unda arar (Chrome/Edge, CDP tabanli)."""
+    _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_find_web_{id(b64_data)}.png")
+    try:
+        with open(_tmp_path, "wb") as _f:
+            _f.write(_ib64.b64decode(b64_data))
+        _start = _itime.time()
+        while _itime.time() - _start < timeout:
+            _elapsed = _itime.time() - _start
+            _conf = max(0.50, threshold - (_elapsed / timeout) * 0.30)
+            _coords = _find_image_in_page(driver, _tmp_path, threshold=_conf)
+            if _coords:
+                return _coords
+            _itime.sleep(0.3)
+        print(f"[DEBUG] Gorsel {timeout}s icinde bulunamadi (sayfa goruntusu).")
+        return None
+    finally:
+        try:
+            _ios.unlink(_tmp_path)
+        except Exception:
+            pass
+
+
+def _find_b64_and_click_point_web(driver, b64_data, click_x, click_y, action="click", threshold=0.80, timeout=10):
+    """Kirpilmis referans gorseli sayfa screenshot'unda bulur, gorsel icindeki (click_x, click_y)
+    noktasini eslesen alana gore CDP ile tiklar."""
+    import io as _iiowc
+    try:
+        from PIL import Image as _PILWC
+        _pil = _PILWC.open(_iiowc.BytesIO(_ib64.b64decode(b64_data)))
+        _orig_w, _orig_h = _pil.size
+    except Exception as _pe:
+        print(f"[WARN] Gorsel boyutu alinamiyor: {_pe}")
+        return False
+
+    _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_click_web_{id(b64_data)}.png")
+    try:
+        with open(_tmp_path, "wb") as _f:
+            _f.write(_ib64.b64decode(b64_data))
+        _start = _itime.time()
+        while _itime.time() - _start < timeout:
+            _elapsed = _itime.time() - _start
+            _conf = max(0.50, threshold - (_elapsed / timeout) * 0.30)
+            _bbox = _find_image_in_page(driver, _tmp_path, threshold=_conf, return_bbox=True)
+            if _bbox:
+                _abs_x, _abs_y = _bbox_click_point(_bbox, click_x, click_y, _orig_w, _orig_h)
+                _btn = "right" if action == "right_click" else "left"
+                _cnt = 2 if action == "double_click" else 1
+                _cdp_click(driver, _abs_x, _abs_y, button=_btn, click_count=_cnt)
+                print(f"[OK] Nokta tiklandi (Selenium CDP): ({_abs_x}, {_abs_y})")
+                return True
+            _itime.sleep(0.3)
+        print(f"[DEBUG] Gorsel {timeout}s icinde bulunamadi (sayfa goruntusu) — nokta tiklanamadi.")
+        return False
+    finally:
+        try:
+            _ios.unlink(_tmp_path)
+        except Exception:
+            pass
+
+
+def _find_b64_and_drag_web(driver, b64_data, x1, y1, x2, y2, drag_duration=0.4, threshold=0.80, timeout=10):
+    import io as _iiowd
+    try:
+        from PIL import Image as _PILWD
+        _pil2 = _PILWD.open(_iiowd.BytesIO(_ib64.b64decode(b64_data)))
+        _orig_w, _orig_h = _pil2.size
+    except Exception as _pe2:
+        print(f"[WARN] Gorsel boyutu alinamiyor: {_pe2}")
+        return False
+
+    _tmp_path = _ios.path.join(_itmp.gettempdir(), f"_img_drag_web_{id(b64_data)}.png")
+    try:
+        with open(_tmp_path, "wb") as _f:
+            _f.write(_ib64.b64decode(b64_data))
+        _start = _itime.time()
+        while _itime.time() - _start < timeout:
+            _elapsed = _itime.time() - _start
+            _conf = max(0.50, threshold - (_elapsed / timeout) * 0.30)
+            _bbox = _find_image_in_page(driver, _tmp_path, threshold=_conf, return_bbox=True)
+            if _bbox:
+                _ax1, _ay1 = _bbox_click_point(_bbox, x1, y1, _orig_w, _orig_h)
+                _ax2, _ay2 = _bbox_click_point(_bbox, x2, y2, _orig_w, _orig_h)
+                _cdp_drag(driver, _ax1, _ay1, _ax2, _ay2)
+                print(f"[OK] Suruklendi (sayfa goruntusu): ({_ax1},{_ay1}) -> ({_ax2},{_ay2})")
+                return True
+            _itime.sleep(0.3)
+        print(f"[DEBUG] Gorsel {timeout}s icinde bulunamadi (sayfa goruntusu) — surukleme yapilamadi.")
+        return False
+    finally:
+        try:
+            _ios.unlink(_tmp_path)
+        except Exception:
+            pass
+'''
+
 
 DESKTOP_HELPER = '''
 import pyautogui as _pag
@@ -2415,6 +2583,7 @@ def _build_web_template(
             "",
             STOP_HELPER,
             IMAGE_HELPER,
+            (IMAGE_HELPER_WEB_CDP if browser in ("chrome", "edge") else ""),
             VISION_HELPER_WEB,
             "",
             "try:",
@@ -2511,6 +2680,7 @@ def _build_web_template(
         "",
         STOP_HELPER,
         IMAGE_HELPER,
+        (IMAGE_HELPER_WEB_CDP if browser in ("chrome", "edge") else ""),
         VISION_HELPER_WEB,
         "",
         "driver.maximize_window()",
