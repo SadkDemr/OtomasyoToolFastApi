@@ -3939,8 +3939,10 @@ async def execute_script(
         yield _sse("info", f"Platform: {req.platform}")
         yield _sse("info", "Kosum baslatiliyor...\n")
 
+        desktop_lock_held = False
         if is_desktop:
             await _get_desktop_lock().acquire()
+            desktop_lock_held = True
 
         proc = None
         try:
@@ -4039,7 +4041,9 @@ async def execute_script(
             except Exception:
                 pass
 
-            if is_desktop:
+            # Yalnizca BU istek gercekten kilidi aldiysa serbest birakilir (bkz.
+            # ai_job_service._run_job_cells'teki ayni duzeltme / final review notu).
+            if desktop_lock_held:
                 try:
                     _get_desktop_lock().release()
                 except RuntimeError:

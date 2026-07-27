@@ -287,6 +287,7 @@
     }
 
     window.switchPlatform = async function switchPlatform(platform) {
+        closeJobModal();
         currentPlatform = platform;
         document.querySelectorAll('.aijob-tab').forEach(t => t.classList.toggle('active', t.dataset.platform === platform));
         document.getElementById('topBarTitle').textContent = `🗓️ ${PLATFORM_META[platform].title}`;

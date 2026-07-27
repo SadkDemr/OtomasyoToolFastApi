@@ -665,11 +665,16 @@ async def _run_job_cells(
     """
     interrupted = False
     desktop_lock = None
+    lock_held = False
     try:
         if platform == "desktop":
             from routers.ai_test_generator_router import _get_desktop_lock
             desktop_lock = _get_desktop_lock()
-            await desktop_lock.acquire()
+            try:
+                await asyncio.wait_for(desktop_lock.acquire(), timeout=30)
+                lock_held = True
+            except asyncio.TimeoutError:
+                raise RuntimeError("Başka bir desktop testi çalışıyor, koşum iptal edildi")
 
         async def _device_sequence(cells: list[dict]) -> None:
             for c in cells:
@@ -683,7 +688,10 @@ async def _run_job_cells(
         interrupted = True
         print(f"[AI-JOB] run {run_id} koşumu kesintiye uğradı: {e}")
     finally:
-        if desktop_lock is not None and desktop_lock.locked():
+        # Yalnizca BU koşumun gerçekten aldığı kilit serbest bırakılır — .locked()
+        # kontrolü kilit SAHİPLİĞİNİ bilmez, başka bir tutucunun kilidini serbest
+        # bırakabilirdi (ör. acquire() beklerken bu görev iptal edilirse).
+        if lock_held:
             try:
                 desktop_lock.release()
             except RuntimeError:
@@ -748,7 +756,11 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
         scenario_data: dict[str, dict] = {}
         for folder in scenario_folders:
             data = _read_scenario_steps(ws_path, folder)
-            if data is not None:
+            # Senaryonun kaydedilmiş platformu job'un platformuyla eşleşmiyorsa
+            # ATLA: aksi halde ör. bir web senaryosunun boş app_path/window_title'ı
+            # bir desktop hücresine sızar ve _build_desktop_template boş
+            # _WINDOW_TITLE ile TAM EKRAN eşleşme/tıklama yapar (final review bulgusu).
+            if data is not None and data.get("platform") == job.platform:
                 scenario_data[folder] = data
 
         cells: list[AiJobRunResult] = []
