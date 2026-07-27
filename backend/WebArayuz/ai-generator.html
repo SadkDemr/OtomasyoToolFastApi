@@ -1122,6 +1122,10 @@
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-6 6-4-4-4 4"/></svg>
                             If/Else
                         </button>
+                        <button class="btn-add-step" onclick="toggleAllStepsDisabled()" title="Tüm senaryoyu devre dışı bırak / aktif et — sonra istediğin adımları tek tek açabilirsin">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                            Tümünü Kapat/Aç
+                        </button>
                     </div>
 
                     <!-- Oturum Kontrolleri (Web/Mobil) -->
@@ -1869,6 +1873,26 @@
         const target = branch ? arr[bIdx] : arr[idx];
         if (!target) return;
         target.disabled = !target.disabled;
+        renderStepList();
+        updateGenerateBtn();
+    };
+
+    // Tüm senaryoyu tek tuşla devre dışı bırakır/aktif eder (dallar dahil).
+    // Zaten hepsi kapalıysa hepsini açar, aksi halde hepsini kapatır — kullanıcı
+    // sonra istediği adımları tek tek toggleStepDisabled ile tekrar açabilir.
+    window.toggleAllStepsDisabled = function() {
+        if (!steps.length) return;
+        function allDisabled(list) {
+            return list.every(s => s.disabled && (!s.then_steps || allDisabled(s.then_steps)) && (!s.else_steps || allDisabled(s.else_steps)));
+        }
+        function setAll(list, val) {
+            list.forEach(s => {
+                s.disabled = val;
+                if (s.then_steps) setAll(s.then_steps, val);
+                if (s.else_steps) setAll(s.else_steps, val);
+            });
+        }
+        setAll(steps, !allDisabled(steps));
         renderStepList();
         updateGenerateBtn();
     };
