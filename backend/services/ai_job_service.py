@@ -140,8 +140,11 @@ def create_job(
     return job
 
 
-def list_jobs(db: Session, user_id: int) -> list[AiJob]:
-    return db.query(AiJob).filter(AiJob.user_id == user_id).order_by(AiJob.created_at.desc()).all()
+def list_jobs(db: Session, user_id: int, platform: str | None = None) -> list[AiJob]:
+    q = db.query(AiJob).filter(AiJob.user_id == user_id)
+    if platform:
+        q = q.filter(AiJob.platform == platform)
+    return q.order_by(AiJob.created_at.desc()).all()
 
 
 def get_job(db: Session, job_id: int, user_id: int) -> AiJob | None:

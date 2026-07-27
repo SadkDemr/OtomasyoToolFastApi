@@ -6,7 +6,7 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -22,21 +22,34 @@ class JobScheduleIn(BaseModel):
     run_at: str           # ISO datetime string
 
 
+_VALID_PLATFORMS = {"mobile", "web", "desktop"}
+
+
 class JobIn(BaseModel):
     name: str
+    platform: str = "mobile"
     scenario_folders: list[str]
     device_ids: list[str]
     schedule: Optional[JobScheduleIn] = None
 
+    @field_validator("platform")
+    @classmethod
+    def _check_platform(cls, v: str) -> str:
+        if v not in _VALID_PLATFORMS:
+            raise ValueError(f"Geçersiz platform: {v!r}")
+        return v
+
 
 @router.post("")
 async def create_job(body: JobIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not body.scenario_folders or not body.device_ids:
-        raise HTTPException(400, "En az bir senaryo ve bir cihaz seçilmeli")
+    if not body.scenario_folders:
+        raise HTTPException(400, "En az bir senaryo seçilmeli")
+    if body.platform != "desktop" and not body.device_ids:
+        raise HTTPException(400, "En az bir cihaz/tarayıcı seçilmeli")
     try:
         job = ai_job_service.create_job(
             db, current_user.id, body.name, body.scenario_folders, body.device_ids,
-            body.schedule.dict() if body.schedule else None,
+            body.schedule.dict() if body.schedule else None, platform=body.platform,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -44,8 +57,11 @@ async def create_job(body: JobIn, current_user: User = Depends(get_current_user)
 
 
 @router.get("")
-async def list_jobs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    jobs = ai_job_service.list_jobs(db, current_user.id)
+async def list_jobs(
+    platform: Optional[str] = None,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    jobs = ai_job_service.list_jobs(db, current_user.id, platform=platform)
     return {"jobs": [ai_job_service.job_to_dict(j) for j in jobs]}
 
 
@@ -62,12 +78,14 @@ async def update_job(job_id: int, body: JobIn, current_user: User = Depends(get_
     job = ai_job_service.get_job(db, job_id, current_user.id)
     if not job:
         raise HTTPException(404, "Job bulunamadı")
-    if not body.scenario_folders or not body.device_ids:
-        raise HTTPException(400, "En az bir senaryo ve bir cihaz seçilmeli")
+    if not body.scenario_folders:
+        raise HTTPException(400, "En az bir senaryo seçilmeli")
+    if body.platform != "desktop" and not body.device_ids:
+        raise HTTPException(400, "En az bir cihaz/tarayıcı seçilmeli")
     try:
         job = ai_job_service.update_job(
             db, job_id, body.name, body.scenario_folders, body.device_ids,
-            body.schedule.dict() if body.schedule else None,
+            body.schedule.dict() if body.schedule else None, platform=body.platform,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
