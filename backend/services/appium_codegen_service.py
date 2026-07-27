@@ -135,9 +135,28 @@ def action_to_java(
             code = 'driver.pressKey(new KeyEvent(AndroidKey.BACK));'
         return ([f'// {raw_step}', code], "mapped")
 
-    # ── Type (element lookup yok, aktif elemana yazar) ────────────────────────
+    # ── Type ─────────────────────────────────────────────────────────────────
+    # Hedef eleman biliniyorsa (xpath_val/full_xpath) o elemanı bulup tıklayıp
+    # doğrudan üzerine yazar — activeElement() ile arada yarış durumu (race
+    # condition) oluşmaz. Eleman bilinmiyorsa (örn. "sadece yaz" / "121212
+    # girilir" gibi hedefsiz adımlar) aktif elemana yazma stratejisine düşer.
     if action == "type":
         value = je(param or "")
+        if xpath_val is not None or full_xpath is not None:
+            if xpath_val is not None:
+                uxp = build_ios_xpath(xpath_val, xpath_index) if is_ios else build_android_xpath(xpath_val, xpath_index)
+            else:
+                uxp = je(full_xpath)
+            by_cls = "AppiumBy" if is_ios else "By"
+            return ([
+                f'// {raw_step}',
+                '{',
+                f'    WebElement _el = driver.findElement({by_cls}.xpath("{uxp}"));',
+                '    _el.click();',
+                f'    _el.sendKeys("{value}");',
+                '}',
+                'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
+            ], "mapped")
         if is_ios:
             type_line = f'driver.switchTo().activeElement().sendKeys("{value}");'
         else:

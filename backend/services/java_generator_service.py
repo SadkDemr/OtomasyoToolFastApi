@@ -144,13 +144,10 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
         lines, _ = action_to_java("clear", quoted[0], None, s, platform)
         return lines
 
-    # ── Metin girişi: alan + değer (iki tırnak) → tıkla + yaz ─────────────────
+    # ── Metin girişi: alan + değer (iki tırnak) → bul, tıkla, yaz (tek eleman) ─
     if re.search(INPUT_WORDS, sl) and len(quoted) >= 2:
-        field_lines, _ = action_to_java("click", quoted[0], None, s, platform)
-        value_lines, _ = action_to_java("type", None, quoted[-1], s, platform)
-        if value_lines and value_lines[0].startswith("//"):
-            value_lines = value_lines[1:]
-        return field_lines + value_lines
+        lines, _ = action_to_java("type", quoted[0], quoted[-1], s, platform)
+        return lines
 
     # ── Sadece yaz (tek tırnak) ───────────────────────────────────────────────
     if re.search(INPUT_WORDS, sl) and len(quoted) == 1:
