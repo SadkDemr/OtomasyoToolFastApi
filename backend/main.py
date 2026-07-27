@@ -20,10 +20,7 @@ from database import init_db
 
 # Router Importları
 from routers.auth import router as auth_router
-from routers.web import router as web_router
-from routers.mobile import router as mobile_router
 from routers.emulator import router as emulator_router
-from routers.desktop_router import router as desktop_router
 
 # Git Integration
 from routers.admin_repositories_router import router as admin_repos_router
@@ -37,8 +34,6 @@ from routers.ai_test_generator_router import router as ai_gen_router
 from routers.java_generator_router import router as java_gen_router
 # 🥒 BDD Generator
 from routers.bdd_generator_router import router as bdd_gen_router
-# 📁 Genel Dosya Yukleme
-from routers.uploads_router import router as uploads_router
 # 🗓️ AI Test Generator - Job sistemi (Faz 1: Mobil)
 from routers.ai_job_router import router as ai_job_router
 # 🔁 AI Test Generator - idle oturum reaper
@@ -70,14 +65,11 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-app.include_router(web_router)
-app.include_router(mobile_router)
 app.include_router(emulator_router)
 # Git Integration
 app.include_router(admin_repos_router, prefix="/api")
 app.include_router(admin_users_router, prefix="/api")
 app.include_router(workspace_router, prefix="/api")
-app.include_router(desktop_router, prefix="/api")
 # ✅ Advanced Editor
 app.include_router(advanced_editor_router)
 # 🤖 AI Test Generator
@@ -86,8 +78,6 @@ app.include_router(ai_gen_router)
 app.include_router(java_gen_router)
 # 🥒 BDD Generator
 app.include_router(bdd_gen_router)
-# 📁 Genel Dosya Yukleme
-app.include_router(uploads_router)
 # 🗓️ AI Job Sistemi
 app.include_router(ai_job_router)
 

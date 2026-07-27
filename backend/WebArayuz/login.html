@@ -93,7 +93,7 @@
     <script>
         if (Auth.isLoggedIn()) {
             const existing = Auth.getUser();
-            location.href = (existing && existing.upload_only) ? 'dosya-yukleme.html' : 'index.html';
+            location.href = 'index.html';
         }
 
         async function login(e) {
@@ -108,7 +108,7 @@
                     document.getElementById('loginPassword').value
                 );
                 Toast.success('Giriş başarılı!');
-                const target = (data.user && data.user.upload_only) ? 'dosya-yukleme.html' : 'index.html';
+                const target = 'index.html';
                 setTimeout(() => location.href = target, 500);
             } catch (err) {
                 Toast.error(err.message);

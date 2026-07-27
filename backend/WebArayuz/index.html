@@ -75,25 +75,35 @@
                 <!-- Quick Actions -->
                 <div class="section-title">⚡ Hızlı Erişim</div>
                 <div class="quick-actions">
-                    <a href="web-test.html" class="card quick-action">
-                        <div class="qa-icon">🌐</div>
-                        <div class="qa-title">Web Test</div>
-                        <div class="qa-desc">Web projelerini aç</div>
+                    <a href="ai-generator.html" class="card quick-action">
+                        <div class="qa-icon">🤖</div>
+                        <div class="qa-title">AI Test Generator</div>
+                        <div class="qa-desc">Web / Mobil / Desktop senaryo üret</div>
                     </a>
-                    <a href="mobile-test.html" class="card quick-action">
-                        <div class="qa-icon">📲</div>
-                        <div class="qa-title">Mobil Test</div>
-                        <div class="qa-desc">Mobil projelerini aç</div>
+                    <a href="ai-jobs.html" class="card quick-action">
+                        <div class="qa-icon">🗓️</div>
+                        <div class="qa-title">AI Job'lar</div>
+                        <div class="qa-desc">Toplu / zamanlanmış koşumlar</div>
                     </a>
-                    <a href="desktop-test.html" class="card quick-action">
-                        <div class="qa-icon">🖥️</div>
-                        <div class="qa-title">Desktop Test</div>
-                        <div class="qa-desc">Desktop otomasyonları</div>
+                    <a href="java-generator.html" class="card quick-action">
+                        <div class="qa-icon">☕</div>
+                        <div class="qa-title">Java Generator</div>
+                        <div class="qa-desc">Appium/Selenium Java kodu üret</div>
+                    </a>
+                    <a href="bdd-generator.html" class="card quick-action">
+                        <div class="qa-icon">🥒</div>
+                        <div class="qa-title">BDD Generator</div>
+                        <div class="qa-desc">Gherkin senaryoları üret</div>
                     </a>
                     <a href="workspace.html" class="card quick-action">
                         <div class="qa-icon">💼</div>
                         <div class="qa-title">Workspace</div>
                         <div class="qa-desc">Git projelerini yönet</div>
+                    </a>
+                    <a href="test-history.html" class="card quick-action">
+                        <div class="qa-icon">📋</div>
+                        <div class="qa-title">Test Geçmişi</div>
+                        <div class="qa-desc">Koşum kayıtlarını incele</div>
                     </a>
                 </div>
 
@@ -113,9 +123,9 @@
         "use strict";
 
         const TYPE_PAGES = {
-            "web": "web-test.html", "web-selenium": "web-test.html",
-            "mobile": "mobile-test.html", "mobile-android": "mobile-test.html", "mobile-ios": "mobile-test.html",
-            "desktop": "desktop-test.html", "web-desktop": "desktop-test.html"
+            "web": "ai-generator.html", "web-selenium": "ai-generator.html",
+            "mobile": "ai-generator.html", "mobile-android": "ai-generator.html", "mobile-ios": "ai-generator.html",
+            "desktop": "ai-generator.html", "web-desktop": "ai-generator.html"
         };
         const TYPE_ICONS = {
             "web": "🌐", "web-selenium": "🌐", "mobile": "📲", "mobile-android": "📲",
@@ -125,18 +135,7 @@
         document.addEventListener("DOMContentLoaded", async () => {
             if (!Auth.checkAuth()) return;
 
-            // Cache'lenmis kullanici bilgisi eski olabilir (admin sonradan upload_only actiysa) -
-            // yonlendirme kararindan once /api/auth/me ile taze veri cek.
-            try {
-                const fresh = await API.get("/auth/me");
-                Auth.setUser(fresh);
-            } catch (e) { /* token gecerliyse checkAuth zaten gecti, cache'li veriyle devam */ }
-
             const user = Auth.getUser();
-            if (user && user.upload_only) {
-                location.href = "dosya-yukleme.html";
-                return;
-            }
             document.getElementById("welcomeMsg").textContent = `Hoş geldin, ${user?.full_name || user?.username || 'Kullanıcı'}`;
 
             await loadStats();
