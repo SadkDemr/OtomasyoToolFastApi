@@ -115,18 +115,19 @@ def _build_job_generate_request(
 def create_job(
     db: Session, user_id: int, name: str,
     scenario_folders: list[str], device_ids: list[str],
-    schedule: dict | None,
+    schedule: dict | None, platform: str = "mobile",
 ) -> AiJob:
     scenario_folders = _validate_scenario_folders(scenario_folders)
-    job = AiJob(user_id=user_id, name=name, platform="mobile")
+    device_pairs = _normalize_device_ids(platform, device_ids)
+    job = AiJob(user_id=user_id, name=name, platform=platform)
     db.add(job)
     db.commit()
     db.refresh(job)
 
     for folder in scenario_folders:
         db.add(AiJobScenario(job_id=job.id, scenario_folder=folder))
-    for device_id in device_ids:
-        db.add(AiJobDevice(job_id=job.id, device_id=device_id, device_name=device_id))
+    for device_id, device_name in device_pairs:
+        db.add(AiJobDevice(job_id=job.id, device_id=device_id, device_name=device_name))
     if schedule:
         db.add(AiJobSchedule(
             job_id=job.id,
@@ -150,11 +151,13 @@ def get_job(db: Session, job_id: int, user_id: int) -> AiJob | None:
 def update_job(
     db: Session, job_id: int, name: str,
     scenario_folders: list[str], device_ids: list[str],
-    schedule: dict | None,
+    schedule: dict | None, platform: str = "mobile",
 ) -> AiJob:
     scenario_folders = _validate_scenario_folders(scenario_folders)
+    device_pairs = _normalize_device_ids(platform, device_ids)
     job = db.query(AiJob).filter(AiJob.id == job_id).first()
     job.name = name
+    job.platform = platform
 
     db.query(AiJobScenario).filter(AiJobScenario.job_id == job_id).delete()
     db.query(AiJobDevice).filter(AiJobDevice.job_id == job_id).delete()
@@ -162,8 +165,8 @@ def update_job(
 
     for folder in scenario_folders:
         db.add(AiJobScenario(job_id=job_id, scenario_folder=folder))
-    for device_id in device_ids:
-        db.add(AiJobDevice(job_id=job_id, device_id=device_id, device_name=device_id))
+    for device_id, device_name in device_pairs:
+        db.add(AiJobDevice(job_id=job_id, device_id=device_id, device_name=device_name))
     if schedule:
         db.add(AiJobSchedule(
             job_id=job_id,
@@ -304,27 +307,24 @@ def stop_run(run_id: int) -> None:
 # TEK HUCRE: SCRIPT URETIMI + SUBPROCESS KOSUMU
 # ══════════════════════════════════════════════════════════════
 
-async def _generate_cell_script(steps_data: dict, device_id: str, system_port: int | None = None) -> str:
-    """steps.json icerigini hedef cihaza gore script'e derler (kayitli script.py KULLANILMAZ).
-
-    system_port: cihaza tahsis edilmiş UiAutomator2 systemPort'u (bkz. _acquire_system_port).
-    None ise script'e yazılmaz (manuel tek cihaz akışıyla aynı davranış)."""
+async def _generate_cell_script(
+    platform: str, steps_data: dict, device_id: str, system_port: int | None = None,
+) -> str:
+    """steps.json icerigini hedef birime (cihaz/tarayici/masaustu) gore script'e derler
+    (kayitli script.py KULLANILMAZ). system_port yalnizca mobile'da anlamlidir."""
     from routers.ai_test_generator_router import (
-        GenerateRequest, StepItem, _generate_steps, _build_mobile_template,
+        StepItem, _generate_steps, _build_mobile_template, _build_web_template, _build_desktop_template,
     )
     params = steps_data.get("params", {}) or {}
     steps_list = [StepItem(**s) for s in steps_data.get("steps", [])]
-    req = GenerateRequest(
-        steps_list=steps_list,
-        platform="mobile",
-        device_id=device_id,
-        system_port=system_port,
-        app_package=params.get("app_package", ""),
-        app_activity=params.get("app_activity", ""),
-        appium_url=params.get("appium_url") or "http://localhost:4723",
-    )
+    req = _build_job_generate_request(platform, steps_list, params, device_id, system_port)
     steps_code, _report = await _generate_steps(req)
-    return _build_mobile_template(req, steps_code)
+    build_fn = {
+        "mobile": _build_mobile_template,
+        "web": _build_web_template,
+        "desktop": _build_desktop_template,
+    }[platform]
+    return build_fn(req, steps_code)
 
 
 class _ClassicProcHandle:
