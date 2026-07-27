@@ -832,6 +832,44 @@
         }
         .step-toggle-btn:hover { opacity: 1; color: var(--ai-accent); background: rgba(99,102,241,0.08); }
         .step-item.disabled .step-toggle-btn { opacity: 1; color: var(--ai-accent); }
+        .step-move-btn {
+            padding: 1px 5px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.7rem;
+            opacity: 0.4;
+            flex-shrink: 0;
+            line-height: 1;
+            border-radius: 3px;
+        }
+        .step-move-btn:hover:not(:disabled) { opacity: 1; color: var(--ai-accent); background: rgba(99,102,241,0.08); }
+        .step-move-btn:disabled { opacity: 0.15; cursor: default; }
+
+        /* ── Adım arasına ekleme (insert-here) ── */
+        .step-insert-row { position: relative; height: 10px; margin: 1px 0; }
+        .step-insert-row::before {
+            content: ""; position: absolute; left: 0; right: 0; top: 50%;
+            border-top: 1px dashed transparent; transition: border-color 0.15s;
+        }
+        .step-insert-row:hover::before { border-top-color: var(--border-color); }
+        .step-insert-btn {
+            position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            width: 18px; height: 18px; border-radius: 50%;
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            color: var(--text-muted); font-size: 0.8rem; line-height: 1;
+            cursor: pointer; opacity: 0; transition: opacity 0.15s;
+            display: flex; align-items: center; justify-content: center; z-index: 2;
+        }
+        .step-insert-row:hover .step-insert-btn,
+        .step-insert-row.open .step-insert-btn { opacity: 1; color: var(--ai-accent); border-color: var(--ai-accent); }
+        .step-insert-menu {
+            display: none; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+            margin-top: 2px; z-index: 3; background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm); padding: 4px; gap: 3px; box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,.15));
+        }
+        .step-insert-row.open .step-insert-menu { display: flex; }
 
         /* ── Modals ── */
         .ai-modal-overlay {
@@ -1840,20 +1878,28 @@
         return branch ? steps[idx][branch + "_steps"] : steps;
     }
 
-    window.addTextStep = function(parentIdx, branch) {
+    function _insertOrPush(arr, item, insertAt) {
+        if (insertAt === undefined || insertAt === null) arr.push(item);
+        else arr.splice(insertAt, 0, item);
+    }
+
+    window.addTextStep = function(parentIdx, branch, insertAt) {
         const arr = _container(parentIdx, branch);
-        arr.push({ type: "text", content: "", b64: "", action: "click", status: null });
+        _insertOrPush(arr, { type: "text", content: "", b64: "", action: "click", status: null }, insertAt);
         renderStepList();
         updateGenerateBtn();
-        // Son input'u odakla
-        const inputs = document.querySelectorAll(".step-content-input");
-        if (inputs.length) inputs[inputs.length - 1].focus();
+        // Sona eklendiyse son input'u odakla (araya eklerken odak atlanır — hangi
+        // kutunun yeni olduğu DOM sırasından artık belli olmuyor).
+        if (insertAt === undefined || insertAt === null) {
+            const inputs = document.querySelectorAll(".step-content-input");
+            if (inputs.length) inputs[inputs.length - 1].focus();
+        }
     };
 
-    window.addImageStep = function(parentIdx, branch) {
+    window.addImageStep = function(parentIdx, branch, insertAt) {
         const arr = _container(parentIdx, branch);
-        const localIdx = arr.length;
-        arr.push({ type: "image", content: "", b64: "", action: "click", status: null });
+        const localIdx = (insertAt === undefined || insertAt === null) ? arr.length : insertAt;
+        _insertOrPush(arr, { type: "image", content: "", b64: "", action: "click", status: null }, insertAt);
         renderStepList();
         updateGenerateBtn();
         // Görsel yakalama akışı düz index bekliyor — dal içi adımlar için otomatik
@@ -1866,6 +1912,18 @@
         arr.splice(branch ? bIdx : idx, 1);
         renderStepList();
         updateGenerateBtn();
+    };
+
+    window.moveStep = function(idxOrA, a, b, c) {
+        let idx = idxOrA, branch, bIdx, dir;
+        if (arguments.length <= 2) { dir = a; }
+        else { branch = a; bIdx = b; dir = c; }
+        const arr = _container(idx, branch);
+        const from = branch ? bIdx : idx;
+        const to = from + dir;
+        if (to < 0 || to >= arr.length) return;
+        const tmp = arr[from]; arr[from] = arr[to]; arr[to] = tmp;
+        renderStepList();
     };
 
     window.toggleStepDisabled = function(idx, branch, bIdx) {
@@ -1929,6 +1987,15 @@
     window.stepListDragOver = function(e) {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
+        // Uzun listelerde sürüklerken üst/alt kenara yaklaşınca konteyneri otomatik
+        // kaydır — aksi halde görünür alanın dışına taşımak fiziksel olarak zor olur.
+        const scrollBox = document.getElementById("stepList");
+        if (scrollBox) {
+            const box = scrollBox.getBoundingClientRect();
+            const edge = 40;
+            if (e.clientY < box.top + edge) scrollBox.scrollTop -= 12;
+            else if (e.clientY > box.bottom - edge) scrollBox.scrollTop += 12;
+        }
         const items = document.querySelectorAll(".step-item[id^='step-row-']");
         let targetIdx = -1, targetRowId = null;
         for (const item of items) {
@@ -1998,38 +2065,38 @@
         updateGenerateBtn();
     };
 
-    window.addSqlStep = function(parentIdx, branch) {
+    window.addSqlStep = function(parentIdx, branch, insertAt) {
         const arr = _container(parentIdx, branch);
-        arr.push({ type: "sql", content: "", b64: "", action: "query_print",
-            db_connection: "", sql_query: "", var_name: "", status: null });
+        _insertOrPush(arr, { type: "sql", content: "", b64: "", action: "query_print",
+            db_connection: "", sql_query: "", var_name: "", status: null }, insertAt);
         renderStepList();
         updateGenerateBtn();
     };
 
-    window.addApiStep = function(parentIdx, branch) {
+    window.addApiStep = function(parentIdx, branch, insertAt) {
         const arr = _container(parentIdx, branch);
-        arr.push({ type: "api", content: "", b64: "", action: "print",
+        _insertOrPush(arr, { type: "api", content: "", b64: "", action: "print",
             api_url: "", api_method: "GET", api_headers: "", api_body: "",
-            json_field: "", var_name: "", status: null });
+            json_field: "", var_name: "", status: null }, insertAt);
         renderStepList();
         updateGenerateBtn();
     };
 
-    window.addCommentStep = function(parentIdx, branch) {
+    window.addCommentStep = function(parentIdx, branch, insertAt) {
         const arr = _container(parentIdx, branch);
-        arr.push({ type: "comment", content: "", status: null });
+        _insertOrPush(arr, { type: "comment", content: "", status: null }, insertAt);
         renderStepList();
         updateGenerateBtn();
     };
 
-    window.addConditionStep = function() {
-        steps.push({
+    window.addConditionStep = function(insertAt) {
+        _insertOrPush(steps, {
             type: "condition", condition_type: "image_exists",
             content: "", b64: "",
             compare_var: "", compare_op: "eq", compare_value: "",
             then_steps: [], else_steps: [],
             status: null,
-        });
+        }, insertAt);
         renderStepList();
         updateGenerateBtn();
     };
@@ -2086,7 +2153,24 @@
             list.innerHTML = '<div class="step-empty">Henüz adım yok.<br>Yukarıdaki butonlarla <strong>Metin</strong> veya <strong>Görsel</strong> adım ekleyin.</div>';
             return;
         }
-        list.innerHTML = steps.map((s, i) => renderStepRow(s, i)).join("");
+        list.innerHTML = steps.map((s, i) => renderInsertRow(i) + renderStepRow(s, i)).join("");
+    }
+
+    // Adımların arasına "buraya ekle" çubuğu — hover'da "+" görünür, tıklanınca
+    // adım tipi menüsü açılır ve seçilen tip TAM O NOKTAYA eklenir (sona değil).
+    function renderInsertRow(insertAt) {
+        const rid = `ins-${insertAt}`;
+        return `<div class="step-insert-row" id="${rid}">
+            <button class="step-insert-btn" onclick="document.getElementById('${rid}').classList.toggle('open')" title="Buraya adım ekle">+</button>
+            <div class="step-insert-menu">
+                <button class="btn-reset" onclick="addTextStep(null,null,${insertAt})">Metin</button>
+                <button class="btn-reset" onclick="addImageStep(null,null,${insertAt})">Görsel</button>
+                <button class="btn-reset" onclick="addSqlStep(null,null,${insertAt})">SQL</button>
+                <button class="btn-reset" onclick="addApiStep(null,null,${insertAt})">API</button>
+                <button class="btn-reset" onclick="addCommentStep(null,null,${insertAt})">Yorum</button>
+                <button class="btn-reset" onclick="addConditionStep(${insertAt})">If/Else</button>
+            </div>
+        </div>`;
     }
 
     function renderBranchList(parentIdx, branch, list) {
@@ -2286,6 +2370,8 @@
             ${contentHtml}
             <span class="step-status${statusClass ? " " + statusClass : ""}">${statusIcon}</span>
             ${runBtn}
+            <button class="step-move-btn" onclick="moveStep(${_a}, -1)" title="Yukarı taşı">▲</button>
+            <button class="step-move-btn" onclick="moveStep(${_a}, 1)" title="Aşağı taşı">▼</button>
             <button class="step-toggle-btn" onclick="toggleStepDisabled(${_a})"
                 title="${s.disabled ? 'Etkinleştir' : 'Devre dışı bırak (yorum satırına al)'}">${s.disabled ? "▶" : "⏸"}</button>
             <button class="step-del-btn" onclick="deleteStep(${_a})" title="Sil">✕</button>
