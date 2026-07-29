@@ -1309,6 +1309,7 @@
                                 <div><code class="hint">geri</code> / <code class="hint">ileri</code></div>
                                 <div><code class="hint">sayfayı yenile</code></div>
                                 <div><code class="hint">aşağı kaydır</code></div>
+                                <div><code class="hint">sağa kaydır</code> / <code class="hint">sola kaydır</code></div>
                             </div>
                             <div>
                                 <div class="hint-section-label">Tıklama / Yazma</div>
@@ -1371,6 +1372,7 @@
                                 <div><code class="hint">home bas</code> / <code class="hint">end bas</code></div>
                                 <div><code class="hint">tümünü seç</code> / <code class="hint">kopyala</code> / <code class="hint">yapıştır</code></div>
                                 <div><code class="hint">aşağı kaydır</code></div>
+                                <div><code class="hint">sağa kaydır</code> / <code class="hint">sola kaydır</code></div>
                             </div>
                         </div>
                     </div>
@@ -1671,7 +1673,9 @@
     let _dragScope     = null;   // null (üst seviye) | {parentIdx, branch}
 
     // Screenshot / crop state
-    let _captureTargetStepIdx = -1;
+    let _captureTargetIdx       = -1;
+    let _captureTargetParentIdx = null;
+    let _captureTargetBranch    = null;
     let _countdownInterval    = null;
     let _screenshotB64        = "";
     let _screenImg            = null;
@@ -1902,9 +1906,7 @@
         _insertOrPush(arr, { type: "image", content: "", b64: "", action: "click", status: null }, insertAt);
         renderStepList();
         updateGenerateBtn();
-        // Görsel yakalama akışı düz index bekliyor — dal içi adımlar için otomatik
-        // yakalama tetiklenmez, kullanıcı "Tıkla → Görsel Yükle" ile manuel doldurur.
-        if (!branch) startImageCapture(localIdx);
+        startImageCapture(localIdx, parentIdx, branch);
     };
 
     window.deleteStep = function(idx, branch, bIdx) {
@@ -2101,9 +2103,9 @@
         updateGenerateBtn();
     };
 
-    window.retakeImage = function(idx) {
-        _captureTargetStepIdx = idx;
-        startImageCapture(idx);
+    window.retakeImage = function(idx, branch, bIdx) {
+        if (branch) startImageCapture(bIdx, idx, branch);
+        else startImageCapture(idx);
     };
 
     let _previewStepIdx = null;
@@ -2507,7 +2509,7 @@
     _imgFileInput.addEventListener("change", function() {
         const file = this.files[0];
         this.value = "";  // aynı dosya tekrar seçilebilsin
-        if (!file) { removeEmptyImageStep(); _captureTargetStepIdx = -1; return; }
+        if (!file) { removeEmptyImageStep(); _captureTargetIdx = -1; return; }
         const reader = new FileReader();
         reader.onload = function(e) {
             const b64 = e.target.result.split(",")[1];
@@ -2517,20 +2519,23 @@
         reader.onerror = function() {
             Toast.error("Görsel okunamadı");
             removeEmptyImageStep();
-            _captureTargetStepIdx = -1;
+            _captureTargetIdx = -1;
         };
         reader.readAsDataURL(file);
     });
 
-    function startImageCapture(stepIdx) {
-        _captureTargetStepIdx = stepIdx;
+    function startImageCapture(idx, parentIdx, branch) {
+        _captureTargetIdx       = idx;
+        _captureTargetParentIdx = parentIdx === undefined ? null : parentIdx;
+        _captureTargetBranch    = branch || null;
         _imgFileInput.click();
     }
 
     function removeEmptyImageStep() {
-        const idx = _captureTargetStepIdx;
-        if (idx >= 0 && steps[idx] && steps[idx].type === "image" && !steps[idx].b64) {
-            steps.splice(idx, 1);
+        const idx = _captureTargetIdx;
+        const arr = _container(_captureTargetParentIdx, _captureTargetBranch);
+        if (idx >= 0 && arr[idx] && arr[idx].type === "image" && !arr[idx].b64) {
+            arr.splice(idx, 1);
             renderStepList();
             updateGenerateBtn();
         }
@@ -2769,11 +2774,11 @@
         _croppedB64  = null;
         _croppedImg  = null;
         removeEmptyImageStep();
-        _captureTargetStepIdx = -1;
+        _captureTargetIdx = -1;
     };
 
     window.confirmPoints = function() {
-        if (_clickPoints.length === 0 || _captureTargetStepIdx < 0 || !_croppedB64) return;
+        if (_clickPoints.length === 0 || _captureTargetIdx < 0 || !_croppedB64) return;
         // click_x/click_y: KIRPILAN gorseldeki orijinal piksel koordinati (tam sayfaya gore DEGIL).
         const newSteps = _clickPoints.map((pt, i) => ({
             type:    "image",
@@ -2784,9 +2789,9 @@
             click_y: pt.oy,    // kırpılan görseldeki piksel Y
             status:  null,
         }));
-        steps.splice(_captureTargetStepIdx, 1, ...newSteps);
+        _container(_captureTargetParentIdx, _captureTargetBranch).splice(_captureTargetIdx, 1, ...newSteps);
         document.getElementById("cropModal").style.display = "none";
-        _captureTargetStepIdx = -1;
+        _captureTargetIdx = -1;
         _clickPoints = [];
         _croppedB64  = null;
         _croppedImg  = null;
@@ -2796,7 +2801,7 @@
     };
 
     window.confirmDrag = function() {
-        if (_clickPoints.length !== 2 || _captureTargetStepIdx < 0 || !_croppedB64) return;
+        if (_clickPoints.length !== 2 || _captureTargetIdx < 0 || !_croppedB64) return;
         const [p1, p2] = _clickPoints;
         const newStep = {
             type:    "image",
@@ -2809,9 +2814,9 @@
             drag_y:  p2.oy,
             status:  null,
         };
-        steps.splice(_captureTargetStepIdx, 1, newStep);
+        _container(_captureTargetParentIdx, _captureTargetBranch).splice(_captureTargetIdx, 1, newStep);
         document.getElementById("cropModal").style.display = "none";
-        _captureTargetStepIdx = -1;
+        _captureTargetIdx = -1;
         _clickPoints = [];
         _croppedB64  = null;
         _croppedImg  = null;

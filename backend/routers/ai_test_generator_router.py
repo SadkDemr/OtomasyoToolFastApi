@@ -444,6 +444,10 @@ def _rule_mobile(step: str) -> list[str] | None:
         return [f'# {s}', 'driver.swipe(540, 1400, 540, 400, 800)', 'time.sleep(0.5)']
     if re.search(r'(?:yukar[iı]\s*kaydır|scroll\s*up|swipe\s*up)', sl):
         return [f'# {s}', 'driver.swipe(540, 400, 540, 1400, 800)', 'time.sleep(0.5)']
+    if re.search(r'(?:sa[gğ]a\s*kaydır|swipe\s*right|scroll\s*right)', sl):
+        return [f'# {s}', 'driver.swipe(900, 800, 150, 800, 800)', 'time.sleep(0.5)']
+    if re.search(r'(?:sola\s*kaydır|swipe\s*left|scroll\s*left)', sl):
+        return [f'# {s}', 'driver.swipe(150, 800, 900, 800, 800)', 'time.sleep(0.5)']
     if re.search(r'(?:kaydır|scroll|swipe)', sl):
         return [f'# {s}', 'driver.swipe(540, 1400, 540, 400, 800)', 'time.sleep(0.5)']
 
@@ -641,6 +645,10 @@ def _rule_web(step: str) -> list[str] | None:
         return [f'# {s}', 'driver.execute_script("window.scrollBy(0, 400);")', 'time.sleep(0.4)']
     if re.search(r'(?:yukar[iı]|scroll\s*up)', sl):
         return [f'# {s}', 'driver.execute_script("window.scrollBy(0, -400);")', 'time.sleep(0.4)']
+    if re.search(r'(?:sa[gğ]a\s*kaydır|scroll\s*right)', sl):
+        return [f'# {s}', 'driver.execute_script("window.scrollBy(400, 0);")', 'time.sleep(0.4)']
+    if re.search(r'(?:sola\s*kaydır|scroll\s*left)', sl):
+        return [f'# {s}', 'driver.execute_script("window.scrollBy(-400, 0);")', 'time.sleep(0.4)']
 
     # ── Sayfa işlemleri ───────────────────────────────────────────────────
     if re.search(r'(?:yenile|refresh|f5)', sl):
@@ -781,6 +789,10 @@ def _rule_desktop(step: str) -> list[str] | None:
         return [f'# {s}', '_pag.scroll(-5)', 'time.sleep(0.3)']
     if re.search(r'(?:yukar[iı]|scroll\s*up|swipe\s*up)', sl):
         return [f'# {s}', '_pag.scroll(5)',  'time.sleep(0.3)']
+    if re.search(r'(?:sa[gğ]a\s*kaydır|scroll\s*right|swipe\s*right)', sl):
+        return [f'# {s}', "_pag.keyDown('shift')", '_pag.scroll(-5)', "_pag.keyUp('shift')", 'time.sleep(0.3)']
+    if re.search(r'(?:sola\s*kaydır|scroll\s*left|swipe\s*left)', sl):
+        return [f'# {s}', "_pag.keyDown('shift')", '_pag.scroll(5)', "_pag.keyUp('shift')", 'time.sleep(0.3)']
 
     # ── Ekran görüntüsü ───────────────────────────────────────────────────────
     if re.search(r'ekran\s*g[oö]r[uü]nt[uü]s[uü]|screenshot', sl):
@@ -3131,7 +3143,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
         if item.var_name:
             var_store = (
                 f"\n    _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
-                f"\n    print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+                f'\n    print(f"[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}")'
             )
         if is_print:
             result_code = (
@@ -3187,7 +3199,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
         if item.var_name:
             var_store = (
                 f"\n    _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
-                f"\n    print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+                f'\n    print(f"[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}")'
             )
         if is_print:
             result_code = (
@@ -3224,7 +3236,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
         if item.var_name:
             var_store = (
                 f"\n    _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
-                f"\n    print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+                f'\n    print(f"[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}")'
             )
         if is_print:
             result_code = (
@@ -3264,7 +3276,7 @@ def _sql_step_code(item: "StepItem", idx: int) -> str:
         if item.var_name:
             var_store = (
                 f"\n        _VARS[{repr(item.var_name)}] = str(_rows_{idx}[0][0] if _rows_{idx} else '')"
-                f"\n        print(f'[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}')"
+                f'\n        print(f"[SQL→_VARS] {item.var_name} = {{_VARS[{repr(item.var_name)}]}}")'
             )
         if is_print:
             result_code = (
@@ -4046,11 +4058,32 @@ async def ollama_status():
     return {"online": False, "model_available": False, "models": []}
 
 
+def _find_adb() -> str:
+    """PATH'e bağımlı kalmadan adb.exe'yi bulur — sunucu süreci PATH güncellenmeden önce
+    başlamış olsa bile projenin kendi platform-tools'unu ve yaygın SDK konumlarını dener."""
+    import shutil as _shutil
+    found = _shutil.which("adb")
+    if found:
+        return found
+    backend_dir = Path(__file__).resolve().parent.parent
+    candidates = [
+        backend_dir / "platform-tools" / "adb.exe",
+        Path(os.path.expanduser("~")) / "AppData" / "Local" / "Android" / "Sdk" / "platform-tools" / "adb.exe",
+        Path("C:/platform-tools/adb.exe"),
+        Path("C:/Android/platform-tools/adb.exe"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return "adb"  # bulunamadı — subprocess FileNotFoundError fırlatacak, aşağıda yakalanıyor
+
+
 @router.get("/adb/devices")
 async def adb_devices(current_user: User = Depends(get_current_user)):
     try:
+        adb_path = _find_adb()
         result = await asyncio.to_thread(
-            subprocess.run, ["adb", "devices"],
+            subprocess.run, [adb_path, "devices"],
             capture_output=True, timeout=10
         )
         lines   = result.stdout.decode("utf-8", errors="replace").strip().splitlines()
@@ -4063,9 +4096,10 @@ async def adb_devices(current_user: User = Depends(get_current_user)):
 @router.get("/adb/activity")
 async def adb_get_activity(device_id: str, app_package: str, current_user: User = Depends(get_current_user)):
     try:
+        adb_path = _find_adb()
         result = await asyncio.to_thread(
             subprocess.run,
-            ["adb", "-s", device_id, "shell", "cmd", "package", "resolve-activity", "--brief", app_package],
+            [adb_path, "-s", device_id, "shell", "cmd", "package", "resolve-activity", "--brief", app_package],
             capture_output=True, timeout=10
         )
         output = result.stdout.decode("utf-8", errors="replace").strip()
