@@ -304,3 +304,56 @@ def validate_steps(steps: list) -> list:
                 violations.append({"rule": rule, "message": message})
         result.append({**step, "violations": violations})
     return result
+
+
+# ──────────────────────────────────────────────────────
+# Ollama prompt üreticileri
+# ──────────────────────────────────────────────────────
+
+def build_title_extraction_prompt(screen_note: str, prev_note: str, prev_summary: str) -> str:
+    context = ""
+    if prev_note or prev_summary:
+        context = (
+            f"\nBir önceki ekranın notu: \"{prev_note}\"\n"
+            f"Bir önceki ekranın özeti: \"{prev_summary}\"\n"
+            "Bu bağlamı akış bütünlüğünü korumak için kullan.\n"
+        )
+    note_line = f"\nKullanıcının bu ekran için notu: \"{screen_note}\"\n" if screen_note else ""
+    return (
+        "Sen bir mobil uygulama test analistisin. Sana verilen ekran görüntüsünü incele.\n"
+        f"{context}{note_line}\n"
+        "Bu ekrandan test edilebilecek 2-5 aday test case başlığı çıkar ve ekranın kısa bir özetini yaz.\n\n"
+        "SADECE aşağıdaki şemaya uyan JSON döndür, başka hiçbir metin ekleme, markdown code fence kullanma:\n"
+        '{"screen_titles": [{"screen_index": 0, "candidate_titles": ["...", "..."], "screen_summary": "..."}]}'
+    )
+
+
+def build_rationale_prompt(title_text: str, level: str, score: float) -> str:
+    return (
+        "Aşağıdaki test case başlığına, kural tabanlı bir motor tarafından zaten "
+        f"'{level}' önceliği ve {score} skoru atandı. Karar değiştirme, sadece bu "
+        "skoru 1-2 cümlelik kısa bir gerekçeye çevir (Türkçe, test analistine hitaben):\n\n"
+        f"Başlık: \"{title_text}\"\n"
+        f"Öncelik: {level}\n"
+        f"Skor: {score}\n\n"
+        "Yalnızca gerekçe cümlesini döndür, başka açıklama ekleme."
+    )
+
+
+def build_testcase_prompt(title_text: str, screen_summary: str, screen_note: str) -> str:
+    return (
+        "Sen bir mobil uygulama test otomasyon uzmanısın. Aşağıdaki test case başlığı için "
+        "adım adım test senaryosu üret.\n\n"
+        f"Test case başlığı: \"{title_text}\"\n"
+        f"Ekran özeti: \"{screen_summary}\"\n"
+        f"Kullanıcı notu: \"{screen_note}\"\n\n"
+        "KESİN KURALLAR:\n"
+        "1. Her Step Action pasif fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
+        "\"tıkla\", \"aç\" gibi EMİR KİPİ YASAK).\n"
+        "2. Her Step Action'da TEK bir aksiyon olmalı (birden fazla tıklama/yazma tek satırda birleştirilmemeli).\n"
+        "3. Dinamik/değişken değerler (güncel kur, hesaplanan tutar gibi) @ParamAdı notasyonuyla yazılmalı "
+        "(örn. @güncel_kur, @hesaplanan_tutar).\n"
+        "4. Her step'in boş olmayan bir Step Expected (beklenen sonuç) alanı olmalı.\n\n"
+        "SADECE aşağıdaki şemaya uyan JSON döndür, başka metin/markdown fence ekleme:\n"
+        '{"steps": [{"step_action": "...", "step_expected": "..."}]}'
+    )
