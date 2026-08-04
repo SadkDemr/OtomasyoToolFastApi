@@ -796,7 +796,11 @@ _ACTION_VERB_PATTERN = re.compile(
 
 
 def _check_imperative(step_action: str) -> Optional[str]:
-    lowered = step_action.lower()
+    # Tirnak icindeki UI eleman adlari (ör. "Kaydet" buton etiketi) haric tutulur —
+    # aksi halde birçok yaygin buton etiketi (Kaydet/Onayla/Gönder/Sil/Kapat) emir
+    # kipiyle ayni kelime oldugu için yanlis pozitif üretirdi.
+    unquoted = re.sub(r'"[^"]*"', '', step_action)
+    lowered = unquoted.lower()
     for pattern in _IMPERATIVE_PATTERNS:
         if re.search(pattern, lowered):
             return "Emir kipi tespit edildi — pasif çatı kullanılmalı (örn. 'tıklanır', 'açılır')"
