@@ -21,7 +21,7 @@ Appium-Python-Client>=3.1.0
 
 # HTTP
 requests>=2.31.0
-httpx>=0.24.0
+httpx>=0.24.0,<0.28.0
 
 # Testing
 pytest>=7.4.0
