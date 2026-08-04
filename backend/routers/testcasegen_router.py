@@ -9,7 +9,7 @@ import base64
 import io
 import json as _json
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -218,5 +218,48 @@ async def edit_title(session_id: str, title_id: str, body: TitleTextIn, current_
 async def delete_title(session_id: str, title_id: str, current_user: User = Depends(get_current_user)):
     session = _load_or_404(current_user.id, session_id)
     session["titles"] = [t for t in session["titles"] if t["id"] != title_id]
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+# ── Önceliklendirme (Adım 3) ────────────────────────────────────────────
+
+@router.post("/sessions/{session_id}/prioritize")
+async def prioritize(session_id: str, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    screens_by_index = {s["index"]: s for s in session["screens"]}
+
+    for title in session["titles"]:
+        screen = screens_by_index.get(title["screen_index"], {})
+        score, level = svc.score_title(title["text"], screen.get("user_note", ""), title["screen_index"])
+        title["score"] = score
+        title["level"] = level
+        title["level_source"] = "rule"
+
+        prompt = svc.build_rationale_prompt(title["text"], level, score)
+        try:
+            rationale = await ai_service.ollama_generate_text(prompt)
+            title["rationale"] = rationale.strip() or "Gerekçe üretilemedi."
+        except Exception:
+            title["rationale"] = "Gerekçe üretilemedi (Ollama servisine ulaşılamadı), skor kural motorundan geldi."
+
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+class PriorityIn(BaseModel):
+    level: Literal["high", "medium", "low"]
+
+
+@router.put("/sessions/{session_id}/titles/{title_id}/priority")
+async def set_priority(session_id: str, title_id: str, body: PriorityIn, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    for title in session["titles"]:
+        if title["id"] == title_id:
+            title["level"] = body.level
+            title["level_source"] = "manual"
+            break
+    else:
+        raise HTTPException(404, "Başlık bulunamadı")
     svc.save_session(current_user.id, session_id, session)
     return session
