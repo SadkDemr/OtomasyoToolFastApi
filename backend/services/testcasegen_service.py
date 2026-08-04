@@ -230,3 +230,77 @@ def score_title(text: str, screen_note: str, screen_index: int) -> tuple[float, 
     else:
         level = "low"
     return round(score, 2), level
+
+
+# ──────────────────────────────────────────────────────
+# Test case adım validator'ü (4 kesin kural)
+# ──────────────────────────────────────────────────────
+
+_IMPERATIVE_PATTERNS = [
+    r'\btıkla\b', r'\btıklayınız\b', r'\baç\b', r'\byaz\b', r'\bgir\b',
+    r'\bgiriniz\b', r'\bseç\b', r'\bseçiniz\b', r'\bonayla\b', r'\bonaylayınız\b',
+    r'\bbas\b', r'\bbasınız\b', r'\bkaydet\b', r'\bdoldur\b', r'\bdolduruniz\b',
+    r'\bkapat\b', r'\bsil\b', r'\bgönder\b', r'\bgönderiniz\b',
+]
+
+_VARIABLE_KEYWORDS = ["kur", "tutar", "bakiye", "hesaplanan", "miktar", "oran", "komisyon", "vade"]
+
+_ACTION_VERB_PATTERN = re.compile(
+    r'\b(tıklanır|açılır|yazılır|girilir|seçilir|onaylanır|basılır|kaydedilir|gönderilir|doldurulur)\b'
+)
+
+
+def _check_imperative(step_action: str) -> Optional[str]:
+    unquoted = re.sub(r'"[^"]*"', '', step_action)
+    lowered = unquoted.lower()
+    for pattern in _IMPERATIVE_PATTERNS:
+        if re.search(pattern, lowered):
+            return "Emir kipi tespit edildi — pasif çatı kullanılmalı (örn. 'tıklanır', 'açılır')"
+    return None
+
+
+def _check_variable_notation(step_action: str) -> Optional[str]:
+    lowered = step_action.lower()
+    at_tokens = re.findall(r'@\w+', lowered)
+    for keyword in _VARIABLE_KEYWORDS:
+        match = re.search(rf'\b{keyword}\w*\b', lowered)
+        if not match:
+            continue
+        word = match.group(0)
+        if any(keyword in tok for tok in at_tokens):
+            continue
+        return f"'{keyword}' değişken gibi görünüyor ama @ notasyonu kullanılmamış (örn. @{keyword})"
+    return None
+
+
+def _check_multiple_actions(step_action: str) -> Optional[str]:
+    lowered = step_action.lower()
+    if ' ve ' not in lowered:
+        return None
+    if len(_ACTION_VERB_PATTERN.findall(lowered)) >= 2:
+        return 'Step Action birden fazla aksiyon içeriyor gibi görünüyor (" ve " ile birleştirilmiş)'
+    return None
+
+
+def _check_empty_expected(step_expected: str) -> Optional[str]:
+    if not step_expected or not step_expected.strip():
+        return "Step Expected boş bırakılamaz"
+    return None
+
+
+def validate_steps(steps: list) -> list:
+    checks = [
+        ("imperative_mood", lambda s: _check_imperative(s["step_action"])),
+        ("missing_variable_notation", lambda s: _check_variable_notation(s["step_action"])),
+        ("multiple_actions", lambda s: _check_multiple_actions(s["step_action"])),
+        ("empty_expected", lambda s: _check_empty_expected(s["step_expected"])),
+    ]
+    result = []
+    for step in steps:
+        violations = []
+        for rule, check in checks:
+            message = check(step)
+            if message:
+                violations.append({"rule": rule, "message": message})
+        result.append({**step, "violations": violations})
+    return result
