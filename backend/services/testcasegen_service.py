@@ -183,3 +183,50 @@ def delete_screen(user_id: int, session_id: str, index: int) -> dict:
     _reindex_and_rename_screens(user_id, session_id, session)
     save_session(user_id, session_id, session)
     return session
+
+
+# ──────────────────────────────────────────────────────
+# Kural tabanlı önceliklendirme (LLM karar vermez, sadece skor üzerinden gerekçe alır)
+# ──────────────────────────────────────────────────────
+
+WEIGHTS = {
+    "transaction": 3.0,        # form/tutar girişi/onay butonu içeren ekran
+    "info_only": -1.0,         # salt bilgi gösterimi
+    "negative_potential": 1.5, # validasyon gerektiren input alanı → hata senaryosu riski
+    "depth_penalty": 0.3,      # ana akıştan her adım uzaklaştıkça düşen ağırlık
+}
+THRESHOLD_HIGH = 3.0
+THRESHOLD_MEDIUM = 1.0
+
+TRANSACTION_KEYWORDS = [
+    "onayla", "öde", "ödeme", "gönder", "kaydet", "tutar", "miktar",
+    "transfer", "satın al", "işlem yap", "onaylanır", "gönderilir",
+]
+INFO_KEYWORDS = [
+    "hakkımızda", "sıkça sorulan", "sss", "bilgilendirme", "yardım",
+    "iletişim", "kullanım koşulları", "gizlilik",
+]
+NEGATIVE_KEYWORDS = [
+    "doğrulama", "zorunlu alan", "hatalı", "geçersiz", "input", "şifre",
+    "gir", "girilir", "validasyon",
+]
+
+
+def score_title(text: str, screen_note: str, screen_index: int) -> tuple:
+    haystack = f"{text} {screen_note}".lower()
+    score = 0.0
+    if any(k in haystack for k in TRANSACTION_KEYWORDS):
+        score += WEIGHTS["transaction"]
+    if any(k in haystack for k in INFO_KEYWORDS):
+        score += WEIGHTS["info_only"]
+    if any(k in haystack for k in NEGATIVE_KEYWORDS):
+        score += WEIGHTS["negative_potential"]
+    score -= WEIGHTS["depth_penalty"] * screen_index
+
+    if score >= THRESHOLD_HIGH:
+        level = "high"
+    elif score >= THRESHOLD_MEDIUM:
+        level = "medium"
+    else:
+        level = "low"
+    return round(score, 2), level
