@@ -62,6 +62,10 @@ def test_reorder_screens_changes_order_and_reindexes():
     session = svc.reorder_screens(1, session["id"], order=[2, 0, 1])
     assert [s["user_note"] for s in session["screens"]] == ["C", "A", "B"]
     assert [s["index"] for s in session["screens"]] == [0, 1, 2]
+    # Verify files were actually renamed on disk
+    assert svc.screen_image_path(1, session["id"], 0, ".png").read_bytes() == b"c"  # C at index 0
+    assert svc.screen_image_path(1, session["id"], 1, ".png").read_bytes() == b"a"  # A at index 1
+    assert svc.screen_image_path(1, session["id"], 2, ".png").read_bytes() == b"b"  # B at index 2
 
 
 def test_update_screen_note_changes_note_only():
@@ -79,3 +83,7 @@ def test_delete_screen_removes_and_reindexes():
     assert len(session["screens"]) == 1
     assert session["screens"][0]["user_note"] == "B"
     assert session["screens"][0]["index"] == 0
+    # Verify the remaining screen's file is correctly at the new index (moved from 1 to 0)
+    assert svc.screen_image_path(1, session["id"], 0, ".png").read_bytes() == b"b"
+    # Verify old index 1 file no longer exists
+    assert not svc.screen_image_path(1, session["id"], 1, ".png").exists()
