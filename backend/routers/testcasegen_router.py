@@ -8,6 +8,7 @@ Veritabanı YOK — state dosya tabanlı (services/testcasegen_service.py).
 import base64
 import io
 import json as _json
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -121,3 +122,99 @@ async def delete_screen(session_id: str, idx: int, current_user: User = Depends(
     if idx < 0 or idx >= len(session["screens"]):
         raise HTTPException(404, "Ekran bulunamadı")
     return svc.delete_screen(current_user.id, session_id, idx)
+
+
+# ── Başlık çıkarma (Adım 2) ─────────────────────────────────────────────
+
+@router.post("/sessions/{session_id}/extract-titles")
+async def extract_titles(session_id: str, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    screens = session["screens"]
+    if not screens:
+        raise HTTPException(400, "Önce en az bir ekran görüntüsü ekleyin")
+
+    async def stream():
+        prev_note, prev_summary = "", ""
+        for screen in screens:
+            image_path = svc.screen_image_path(current_user.id, session_id, screen["index"], screen["image_ext"])
+            image_b64 = base64.b64encode(image_path.read_bytes()).decode()
+            prompt = svc.build_title_extraction_prompt(screen.get("user_note", ""), prev_note, prev_summary)
+            try:
+                raw = await ai_service.ollama_generate_vision(prompt, [image_b64])
+            except Exception as e:
+                yield _sse("error", f"Ollama servisine ulaşılamadı: {e}")
+                return
+
+            parsed = svc.extract_json_object(raw)
+            entries = parsed.get("screen_titles") if parsed else None
+            if entries:
+                entry = entries[0]
+                screen["candidate_titles"] = entry.get("candidate_titles", [])
+                screen["screen_summary"] = entry.get("screen_summary", "")
+                screen["parse_error"] = False
+            else:
+                screen["candidate_titles"] = []
+                screen["screen_summary"] = raw
+                screen["parse_error"] = True
+
+            prev_note = screen.get("user_note", "")
+            prev_summary = screen["screen_summary"]
+            svc.save_session(current_user.id, session_id, session)
+
+            yield _sse("screen_done", _json.dumps({
+                "screen_index": screen["index"],
+                "candidate_titles": screen["candidate_titles"],
+                "screen_summary": screen["screen_summary"],
+                "parse_error": screen["parse_error"],
+            }, ensure_ascii=False))
+
+        yield _sse("complete", "")
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+class TitleIn(BaseModel):
+    screen_index: int
+    text: str
+
+
+@router.post("/sessions/{session_id}/titles")
+async def add_title(session_id: str, body: TitleIn, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    session["titles"].append({
+        "id": str(uuid.uuid4()),
+        "screen_index": body.screen_index,
+        "text": body.text,
+        "score": None,
+        "level": None,
+        "level_source": None,
+        "rationale": "",
+    })
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+class TitleTextIn(BaseModel):
+    text: str
+
+
+@router.put("/sessions/{session_id}/titles/{title_id}")
+async def edit_title(session_id: str, title_id: str, body: TitleTextIn, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    for title in session["titles"]:
+        if title["id"] == title_id:
+            title["text"] = body.text
+            break
+    else:
+        raise HTTPException(404, "Başlık bulunamadı")
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+@router.delete("/sessions/{session_id}/titles/{title_id}")
+async def delete_title(session_id: str, title_id: str, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    session["titles"] = [t for t in session["titles"] if t["id"] != title_id]
+    svc.save_session(current_user.id, session_id, session)
+    return session
