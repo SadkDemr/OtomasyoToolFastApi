@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import openpyxl
+from openpyxl.styles import Font
+
 
 # ──────────────────────────────────────────────────────
 # JSON temizleme / parse
@@ -357,3 +360,37 @@ def build_testcase_prompt(title_text: str, screen_summary: str, screen_note: str
         "SADECE aşağıdaki şemaya uyan JSON döndür, başka metin/markdown fence ekleme:\n"
         '{"steps": [{"step_action": "...", "step_expected": "..."}]}'
     )
+
+
+# ──────────────────────────────────────────────────────
+# Excel export builder (ADO format)
+# ──────────────────────────────────────────────────────
+
+def build_export_workbook(testcases: list, titles_by_id: dict):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Test Cases"
+
+    headers = ["ID", "Work Item Type", "Title", "Test Step", "Step Action",
+               "Step Expected", "Area Path", "Assigned To", "State"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(name="Arial", bold=True)
+
+    widths = [8, 16, 40, 10, 55, 45, 20, 20, 12]
+    for i, width in enumerate(widths, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+
+    for tc in testcases:
+        title_text = titles_by_id.get(tc["title_id"], {}).get("text", "")
+        ws.append([None, "Test Case", title_text, None, None, None, None, None, None])
+        for i, step in enumerate(tc["steps"], start=1):
+            ws.append([None, None, None, i, step.get("step_action", ""),
+                       step.get("step_expected", ""), None, None, None])
+
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            if cell.font.name != "Arial" or not cell.font.bold:
+                cell.font = Font(name="Arial", bold=False)
+
+    return wb
