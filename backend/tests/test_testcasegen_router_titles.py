@@ -80,6 +80,26 @@ def test_extract_titles_reports_ollama_error_via_sse(client, monkeypatch):
     assert "event: error" in resp.text
 
 
+def test_extract_titles_marks_parse_error_on_malformed_json_shape(client, monkeypatch):
+    raw_text = '{"screen_titles": "not-a-list"}'
+
+    async def fake_vision(prompt, images_b64, model=None, timeout=90.0):
+        return raw_text
+
+    monkeypatch.setattr(ai_service, "ollama_generate_vision", fake_vision)
+    session = _session_with_one_screen(client)
+
+    resp = client.post(f"/api/testcasegen/sessions/{session['id']}/extract-titles")
+    assert resp.status_code == 200
+    assert "event: error" not in resp.text
+    assert "complete" in resp.text
+
+    updated = client.get(f"/api/testcasegen/sessions/{session['id']}").json()
+    assert updated["screens"][0]["parse_error"] is True
+    assert updated["screens"][0]["candidate_titles"] == []
+    assert updated["screens"][0]["screen_summary"] == raw_text
+
+
 def test_add_edit_delete_title(client):
     session = client.post("/api/testcasegen/sessions").json()
     resp = client.post(

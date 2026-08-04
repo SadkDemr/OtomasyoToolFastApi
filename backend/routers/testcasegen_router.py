@@ -146,13 +146,15 @@ async def extract_titles(session_id: str, current_user: User = Depends(get_curre
                 return
 
             parsed = svc.extract_json_object(raw)
-            entries = parsed.get("screen_titles") if parsed else None
-            if entries:
-                entry = entries[0]
+            try:
+                entries = parsed.get("screen_titles") if parsed else None
+                entry = entries[0] if entries else None
+                if entry is None:
+                    raise ValueError("screen_titles girdisi yok")
                 screen["candidate_titles"] = entry.get("candidate_titles", [])
                 screen["screen_summary"] = entry.get("screen_summary", "")
                 screen["parse_error"] = False
-            else:
+            except Exception:
                 screen["candidate_titles"] = []
                 screen["screen_summary"] = raw
                 screen["parse_error"] = True
