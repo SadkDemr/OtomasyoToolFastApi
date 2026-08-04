@@ -109,11 +109,15 @@ class NoteIn(BaseModel):
 
 @router.put("/sessions/{session_id}/screens/{idx}")
 async def edit_screen_note(session_id: str, idx: int, body: NoteIn, current_user: User = Depends(get_current_user)):
-    _load_or_404(current_user.id, session_id)
+    session = _load_or_404(current_user.id, session_id)
+    if idx < 0 or idx >= len(session["screens"]):
+        raise HTTPException(404, "Ekran bulunamadı")
     return svc.update_screen_note(current_user.id, session_id, idx, body.note)
 
 
 @router.delete("/sessions/{session_id}/screens/{idx}")
 async def delete_screen(session_id: str, idx: int, current_user: User = Depends(get_current_user)):
-    _load_or_404(current_user.id, session_id)
+    session = _load_or_404(current_user.id, session_id)
+    if idx < 0 or idx >= len(session["screens"]):
+        raise HTTPException(404, "Ekran bulunamadı")
     return svc.delete_screen(current_user.id, session_id, idx)

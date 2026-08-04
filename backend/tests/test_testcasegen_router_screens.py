@@ -121,3 +121,45 @@ def test_delete_screen(client):
     resp = client.delete(f"/api/testcasegen/sessions/{session['id']}/screens/0")
     assert resp.status_code == 200
     assert resp.json()["screens"] == []
+
+
+def test_edit_screen_note_out_of_range_returns_404(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+
+    resp = client.put(
+        f"/api/testcasegen/sessions/{session['id']}/screens/99",
+        json={"note": "gecersiz"},
+    )
+    assert resp.status_code == 404
+
+
+def test_edit_screen_note_negative_index_returns_404(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+
+    resp = client.put(
+        f"/api/testcasegen/sessions/{session['id']}/screens/-1",
+        json={"note": "gecersiz"},
+    )
+    assert resp.status_code == 404
+
+
+def test_delete_screen_out_of_range_returns_404(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+
+    resp = client.delete(f"/api/testcasegen/sessions/{session['id']}/screens/99")
+    assert resp.status_code == 404
+
+
+def test_delete_screen_negative_index_returns_404(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+
+    resp = client.delete(f"/api/testcasegen/sessions/{session['id']}/screens/-1")
+    assert resp.status_code == 404
