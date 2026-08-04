@@ -30,3 +30,5 @@ Thumbs.db
 # Env / secrets
 .env
 ai_config.json
+
+.superpowers/
