@@ -981,7 +981,7 @@ def build_testcase_prompt(title_text: str, screen_summary: str, screen_note: str
         f"Ekran özeti: \"{screen_summary}\"\n"
         f"Kullanıcı notu: \"{screen_note}\"\n\n"
         "KESİN KURALLAR:\n"
-        "1. Her Step Action PASİF fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
+        "1. Her Step Action pasif fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
         "\"tıkla\", \"aç\" gibi EMİR KİPİ YASAK).\n"
         "2. Her Step Action'da TEK bir aksiyon olmalı (birden fazla tıklama/yazma tek satırda birleştirilmemeli).\n"
         "3. Dinamik/değişken değerler (güncel kur, hesaplanan tutar gibi) @ParamAdı notasyonuyla yazılmalı "
