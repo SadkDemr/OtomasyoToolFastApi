@@ -212,7 +212,7 @@ NEGATIVE_KEYWORDS = [
 ]
 
 
-def score_title(text: str, screen_note: str, screen_index: int) -> tuple:
+def score_title(text: str, screen_note: str, screen_index: int) -> tuple[float, str]:
     haystack = f"{text} {screen_note}".lower()
     score = 0.0
     if any(k in haystack for k in TRANSACTION_KEYWORDS):
