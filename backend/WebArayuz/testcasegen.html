@@ -440,6 +440,12 @@
             }
         }
 
+        function escapeHtml(str) {
+            const div = document.createElement("div");
+            div.textContent = str || "";
+            return div.innerHTML;
+        }
+
         function renderTitlesResult() {
             const container = document.getElementById("titlesResult");
             container.innerHTML = _session.screens.map((screen, i) => {
@@ -448,7 +454,7 @@
                         <div class="tcg-card">
                             <strong>Ekran #${i + 1}</strong> — JSON parse edilemedi, ham yanıt (düzenleyebilirsiniz):
                             <textarea style="width:100%; min-height:80px; margin-top:8px;"
-                                      onchange="editRawScreenSummary(${i}, this.value)">${screen.screen_summary || ""}</textarea>
+                                      onchange="editRawScreenSummary(${i}, this.value)">${escapeHtml(screen.screen_summary)}</textarea>
                         </div>`;
                 }
                 const titles = (screen.candidate_titles || []).map((t, ti) => `
@@ -459,7 +465,7 @@
                     </div>`).join("");
                 return `
                     <div class="tcg-card">
-                        <strong>Ekran #${i + 1}</strong> <span style="color:var(--text-muted);">${screen.screen_summary || ""}</span>
+                        <strong>Ekran #${i + 1}</strong> <span style="color:var(--text-muted);">${escapeHtml(screen.screen_summary)}</span>
                         <div style="margin-top:8px;">${titles}</div>
                         <button class="tcg-btn" onclick="addCandidateTitle(${i})">+ Başlık Ekle</button>
                     </div>`;
