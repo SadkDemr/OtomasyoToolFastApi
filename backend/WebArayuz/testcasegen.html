@@ -201,7 +201,6 @@
         }
 
         // GEÇİCİ — Task 15 renderStep1'i ekleyince bu bloğu sil (ve benzer şekilde Task 16-19 ile diğerlerini).
-        if (typeof renderStep2 !== "function") { window.renderStep2 = () => {}; }
         if (typeof renderStep3 !== "function") { window.renderStep3 = () => {}; }
         if (typeof renderStep4 !== "function") { window.renderStep4 = () => {}; }
 
@@ -362,6 +361,127 @@
             } catch (e) {
                 Toast.error(e.message);
             }
+        }
+
+        function renderStep2() {
+            const panel = document.getElementById("panel-2");
+            panel.innerHTML = `
+                <div class="tcg-card">
+                    <h3>Başlık Çıkarma</h3>
+                    <button class="tcg-btn primary" id="extractBtn" onclick="runExtractTitles()">🤖 Başlıkları Çıkar</button>
+                    <button class="tcg-btn" id="retryExtractBtn" style="display:none;" onclick="runExtractTitles()">🔁 Tekrar Dene</button>
+                    <div id="extractProgress" style="margin-top:12px; color:var(--text-muted);"></div>
+                    <div id="titlesResult" style="margin-top:16px;"></div>
+                </div>
+                <div class="tcg-actions">
+                    <button class="tcg-btn" onclick="goToStep(1)">← Geri</button>
+                    <button class="tcg-btn primary" onclick="goToStep(3)">Devam →</button>
+                </div>
+            `;
+            renderTitlesResult();
+        }
+
+        async function runExtractTitles() {
+            const btn = document.getElementById("extractBtn");
+            const retryBtn = document.getElementById("retryExtractBtn");
+            const progress = document.getElementById("extractProgress");
+            btn.disabled = true;
+            retryBtn.style.display = "none";
+            progress.textContent = `0 / ${_session.screens.length} ekran işlendi...`;
+
+            try {
+                const response = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/extract-titles`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                });
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Başlık çıkarma başlatılamadı");
+                }
+
+                let done = 0;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                while (true) {
+                    const { done: readerDone, value } = await reader.read();
+                    if (readerDone) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split("\n\n");
+                    buffer = parts.pop();
+                    for (const part of parts) {
+                        const evtMatch = part.match(/^event:\s*(\S+)/m);
+                        const dataLines = [...part.matchAll(/^data:\s*(.*)/gm)].map(m => m[1]);
+                        const evtType = evtMatch ? evtMatch[1] : "log";
+                        const dataText = dataLines.join("\n");
+
+                        if (evtType === "screen_done") {
+                            const payload = JSON.parse(dataText);
+                            const screen = _session.screens[payload.screen_index];
+                            screen.candidate_titles = payload.candidate_titles;
+                            screen.screen_summary = payload.screen_summary;
+                            screen.parse_error = payload.parse_error;
+                            done += 1;
+                            progress.textContent = `${done} / ${_session.screens.length} ekran işlendi...`;
+                            renderTitlesResult();
+                        } else if (evtType === "error") {
+                            throw new Error(dataText || "Ollama hatası");
+                        } else if (evtType === "complete") {
+                            progress.textContent = "Tamamlandı.";
+                        }
+                    }
+                }
+            } catch (e) {
+                Toast.error(e.message);
+                progress.textContent = "Hata: " + e.message;
+                retryBtn.style.display = "inline-block";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderTitlesResult() {
+            const container = document.getElementById("titlesResult");
+            container.innerHTML = _session.screens.map((screen, i) => {
+                if (screen.parse_error) {
+                    return `
+                        <div class="tcg-card">
+                            <strong>Ekran #${i + 1}</strong> — JSON parse edilemedi, ham yanıt (düzenleyebilirsiniz):
+                            <textarea style="width:100%; min-height:80px; margin-top:8px;"
+                                      onchange="editRawScreenSummary(${i}, this.value)">${screen.screen_summary || ""}</textarea>
+                        </div>`;
+                }
+                const titles = (screen.candidate_titles || []).map((t, ti) => `
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+                        <input type="text" value="${t.replace(/"/g, '&quot;')}" style="flex:1;"
+                               onchange="editCandidateTitle(${i}, ${ti}, this.value)">
+                        <button class="tcg-btn" onclick="removeCandidateTitle(${i}, ${ti})">🗑</button>
+                    </div>`).join("");
+                return `
+                    <div class="tcg-card">
+                        <strong>Ekran #${i + 1}</strong> <span style="color:var(--text-muted);">${screen.screen_summary || ""}</span>
+                        <div style="margin-top:8px;">${titles}</div>
+                        <button class="tcg-btn" onclick="addCandidateTitle(${i})">+ Başlık Ekle</button>
+                    </div>`;
+            }).join("");
+        }
+
+        function editRawScreenSummary(screenIndex, value) {
+            _session.screens[screenIndex].screen_summary = value;
+        }
+
+        function editCandidateTitle(screenIndex, titleIndex, value) {
+            _session.screens[screenIndex].candidate_titles[titleIndex] = value;
+        }
+
+        function removeCandidateTitle(screenIndex, titleIndex) {
+            _session.screens[screenIndex].candidate_titles.splice(titleIndex, 1);
+            renderTitlesResult();
+        }
+
+        function addCandidateTitle(screenIndex) {
+            _session.screens[screenIndex].candidate_titles.push("Yeni başlık");
+            renderTitlesResult();
         }
 
         let _tcgWs = null;
