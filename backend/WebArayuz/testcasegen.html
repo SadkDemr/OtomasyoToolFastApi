@@ -94,6 +94,7 @@
 
         let _session = null;
         let _currentStep = 1;
+        let _screenListRenderGen = 0;
 
         const STEP_LABELS = ["Ekran Toplama", "Başlık Çıkarma", "Önceliklendirme", "Test Case Üretimi"];
 
@@ -255,6 +256,7 @@
 
         function renderScreenList() {
             const container = document.getElementById("screenList");
+            const myGen = ++_screenListRenderGen;
             if (!_session.screens.length) {
                 container.innerHTML = '<p style="color:var(--text-muted);">Henüz ekran eklenmedi.</p>';
                 return;
@@ -276,7 +278,9 @@
                     const resp = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/screens/${i}/image`, {
                         headers: { "Authorization": `Bearer ${Auth.getToken()}` },
                     });
+                    if (!resp.ok) return;
                     const blob = await resp.blob();
+                    if (myGen !== _screenListRenderGen) return; // daha yeni bir render bunu gecersiz kildi
                     const imgEl = container.querySelector(`img[data-index="${i}"]`);
                     if (imgEl) imgEl.src = URL.createObjectURL(blob);
                 } catch (e) { /* thumbnail yuklenemedi, sessizce atla */ }
