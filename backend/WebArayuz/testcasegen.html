@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TestCaseGen - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        :root {
+            --ai-accent: #6366f1;
+            --ai-accent-hover: #4f46e5;
+            --ai-green: #22c55e;
+            --ai-green-hover: #16a34a;
+            --ai-red: #ef4444;
+            --ai-yellow: #f59e0b;
+            --ai-blue: #3b82f6;
+            --ai-cyan: #06b6d4;
+            --ai-radius: 10px;
+            --ai-radius-lg: 14px;
+            --ai-transition: 160ms ease;
+        }
+        .page-content {
+            padding: 24px; width: 100%; max-width: 1440px; box-sizing: border-box; overflow-x: hidden;
+        }
+        .workflow-stepper {
+            display: flex; align-items: center; gap: 0; margin-bottom: 20px;
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--ai-radius-lg); padding: 12px 20px; overflow-x: auto;
+        }
+        .wf-step { display: flex; align-items: center; gap: 8px; white-space: nowrap; cursor: pointer; }
+        .wf-num {
+            width: 22px; height: 22px; border-radius: 50%; background: var(--bg-tertiary);
+            border: 1.5px solid var(--border-color); font-size: 0.7rem; font-weight: 700;
+            color: var(--text-muted); display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; transition: var(--ai-transition);
+        }
+        .wf-step.active .wf-num { background: var(--ai-accent); border-color: var(--ai-accent); color: #fff; }
+        .wf-step.done .wf-num { background: var(--ai-green); border-color: var(--ai-green); color: #fff; }
+        .wf-label { font-size: 0.8rem; font-weight: 500; color: var(--text-muted); transition: var(--ai-transition); }
+        .wf-step.active .wf-label { color: var(--text-primary); }
+        .wf-step.done .wf-label { color: var(--ai-green); }
+        .wf-arrow { margin: 0 12px; color: var(--border-color); flex-shrink: 0; }
+        .step-panel { display: none; }
+        .step-panel.active { display: block; }
+        .tcg-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: var(--ai-radius-lg); padding: 20px; margin-bottom: 16px;
+        }
+        .tcg-actions { display: flex; gap: 10px; margin-top: 16px; }
+        .tcg-btn {
+            padding: 8px 16px; border-radius: var(--ai-radius); border: 1px solid var(--border-color);
+            background: var(--bg-tertiary); color: var(--text-primary); cursor: pointer; font-size: 0.85rem;
+        }
+        .tcg-btn.primary { background: var(--ai-accent); border-color: var(--ai-accent); color: #fff; }
+        .tcg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <div id="sidebar-container"></div>
+        <main class="main-content">
+            <div class="page-content">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <h1>🧪 TestCaseGen</h1>
+                        <p style="color:var(--text-muted); margin-bottom:20px;">
+                            Ekran görüntülerinden ADO formatında test case üret.
+                        </p>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="tcg-btn" onclick="startNewSession()">+ Yeni Oturum</button>
+                        <button class="tcg-btn" onclick="toggleSessionList()">📂 Oturumlarım</button>
+                    </div>
+                </div>
+                <div id="sessionListPanel" class="tcg-card" style="display:none;"></div>
+
+                <div class="workflow-stepper" id="stepper"></div>
+
+                <div id="step-panels">
+                    <div class="step-panel" data-step="1" id="panel-1"></div>
+                    <div class="step-panel" data-step="2" id="panel-2"></div>
+                    <div class="step-panel" data-step="3" id="panel-3"></div>
+                    <div class="step-panel" data-step="4" id="panel-4"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="js/sidebar.js"></script>
+    <script>
+        if (!Auth.checkAuth()) { /* checkAuth zaten login.html'e yönlendirir */ }
+
+        let _session = null;
+        let _currentStep = 1;
+
+        const STEP_LABELS = ["Ekran Toplama", "Başlık Çıkarma", "Önceliklendirme", "Test Case Üretimi"];
+
+        function renderStepper() {
+            const stepper = document.getElementById("stepper");
+            stepper.innerHTML = STEP_LABELS.map((label, i) => {
+                const stepNum = i + 1;
+                const cls = stepNum === _currentStep ? "active" : (stepNum < _currentStep ? "done" : "");
+                const arrow = i < STEP_LABELS.length - 1 ? '<span class="wf-arrow">→</span>' : "";
+                return `<div class="wf-step ${cls}" onclick="goToStep(${stepNum})">
+                    <div class="wf-num">${stepNum < _currentStep ? "✓" : stepNum}</div>
+                    <div class="wf-label">${label}</div>
+                </div>${arrow}`;
+            }).join("");
+        }
+
+        function goToStep(stepNum) {
+            _currentStep = stepNum;
+            document.querySelectorAll(".step-panel").forEach(p => {
+                p.classList.toggle("active", parseInt(p.dataset.step, 10) === stepNum);
+            });
+            renderStepper();
+            if (stepNum === 1) renderStep1();
+            if (stepNum === 2) renderStep2();
+            if (stepNum === 3) renderStep3();
+            if (stepNum === 4) renderStep4();
+        }
+
+        function setSessionUrlParam(sessionId) {
+            const url = new URL(window.location);
+            url.searchParams.set("session", sessionId);
+            window.history.replaceState({}, "", url);
+        }
+
+        async function startNewSession() {
+            try {
+                _session = await API.post("/testcasegen/sessions");
+                setSessionUrlParam(_session.id);
+                document.getElementById("sessionListPanel").style.display = "none";
+                goToStep(1);
+            } catch (e) {
+                Toast.error("Oturum başlatılamadı: " + e.message);
+            }
+        }
+
+        async function toggleSessionList() {
+            const panel = document.getElementById("sessionListPanel");
+            if (panel.style.display === "block") { panel.style.display = "none"; return; }
+            try {
+                const data = await API.get("/testcasegen/sessions");
+                panel.innerHTML = data.sessions.length
+                    ? data.sessions.map(s => `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-color);">
+                            <span style="cursor:pointer;" onclick="switchToSession('${s.id}')">
+                                ${s.id.slice(0, 8)}… — ${s.screens.length} ekran, ${s.testcases.length} test case
+                                <span style="color:var(--text-muted); font-size:0.75rem;">(${s.created_at})</span>
+                            </span>
+                            <button class="tcg-btn" onclick="deleteSessionFromList('${s.id}')">🗑</button>
+                        </div>`).join("")
+                    : '<p style="color:var(--text-muted);">Henüz oturum yok.</p>';
+                panel.style.display = "block";
+            } catch (e) {
+                Toast.error("Oturumlar listelenemedi: " + e.message);
+            }
+        }
+
+        async function switchToSession(sessionId) {
+            try {
+                _session = await API.get(`/testcasegen/sessions/${sessionId}`);
+                setSessionUrlParam(sessionId);
+                document.getElementById("sessionListPanel").style.display = "none";
+                goToStep(1);
+            } catch (e) {
+                Toast.error("Oturum yüklenemedi: " + e.message);
+            }
+        }
+
+        async function deleteSessionFromList(sessionId) {
+            try {
+                await API.delete(`/testcasegen/sessions/${sessionId}`);
+                if (_session && _session.id === sessionId) _session = null;
+                await toggleSessionList(); // listeyi kapat
+                await toggleSessionList(); // guncel listeyle tekrar ac
+            } catch (e) {
+                Toast.error("Oturum silinemedi: " + e.message);
+            }
+        }
+
+        async function initSession() {
+            const params = new URLSearchParams(window.location.search);
+            const existingId = params.get("session");
+            try {
+                if (existingId) {
+                    _session = await API.get(`/testcasegen/sessions/${existingId}`);
+                } else {
+                    _session = await API.post("/testcasegen/sessions");
+                    setSessionUrlParam(_session.id);
+                }
+            } catch (e) {
+                Toast.error("Oturum başlatılamadı: " + e.message);
+                return;
+            }
+            goToStep(1);
+        }
+
+        // GEÇİCİ — Task 15 renderStep1'i ekleyince bu bloğu sil (ve benzer şekilde Task 16-19 ile diğerlerini).
+        if (typeof renderStep1 !== "function") { window.renderStep1 = () => {}; }
+        if (typeof renderStep2 !== "function") { window.renderStep2 = () => {}; }
+        if (typeof renderStep3 !== "function") { window.renderStep3 = () => {}; }
+        if (typeof renderStep4 !== "function") { window.renderStep4 = () => {}; }
+
+        initSession();
+    </script>
+</body>
+</html>
