@@ -92,6 +92,28 @@
         .tcg-session-item:hover .tcg-session-delete { opacity: 1; }
         .tcg-session-delete:hover { background: rgba(239,68,68,0.1); color: var(--ai-red); }
         .tcg-empty-hint { color: var(--text-muted); font-size: 0.85rem; padding: 8px 12px; }
+
+        .tcg-dropzone { border: 2px dashed var(--border-color); border-radius: var(--ai-radius-lg); padding: 36px 20px; text-align: center; cursor: pointer; margin-bottom: 16px; transition: var(--ai-transition); color: var(--text-muted); }
+        .tcg-dropzone svg { color: var(--ai-accent); margin-bottom: 10px; }
+        .tcg-dropzone-title { font-size: 0.92rem; font-weight: 500; color: var(--text-primary); }
+        .tcg-dropzone-hint { font-size: 0.78rem; margin-top: 4px; }
+        .tcg-dropzone.dragover { border-color: var(--ai-accent); background: rgba(99,102,241,0.06); }
+
+        .tcg-screen-strip { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+        .tcg-screen-thumb { flex: 0 0 160px; border: 1px solid var(--border-color); border-radius: var(--ai-radius); overflow: hidden; background: var(--bg-primary); cursor: grab; }
+        .tcg-screen-thumb-img-wrap { position: relative; width: 100%; height: 200px; background: var(--bg-tertiary); }
+        .tcg-screen-thumb-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .tcg-screen-thumb-index { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.65); color: #fff; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+        .tcg-screen-thumb-drag { position: absolute; top: 6px; right: 6px; color: #fff; background: rgba(0,0,0,0.5); border-radius: 6px; padding: 3px; display: flex; }
+        .tcg-screen-thumb-body { padding: 8px; display: flex; gap: 6px; align-items: center; }
+        .tcg-screen-thumb-body input { flex: 1; min-width: 0; border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 8px; font-size: 0.75rem; background: var(--bg-secondary); color: var(--text-primary); }
+        .tcg-screen-thumb-body button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; }
+        .tcg-screen-thumb-body button:hover { color: var(--ai-red); }
+
+        .tcg-live-panel { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+        .tcg-live-controls { display: flex; gap: 10px; align-items: center; width: 100%; max-width: 320px; }
+        .tcg-live-controls select { flex: 1; padding: 8px 12px; border-radius: var(--ai-radius); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); font-size: 0.85rem; }
+        #tcgScreenImage { pointer-events: auto; width: 100%; height: 100%; object-fit: contain; }
     </style>
 </head>
 <body>
@@ -280,38 +302,46 @@
             const panel = document.getElementById("panel-1");
             panel.innerHTML = `
                 <div class="tcg-card">
-                    <h3>Ekran Görüntüsü Yükle</h3>
-                    <div id="dropzone" style="border:2px dashed var(--border-color); border-radius:var(--ai-radius);
-                         padding:30px; text-align:center; cursor:pointer; margin-bottom:16px;">
-                        Dosyaları buraya sürükleyin veya tıklayıp seçin
+                    <div class="tcg-card-header">${ICONS.upload}<h3>Ekran Görüntüsü Yükle</h3></div>
+                    <div id="dropzone" class="tcg-dropzone">
+                        ${ICONS.upload}
+                        <div class="tcg-dropzone-title">Dosyaları buraya sürükleyin veya tıklayıp seçin</div>
+                        <div class="tcg-dropzone-hint">PNG, JPG — birden fazla dosya seçebilirsiniz</div>
                         <input type="file" id="fileInput" multiple accept="image/*" style="display:none;">
                     </div>
                     <div id="screenList"></div>
                 </div>
                 <div class="tcg-card">
-                    <h3>ADB ile Canlı Yakalama</h3>
-                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
-                        <select id="tcgDeviceSelect" style="flex:1;"></select>
-                        <button class="tcg-btn" id="tcgConnectBtn" onclick="tcgToggleConnection()">🔗 Bağlan</button>
-                        <button class="tcg-btn primary" id="tcgCaptureBtn" onclick="tcgCaptureFrame()" disabled>📸 Yakala</button>
-                    </div>
-                    <div id="tcgPhoneWrap" style="position:relative; width:300px;">
-                        <img id="tcgScreenImage" style="width:100%; border:1px solid var(--border-color); border-radius:var(--ai-radius);">
+                    <div class="tcg-card-header">${ICONS.link}<h3>ADB ile Canlı Yakalama</h3></div>
+                    <div class="tcg-live-panel">
+                        <div class="tcg-live-controls">
+                            <select id="tcgDeviceSelect"></select>
+                            <button class="tcg-btn" id="tcgConnectBtn" onclick="tcgToggleConnection()">${ICONS.link} Bağlan</button>
+                        </div>
+                        <div class="phone-wrapper">
+                            <div class="phone-frame">
+                                <div class="phone-notch"></div>
+                                <div class="phone-screen" id="tcgPhoneWrap">
+                                    <img id="tcgScreenImage">
+                                </div>
+                            </div>
+                            <button class="tcg-btn primary" id="tcgCaptureBtn" onclick="tcgCaptureFrame()" disabled>${ICONS.camera} Yakala</button>
+                        </div>
                     </div>
                 </div>
                 <div class="tcg-actions">
-                    <button class="tcg-btn primary" id="step1NextBtn" onclick="goToStep(2)">Devam →</button>
+                    <button class="tcg-btn primary" id="step1NextBtn" onclick="goToStep(2)">Devam ${ICONS.chevronRight}</button>
                 </div>
             `;
 
             const dropzone = document.getElementById("dropzone");
             const fileInput = document.getElementById("fileInput");
             dropzone.onclick = () => fileInput.click();
-            dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = "var(--ai-accent)"; };
-            dropzone.ondragleave = () => { dropzone.style.borderColor = "var(--border-color)"; };
+            dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add("dragover"); };
+            dropzone.ondragleave = () => { dropzone.classList.remove("dragover"); };
             dropzone.ondrop = async (e) => {
                 e.preventDefault();
-                dropzone.style.borderColor = "var(--border-color)";
+                dropzone.classList.remove("dragover");
                 await uploadFiles(e.dataTransfer.files);
             };
             fileInput.onchange = async (e) => { await uploadFiles(e.target.files); fileInput.value = ""; };
@@ -355,20 +385,23 @@
             const container = document.getElementById("screenList");
             const myGen = ++_screenListRenderGen;
             if (!_session.screens.length) {
-                container.innerHTML = '<p style="color:var(--text-muted);">Henüz ekran eklenmedi.</p>';
+                container.innerHTML = `<p class="tcg-empty-hint">Henüz ekran eklenmedi.</p>`;
                 return;
             }
-            container.innerHTML = _session.screens.map((s, i) => `
-                <div class="tcg-screen-row" draggable="true" data-index="${i}"
-                     style="display:flex; align-items:center; gap:12px; padding:8px; border:1px solid var(--border-color);
-                            border-radius:var(--ai-radius); margin-bottom:8px; cursor:move; background:var(--bg-primary);">
-                    <span style="font-weight:600;">#${i + 1}</span>
-                    <img data-index="${i}" style="height:60px; border-radius:4px;">
-                    <input type="text" value="${(s.user_note || "").replace(/"/g, '&quot;')}" placeholder="Not ekle (opsiyonel)"
-                           style="flex:1;" onchange="editScreenNote(${i}, this.value)">
-                    <button class="tcg-btn" onclick="deleteScreenAt(${i})">🗑</button>
+            container.innerHTML = `<div class="tcg-screen-strip">${_session.screens.map((s, i) => `
+                <div class="tcg-screen-thumb" draggable="true" data-index="${i}">
+                    <div class="tcg-screen-thumb-img-wrap">
+                        <span class="tcg-screen-thumb-index">#${i + 1}</span>
+                        <span class="tcg-screen-thumb-drag">${ICONS.dragHandle}</span>
+                        <img data-index="${i}">
+                    </div>
+                    <div class="tcg-screen-thumb-body">
+                        <input type="text" value="${(s.user_note || "").replace(/"/g, '&quot;')}" placeholder="Not ekle (opsiyonel)"
+                               onchange="editScreenNote(${i}, this.value)">
+                        <button onclick="deleteScreenAt(${i})" title="Sil">${ICONS.trash}</button>
+                    </div>
                 </div>
-            `).join("");
+            `).join("")}</div>`;
 
             _session.screens.forEach(async (_, i) => {
                 try {
@@ -384,7 +417,7 @@
             });
 
             let dragSrc = null;
-            container.querySelectorAll(".tcg-screen-row").forEach(row => {
+            container.querySelectorAll(".tcg-screen-thumb").forEach(row => {
                 row.addEventListener("dragstart", () => { dragSrc = row.dataset.index; });
                 row.addEventListener("dragover", (e) => e.preventDefault());
                 row.addEventListener("drop", async (e) => {
@@ -827,7 +860,9 @@
             _tcgWs = new WebSocket(wsUrl);
 
             _tcgWs.onopen = () => {
-                document.getElementById("tcgConnectBtn").textContent = "🔌 Kes";
+                const btn = document.getElementById("tcgConnectBtn");
+                btn.innerHTML = `${ICONS.link} Kes`;
+                btn.classList.add("connected");
                 document.getElementById("tcgCaptureBtn").disabled = false;
                 Toast.success("Cihaza bağlandı");
             };
@@ -842,7 +877,9 @@
                 }
             };
             _tcgWs.onclose = () => {
-                document.getElementById("tcgConnectBtn").textContent = "🔗 Bağlan";
+                const btn = document.getElementById("tcgConnectBtn");
+                btn.innerHTML = `${ICONS.link} Bağlan`;
+                btn.classList.remove("connected");
                 document.getElementById("tcgCaptureBtn").disabled = true;
                 _tcgWs = null;
             };
@@ -851,7 +888,9 @@
 
         function tcgDisconnect() {
             if (_tcgWs) { _tcgWs.close(); _tcgWs = null; }
-            document.getElementById("tcgConnectBtn").textContent = "🔗 Bağlan";
+            const btn = document.getElementById("tcgConnectBtn");
+            btn.innerHTML = `${ICONS.link} Bağlan`;
+            btn.classList.remove("connected");
             document.getElementById("tcgCaptureBtn").disabled = true;
             document.getElementById("tcgScreenImage").src = "";
             _tcgLastFrameB64 = null;
