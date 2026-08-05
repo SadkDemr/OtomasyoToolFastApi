@@ -165,6 +165,14 @@
         .tcg-testcase-table input.tcg-step-input { width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem; }
         .tcg-testcase-table input.tcg-step-input:disabled { opacity: 0.5; }
         .tcg-violation-icon { color: var(--ai-red); display: inline-flex; margin-right: 4px; vertical-align: middle; }
+
+        .tcg-flow-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .tcg-flow-toolbar-count { font-size: 0.78rem; color: var(--text-muted); }
+        .tcg-screen-thumb-check { position: absolute; top: 6px; left: 32px; width: 16px; height: 16px; z-index: 2; }
+        .tcg-screen-thumb-flow { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 8px; color: #fff; font-size: 0.68rem; font-weight: 600; }
+        .tcg-screen-thumb-flow button { background: none; border: none; color: #fff; opacity: 0.85; cursor: pointer; padding: 0; display: flex; }
+        .tcg-screen-thumb-flow button:hover { opacity: 1; }
+        .tcg-flow-group-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #fff; margin-left: 8px; }
     </style>
 </head>
 <body>
@@ -432,6 +440,15 @@
             }
         }
 
+        let _selectedScreenIndices = new Set();
+        const FLOW_COLORS = ["var(--ai-accent)", "var(--ai-cyan)", "var(--ai-green)", "var(--ai-yellow)", "var(--ai-red)"];
+
+        function flowColor(flowId) {
+            let hash = 0;
+            for (let i = 0; i < flowId.length; i++) hash = (hash * 31 + flowId.charCodeAt(i)) >>> 0;
+            return FLOW_COLORS[hash % FLOW_COLORS.length];
+        }
+
         function renderScreenList() {
             const container = document.getElementById("screenList");
             const myGen = ++_screenListRenderGen;
@@ -439,20 +456,42 @@
                 container.innerHTML = `<p class="tcg-empty-hint">Henüz ekran eklenmedi.</p>`;
                 return;
             }
-            container.innerHTML = `<div class="tcg-screen-strip">${_session.screens.map((s, i) => `
-                <div class="tcg-screen-thumb" draggable="true" data-index="${i}">
+            const toolbar = `
+                <div class="tcg-flow-toolbar">
+                    <span class="tcg-flow-toolbar-count">${_selectedScreenIndices.size} ekran seçili</span>
+                    <button class="tcg-btn" ${_selectedScreenIndices.size < 2 ? "disabled" : ""} onclick="createFlowFromSelection()">${ICONS.link} Akış Oluştur</button>
+                </div>`;
+            container.innerHTML = toolbar + `<div class="tcg-screen-strip">${_session.screens.map((s, i) => {
+                const color = s.flow_id ? flowColor(s.flow_id) : null;
+                const flowBadge = s.flow_id ? `
+                    <div class="tcg-screen-thumb-flow" style="background:${color};">
+                        <span>${escapeHtml(s.flow_name || "Akış")}</span>
+                        <button onclick="removeScreenFromFlow(${i})" title="Akıştan çıkar">${ICONS.close}</button>
+                    </div>` : "";
+                return `
+                <div class="tcg-screen-thumb" draggable="true" data-index="${i}" style="${color ? `border-top:3px solid ${color};` : ""}">
                     <div class="tcg-screen-thumb-img-wrap">
                         <span class="tcg-screen-thumb-index">#${i + 1}</span>
+                        <input type="checkbox" class="tcg-screen-thumb-check" data-index="${i}" ${_selectedScreenIndices.has(i) ? "checked" : ""}>
                         <span class="tcg-screen-thumb-drag">${ICONS.dragHandle}</span>
                         <img data-index="${i}">
                     </div>
+                    ${flowBadge}
                     <div class="tcg-screen-thumb-body">
                         <input type="text" value="${(s.user_note || "").replace(/"/g, '&quot;')}" placeholder="Not ekle (opsiyonel)"
                                onchange="editScreenNote(${i}, this.value)">
                         <button onclick="deleteScreenAt(${i})" title="Sil">${ICONS.trash}</button>
                     </div>
-                </div>
-            `).join("")}</div>`;
+                </div>`;
+            }).join("")}</div>`;
+
+            container.querySelectorAll(".tcg-screen-thumb-check").forEach(cb => {
+                cb.addEventListener("change", () => {
+                    const idx = parseInt(cb.dataset.index, 10);
+                    if (cb.checked) _selectedScreenIndices.add(idx); else _selectedScreenIndices.delete(idx);
+                    renderScreenList();
+                });
+            });
 
             _session.screens.forEach(async (_, i) => {
                 try {
@@ -484,9 +523,37 @@
             });
         }
 
+        async function createFlowFromSelection() {
+            if (_selectedScreenIndices.size < 2) return;
+            const name = (prompt("Akış adı:", "") || "").trim();
+            const flowId = crypto.randomUUID();
+            const flowName = name || `Akış ${flowId.slice(0, 4)}`;
+            const indices = [..._selectedScreenIndices].sort((a, b) => a - b);
+            try {
+                for (const idx of indices) {
+                    _session = await API.put(`/testcasegen/sessions/${_session.id}/screens/${idx}`, { flow_id: flowId, flow_name: flowName });
+                }
+                _selectedScreenIndices.clear();
+                renderScreenList();
+                Toast.success("Akış oluşturuldu");
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        async function removeScreenFromFlow(index) {
+            try {
+                _session = await API.put(`/testcasegen/sessions/${_session.id}/screens/${index}`, { flow_id: null, flow_name: null });
+                renderScreenList();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
         async function reorderScreens(order) {
             try {
                 _session = await API.put(`/testcasegen/sessions/${_session.id}/screens/reorder`, { order });
+                _selectedScreenIndices.clear(); // siralama degisti, eski index'ler artik gecersiz
                 renderScreenList();
             } catch (e) {
                 Toast.error(e.message);
@@ -504,6 +571,7 @@
         async function deleteScreenAt(index) {
             try {
                 _session = await API.delete(`/testcasegen/sessions/${_session.id}/screens/${index}`);
+                _selectedScreenIndices.clear(); // silme sonrasi index'ler kaydi, eski secim gecersiz
                 renderScreenList();
             } catch (e) {
                 Toast.error(e.message);
@@ -600,33 +668,82 @@
             return div.innerHTML;
         }
 
+        let _flowCandidates = {}; // flow_id -> birlesik/duzenlenebilir aday baslik listesi (sadece coklu ekranli akislar icin)
+
+        function groupScreensByFlow() {
+            // [{flowId: string|null, flowName: string|null, screens: [screen, ...]}]
+            // flowId null olan her ekran kendi tek-elemanli grubunu olusturur.
+            const groups = [];
+            const byFlowId = {};
+            _session.screens.forEach(screen => {
+                if (!screen.flow_id) {
+                    groups.push({ flowId: null, flowName: null, screens: [screen] });
+                    return;
+                }
+                if (!byFlowId[screen.flow_id]) {
+                    byFlowId[screen.flow_id] = { flowId: screen.flow_id, flowName: screen.flow_name, screens: [] };
+                    groups.push(byFlowId[screen.flow_id]);
+                }
+                byFlowId[screen.flow_id].screens.push(screen);
+            });
+            return groups;
+        }
+
         function renderTitlesResult() {
             const container = document.getElementById("titlesResult");
-            container.innerHTML = _session.screens.map((screen, i) => {
-                if (screen.parse_error) {
-                    return `
-                        <div class="tcg-warning-card" style="margin-bottom:12px;">
-                            <div class="tcg-warning-card-header">${ICONS.warning} Ekran #${i + 1} — JSON parse edilemedi</div>
-                            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">Ham yanıt (düzenleyebilirsiniz):</div>
-                            <textarea onchange="editRawScreenSummary(${i}, this.value)">${escapeHtml(screen.screen_summary)}</textarea>
-                        </div>`;
-                }
-                const titles = (screen.candidate_titles || []).map((t, ti) => `
-                    <div class="tcg-title-chip">
-                        <input type="text" value="${t.replace(/"/g, '&quot;')}"
-                               onchange="editCandidateTitle(${i}, ${ti}, this.value)">
-                        <button onclick="removeCandidateTitle(${i}, ${ti})" title="Sil">${ICONS.trash}</button>
+            const groups = groupScreensByFlow();
+            container.innerHTML = groups.map(group => {
+                const warningBlocks = group.screens.filter(s => s.parse_error).map(s => `
+                    <div class="tcg-warning-card" style="margin-bottom:10px;">
+                        <div class="tcg-warning-card-header">${ICONS.warning} Ekran #${s.index + 1} — JSON parse edilemedi</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">Ham yanıt (düzenleyebilirsiniz):</div>
+                        <textarea onchange="editRawScreenSummary(${s.index}, this.value)">${escapeHtml(s.screen_summary)}</textarea>
                     </div>`).join("");
+
+                const screenLines = group.screens.map(s =>
+                    `<div class="tcg-screen-result-summary">Ekran #${s.index + 1}: ${escapeHtml(s.screen_summary)}</div>`
+                ).join("");
+
+                let candidatesHtml, addBtn;
+                if (group.flowId) {
+                    if (!(group.flowId in _flowCandidates)) {
+                        const merged = [];
+                        group.screens.forEach(s => (s.candidate_titles || []).forEach(t => { if (!merged.includes(t)) merged.push(t); }));
+                        _flowCandidates[group.flowId] = merged;
+                    }
+                    candidatesHtml = _flowCandidates[group.flowId].map((t, ti) => `
+                        <div class="tcg-title-chip">
+                            <input type="text" value="${t.replace(/"/g, '&quot;')}"
+                                   onchange="editFlowCandidateTitle('${group.flowId}', ${ti}, this.value)">
+                            <button onclick="removeFlowCandidateTitle('${group.flowId}', ${ti})" title="Sil">${ICONS.trash}</button>
+                        </div>`).join("");
+                    addBtn = `<button class="tcg-btn ghost" style="margin-top:8px;" onclick="addFlowCandidateTitle('${group.flowId}')">${ICONS.plus} Başlık Ekle</button>`;
+                } else {
+                    const screen = group.screens[0];
+                    candidatesHtml = (screen.candidate_titles || []).map((t, ti) => `
+                        <div class="tcg-title-chip">
+                            <input type="text" value="${t.replace(/"/g, '&quot;')}"
+                                   onchange="editCandidateTitle(${screen.index}, ${ti}, this.value)">
+                            <button onclick="removeCandidateTitle(${screen.index}, ${ti})" title="Sil">${ICONS.trash}</button>
+                        </div>`).join("");
+                    addBtn = `<button class="tcg-btn ghost" style="margin-top:8px;" onclick="addCandidateTitle(${screen.index})">${ICONS.plus} Başlık Ekle</button>`;
+                }
+
+                const titleHeader = group.flowId
+                    ? `${escapeHtml(group.flowName || "Akış")} <span class="badge badge-primary">${group.screens.length} ekran</span>`
+                    : `Ekran #${group.screens[0].index + 1}`;
+
                 return `
                     <div class="tcg-card tcg-screen-result">
                         <div class="tcg-screen-result-header">
                             <div>
-                                <div class="tcg-screen-result-title">Ekran #${i + 1}</div>
-                                <div class="tcg-screen-result-summary">${escapeHtml(screen.screen_summary)}</div>
+                                <div class="tcg-screen-result-title">${titleHeader}</div>
+                                ${screenLines}
                             </div>
                         </div>
-                        <div>${titles}</div>
-                        <button class="tcg-btn ghost" style="margin-top:8px;" onclick="addCandidateTitle(${i})">${ICONS.plus} Başlık Ekle</button>
+                        ${warningBlocks}
+                        <div>${candidatesHtml}</div>
+                        ${addBtn}
                     </div>`;
             }).join("");
         }
@@ -649,21 +766,38 @@
             renderTitlesResult();
         }
 
+        function editFlowCandidateTitle(flowId, titleIndex, value) {
+            _flowCandidates[flowId][titleIndex] = value;
+        }
+
+        function removeFlowCandidateTitle(flowId, titleIndex) {
+            _flowCandidates[flowId].splice(titleIndex, 1);
+            renderTitlesResult();
+        }
+
+        function addFlowCandidateTitle(flowId) {
+            _flowCandidates[flowId].push("Yeni başlık");
+            renderTitlesResult();
+        }
+
         async function promoteCandidateTitles() {
-            // Adim 2'de düzenlenen candidate_titles'lari, henüz _session.titles'ta
-            // karşılığı olmayanlar için sunucuda kalıcı title kaydına çevirir.
-            const existingTexts = new Set(_session.titles.map(t => `${t.screen_index}:${t.text}`));
-            for (const screen of _session.screens) {
-                for (const text of (screen.candidate_titles || [])) {
-                    const key = `${screen.index}:${text}`;
-                    if (existingTexts.has(key)) continue;
+            // Adim 2'de duzenlenen aday basliklari (tekil ekran veya akis bazinda),
+            // henuz _session.titles'ta karsiligi olmayanlar icin sunucuda kalici
+            // title kaydina cevirir.
+            const existingKeys = new Set(_session.titles.map(t => `${t.screen_indices.join(',')}:${t.text}`));
+            for (const group of groupScreensByFlow()) {
+                const indices = group.screens.map(s => s.index);
+                const texts = group.flowId ? (_flowCandidates[group.flowId] || []) : (group.screens[0].candidate_titles || []);
+                for (const text of texts) {
+                    const key = `${indices.join(',')}:${text}`;
+                    if (existingKeys.has(key)) continue;
                     const updated = await API.post(`/testcasegen/sessions/${_session.id}/titles`, {
-                        screen_index: screen.index, text,
+                        screen_indices: indices, text,
                     });
                     // Sadece titles sunucudan gelsin; _session.screens icindeki yerel
                     // duzenlemeler (Adim 2'de yapilan) sunucunun eski kopyasiyla ezilmesin.
                     _session.titles = updated.titles;
-                    existingTexts.add(key);
+                    existingKeys.add(key);
                 }
             }
         }
@@ -724,7 +858,7 @@
                 col.innerHTML = titles.length ? titles.map(t => `
                     <div class="tcg-kanban-card ${level}" draggable="true" data-id="${t.id}"
                          ondragstart="event.dataTransfer.setData('text/plain', '${t.id}')">
-                        <div>${escapeHtml(t.text)}</div>
+                        <div>${escapeHtml(t.text)} ${t.screen_indices.length > 1 ? `<span class="badge badge-primary">${t.screen_indices.length} ekran</span>` : ""}</div>
                         <div class="tcg-kanban-card-rationale">${escapeHtml(t.rationale || "")}</div>
                     </div>`).join("") : `<div class="tcg-kanban-empty">Henüz başlık yok</div>`;
             });
