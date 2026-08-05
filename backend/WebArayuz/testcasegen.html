@@ -600,8 +600,11 @@
         }
 
         async function runGenerateTestcases() {
-            const ids = [...document.querySelectorAll(".tcg-title-checkbox:checked")].map(el => el.value);
+            let ids = [...document.querySelectorAll(".tcg-title-checkbox:checked")].map(el => el.value);
             if (!ids.length) { Toast.error("En az bir başlık seçin"); return; }
+            const alreadyGenerated = new Set(_session.testcases.map(tc => tc.title_id));
+            ids = ids.filter(id => !alreadyGenerated.has(id));
+            if (!ids.length) { Toast.error("Seçilen başlıklar için zaten test case üretilmiş"); return; }
             const btn = document.getElementById("genBtn");
             const retryBtn = document.getElementById("retryGenBtn");
             btn.disabled = true;
@@ -640,10 +643,10 @@
                     rows += `<tr style="${rowStyle}" title="${tooltip.replace(/"/g, '&quot;')}">
                         <td></td><td></td><td></td>
                         <td>${si + 1}</td>
-                        <td><input type="text" value="${step.step_action.replace(/"/g, '&quot;')}"
-                                   onchange="editTestcaseStep('${tc.id}', ${si}, this.value, null)"></td>
-                        <td><input type="text" value="${step.step_expected.replace(/"/g, '&quot;')}"
-                                   onchange="editTestcaseStep('${tc.id}', ${si}, null, this.value)"></td>
+                        <td><input type="text" class="tcg-step-input" value="${step.step_action.replace(/"/g, '&quot;')}"
+                                   onchange="editTestcaseStep('${tc.id}', ${si}, this.value, null, this)"></td>
+                        <td><input type="text" class="tcg-step-input" value="${step.step_expected.replace(/"/g, '&quot;')}"
+                                   onchange="editTestcaseStep('${tc.id}', ${si}, null, this.value, this)"></td>
                     </tr>`;
                 });
             });
@@ -660,11 +663,16 @@
                 </div>`;
         }
 
-        async function editTestcaseStep(tcId, stepIndex, newAction, newExpected) {
+        async function editTestcaseStep(tcId, stepIndex, newAction, newExpected, inputEl) {
             const tc = _session.testcases.find(t => t.id === tcId);
             const step = tc.steps[stepIndex];
             const action = newAction !== null ? newAction : step.step_action;
             const expected = newExpected !== null ? newExpected : step.step_expected;
+            // Aynı satırdaki iki input'u (Action/Expected) istek sürerken kilitle —
+            // hızlı ardışık değişikliklerde yarış durumunu (stale fallback) önler.
+            const row = inputEl ? inputEl.closest("tr") : null;
+            const rowInputs = row ? row.querySelectorAll(".tcg-step-input") : [];
+            rowInputs.forEach(el => { el.disabled = true; });
             try {
                 const result = await API.put(
                     `/testcasegen/sessions/${_session.id}/testcases/${tcId}/steps/${stepIndex}`,
@@ -674,6 +682,8 @@
                 renderTestcaseTable();
             } catch (e) {
                 Toast.error(e.message);
+            } finally {
+                rowInputs.forEach(el => { el.disabled = false; });
             }
         }
 
