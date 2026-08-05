@@ -206,6 +206,15 @@
         if (typeof renderStep4 !== "function") { window.renderStep4 = () => {}; }
 
         function renderStep1() {
+            if (_tcgWs) {
+                _tcgWs.onopen = null;
+                _tcgWs.onmessage = null;
+                _tcgWs.onclose = null;
+                _tcgWs.onerror = null;
+                _tcgWs.close();
+                _tcgWs = null;
+            }
+            _tcgLastFrameB64 = null;
             const panel = document.getElementById("panel-1");
             panel.innerHTML = `
                 <div class="tcg-card">
@@ -252,8 +261,13 @@
                 if (!_tcgWs || _tcgWs.readyState !== WebSocket.OPEN) return;
                 const img = e.target;
                 const rect = img.getBoundingClientRect();
-                const x = Math.round((e.clientX - rect.left) / rect.width * img.naturalWidth);
-                const y = Math.round((e.clientY - rect.top) / rect.height * img.naturalHeight);
+                // Not: img.naturalWidth/Height burada KULLANILMAZ — WS "frame" görseli
+                // emulator_service tarafından ~240px genişliğe küçültülmüş halde gelir.
+                // Gerçek cihaz çözünürlüğü _tcgScreenWidth/_tcgScreenHeight içinde tutulur
+                // (connect yanıtı + WS "init" mesajı), emulator.html'deki scaleX/scaleY
+                // yaklaşımıyla aynı.
+                const x = Math.round((e.clientX - rect.left) / rect.width * _tcgScreenWidth);
+                const y = Math.round((e.clientY - rect.top) / rect.height * _tcgScreenHeight);
                 _tcgWs.send(JSON.stringify({ type: "tap", x, y }));
             });
         }
@@ -353,6 +367,8 @@
         let _tcgWs = null;
         let _tcgDeviceId = null;
         let _tcgLastFrameB64 = null;
+        let _tcgScreenWidth = 1080;
+        let _tcgScreenHeight = 1920;
 
         async function loadTcgDevices() {
             const select = document.getElementById("tcgDeviceSelect");
@@ -375,8 +391,12 @@
             const deviceId = document.getElementById("tcgDeviceSelect").value;
             if (!deviceId) { Toast.error("Lütfen bir cihaz seçin"); return; }
             try {
-                await API.post(`/emulator/${deviceId}/connect`);
+                const resp = await API.post(`/emulator/${deviceId}/connect`);
                 _tcgDeviceId = deviceId;
+                if (resp && resp.screen_width && resp.screen_height) {
+                    _tcgScreenWidth = resp.screen_width;
+                    _tcgScreenHeight = resp.screen_height;
+                }
                 tcgConnectWebSocket(deviceId);
             } catch (e) {
                 Toast.error(e.message || "Bağlantı hatası");
@@ -395,7 +415,10 @@
             };
             _tcgWs.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                if (data.type === "frame") {
+                if (data.type === "init") {
+                    _tcgScreenWidth = data.width;
+                    _tcgScreenHeight = data.height;
+                } else if (data.type === "frame") {
                     _tcgLastFrameB64 = data.image;
                     document.getElementById("tcgScreenImage").src = "data:image/png;base64," + data.image;
                 }
@@ -412,6 +435,8 @@
             if (_tcgWs) { _tcgWs.close(); _tcgWs = null; }
             document.getElementById("tcgConnectBtn").textContent = "🔗 Bağlan";
             document.getElementById("tcgCaptureBtn").disabled = true;
+            document.getElementById("tcgScreenImage").src = "";
+            _tcgLastFrameB64 = null;
         }
 
         async function tcgCaptureFrame() {
