@@ -114,6 +114,21 @@
         .tcg-live-controls { display: flex; gap: 10px; align-items: center; width: 100%; max-width: 320px; }
         .tcg-live-controls select { flex: 1; padding: 8px 12px; border-radius: var(--ai-radius); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); font-size: 0.85rem; }
         #tcgScreenImage { pointer-events: auto; width: 100%; height: 100%; object-fit: contain; }
+
+        .tcg-title-chip { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .tcg-title-chip input { flex: 1; border: 1px solid var(--border-color); border-radius: var(--ai-radius); padding: 8px 12px; font-size: 0.85rem; background: var(--bg-primary); color: var(--text-primary); }
+        .tcg-title-chip input:focus { outline: none; border-color: var(--ai-accent); }
+        .tcg-title-chip button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: var(--ai-radius); display: flex; }
+        .tcg-title-chip button:hover { color: var(--ai-red); background: rgba(239,68,68,0.08); }
+
+        .tcg-screen-result { margin-bottom: 12px; }
+        .tcg-screen-result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .tcg-screen-result-title { font-weight: 600; font-size: 0.9rem; }
+        .tcg-screen-result-summary { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
+
+        .tcg-warning-card { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-left: 3px solid var(--ai-yellow); border-radius: var(--ai-radius-lg); padding: 16px; }
+        .tcg-warning-card-header { display: flex; align-items: center; gap: 8px; color: var(--ai-yellow); font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; }
+        .tcg-warning-card textarea { width: 100%; min-height: 90px; margin-top: 4px; border: 1px solid var(--border-color); border-radius: var(--ai-radius); padding: 10px 12px; background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; resize: vertical; }
     </style>
 </head>
 <body>
@@ -463,15 +478,15 @@
             const panel = document.getElementById("panel-2");
             panel.innerHTML = `
                 <div class="tcg-card">
-                    <h3>Başlık Çıkarma</h3>
-                    <button class="tcg-btn primary" id="extractBtn" onclick="runExtractTitles()">🤖 Başlıkları Çıkar</button>
-                    <button class="tcg-btn" id="retryExtractBtn" style="display:none;" onclick="runExtractTitles()">🔁 Tekrar Dene</button>
-                    <div id="extractProgress" style="margin-top:12px; color:var(--text-muted);"></div>
+                    <div class="tcg-card-header">${ICONS.sparkle}<h3>Başlık Çıkarma</h3></div>
+                    <button class="tcg-btn primary" id="extractBtn" onclick="runExtractTitles()">${ICONS.sparkle} Başlıkları Çıkar</button>
+                    <button class="tcg-btn" id="retryExtractBtn" style="display:none;" onclick="runExtractTitles()">${ICONS.retry} Tekrar Dene</button>
+                    <div id="extractProgress" style="margin-top:14px;"></div>
                     <div id="titlesResult" style="margin-top:16px;"></div>
                 </div>
                 <div class="tcg-actions">
-                    <button class="tcg-btn" onclick="goToStep(1)">← Geri</button>
-                    <button class="tcg-btn primary" onclick="goToStep(3)">Devam →</button>
+                    <button class="tcg-btn" onclick="goToStep(1)">${ICONS.chevronLeft} Geri</button>
+                    <button class="tcg-btn primary" onclick="goToStep(3)">Devam ${ICONS.chevronRight}</button>
                 </div>
             `;
             renderTitlesResult();
@@ -481,9 +496,16 @@
             const btn = document.getElementById("extractBtn");
             const retryBtn = document.getElementById("retryExtractBtn");
             const progress = document.getElementById("extractProgress");
-            btn.disabled = true;
+            setBtnBusy(btn, true, "Çıkarılıyor…");
             retryBtn.style.display = "none";
-            progress.textContent = `0 / ${_session.screens.length} ekran işlendi...`;
+            const total = _session.screens.length;
+            const renderProgress = (done, text) => {
+                progress.innerHTML = `
+                    <div class="progress-bar"><div class="progress-fill" style="width:${total ? (done / total * 100) : 0}%;"></div></div>
+                    <div style="font-size:0.8rem; color:var(--text-muted);">${text}</div>
+                `;
+            };
+            renderProgress(0, `0 / ${total} ekran işlendi...`);
 
             try {
                 const response = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/extract-titles`, {
@@ -518,21 +540,21 @@
                             screen.screen_summary = payload.screen_summary;
                             screen.parse_error = payload.parse_error;
                             done += 1;
-                            progress.textContent = `${done} / ${_session.screens.length} ekran işlendi...`;
+                            renderProgress(done, `${done} / ${total} ekran işlendi...`);
                             renderTitlesResult();
                         } else if (evtType === "error") {
                             throw new Error(dataText || "Ollama hatası");
                         } else if (evtType === "complete") {
-                            progress.textContent = "Tamamlandı.";
+                            renderProgress(total, "Tamamlandı.");
                         }
                     }
                 }
             } catch (e) {
                 Toast.error(e.message);
-                progress.textContent = "Hata: " + e.message;
+                progress.innerHTML = `<div style="color:var(--ai-red); font-size:0.8rem;">Hata: ${escapeHtml(e.message)}</div>`;
                 retryBtn.style.display = "inline-block";
             } finally {
-                btn.disabled = false;
+                setBtnBusy(btn, false);
             }
         }
 
@@ -547,23 +569,28 @@
             container.innerHTML = _session.screens.map((screen, i) => {
                 if (screen.parse_error) {
                     return `
-                        <div class="tcg-card">
-                            <strong>Ekran #${i + 1}</strong> — JSON parse edilemedi, ham yanıt (düzenleyebilirsiniz):
-                            <textarea style="width:100%; min-height:80px; margin-top:8px;"
-                                      onchange="editRawScreenSummary(${i}, this.value)">${escapeHtml(screen.screen_summary)}</textarea>
+                        <div class="tcg-warning-card" style="margin-bottom:12px;">
+                            <div class="tcg-warning-card-header">${ICONS.warning} Ekran #${i + 1} — JSON parse edilemedi</div>
+                            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">Ham yanıt (düzenleyebilirsiniz):</div>
+                            <textarea onchange="editRawScreenSummary(${i}, this.value)">${escapeHtml(screen.screen_summary)}</textarea>
                         </div>`;
                 }
                 const titles = (screen.candidate_titles || []).map((t, ti) => `
-                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
-                        <input type="text" value="${t.replace(/"/g, '&quot;')}" style="flex:1;"
+                    <div class="tcg-title-chip">
+                        <input type="text" value="${t.replace(/"/g, '&quot;')}"
                                onchange="editCandidateTitle(${i}, ${ti}, this.value)">
-                        <button class="tcg-btn" onclick="removeCandidateTitle(${i}, ${ti})">🗑</button>
+                        <button onclick="removeCandidateTitle(${i}, ${ti})" title="Sil">${ICONS.trash}</button>
                     </div>`).join("");
                 return `
-                    <div class="tcg-card">
-                        <strong>Ekran #${i + 1}</strong> <span style="color:var(--text-muted);">${escapeHtml(screen.screen_summary)}</span>
-                        <div style="margin-top:8px;">${titles}</div>
-                        <button class="tcg-btn" onclick="addCandidateTitle(${i})">+ Başlık Ekle</button>
+                    <div class="tcg-card tcg-screen-result">
+                        <div class="tcg-screen-result-header">
+                            <div>
+                                <div class="tcg-screen-result-title">Ekran #${i + 1}</div>
+                                <div class="tcg-screen-result-summary">${escapeHtml(screen.screen_summary)}</div>
+                            </div>
+                        </div>
+                        <div>${titles}</div>
+                        <button class="tcg-btn ghost" style="margin-top:8px;" onclick="addCandidateTitle(${i})">${ICONS.plus} Başlık Ekle</button>
                     </div>`;
             }).join("");
         }
