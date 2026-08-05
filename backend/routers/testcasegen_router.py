@@ -8,6 +8,7 @@ Veritabanı YOK — state dosya tabanlı (services/testcasegen_service.py).
 import base64
 import io
 import json as _json
+import re
 import uuid
 from typing import Literal, Optional
 
@@ -21,6 +22,16 @@ from services import ai_service, testcasegen_service as svc
 
 router = APIRouter(prefix="/api/testcasegen", tags=["testcasegen"])
 
+# session_id her zaman create_session() icinde str(uuid.uuid4()) ile uretilir.
+# Bu sekle uymayan her deger (path traversal, '..', backslash, vb.) reddedilir —
+# aksi halde DATA_DIR / user_id / session_id join'i dosya sistemi disina tasabilir.
+_SESSION_ID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def _validate_session_id(session_id: str) -> None:
+    if not _SESSION_ID_RE.match(session_id):
+        raise HTTPException(404, "Oturum bulunamadı")
+
 
 def _sse(event: str, data: str) -> str:
     result = f"event: {event}\n"
@@ -30,6 +41,7 @@ def _sse(event: str, data: str) -> str:
 
 
 def _load_or_404(user_id: int, session_id: str) -> dict:
+    _validate_session_id(session_id)
     try:
         return svc.load_session(user_id, session_id)
     except FileNotFoundError:
@@ -55,6 +67,7 @@ async def get_session(session_id: str, current_user: User = Depends(get_current_
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str, current_user: User = Depends(get_current_user)):
+    _load_or_404(current_user.id, session_id)
     svc.delete_session(current_user.id, session_id)
     return {"ok": True}
 
@@ -242,6 +255,9 @@ async def prioritize(session_id: str, current_user: User = Depends(get_current_u
     screens_by_index = {s["index"]: s for s in session["screens"]}
 
     for title in session["titles"]:
+        if title.get("level_source") == "manual":
+            continue  # kullanıcı elle ayarladı, otomatik hesaplama ezmez
+
         screen = screens_by_index.get(title["screen_index"], {})
         score, level = svc.score_title(title["text"], screen.get("user_note", ""), title["screen_index"])
         title["score"] = score
@@ -255,7 +271,10 @@ async def prioritize(session_id: str, current_user: User = Depends(get_current_u
         except Exception:
             title["rationale"] = "Gerekçe üretilemedi (Ollama servisine ulaşılamadı), skor kural motorundan geldi."
 
-    svc.save_session(current_user.id, session_id, session)
+        # Her başlık skorlandıktan sonra hemen kaydet — istek yarıda kesilirse
+        # (sayfa yenileme, ağ kopması) o ana kadarki ilerleme kaybolmaz.
+        svc.save_session(current_user.id, session_id, session)
+
     return session
 
 

@@ -57,7 +57,13 @@ def _now_iso() -> str:
 
 
 def _session_dir(user_id: int, session_id: str) -> Path:
-    return DATA_DIR / str(user_id) / session_id
+    d = DATA_DIR / str(user_id) / session_id
+    # Savunma katmani: router zaten session_id formatini dogruluyor, ama burada da
+    # cozumlenmis yolun DATA_DIR disina tasmadigini garanti ederiz (path traversal).
+    resolved = d.resolve()
+    if not resolved.is_relative_to(DATA_DIR.resolve()):
+        raise ValueError("Geçersiz oturum yolu")
+    return d
 
 
 def _session_json_path(user_id: int, session_id: str) -> Path:

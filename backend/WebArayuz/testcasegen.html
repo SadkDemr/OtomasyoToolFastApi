@@ -494,9 +494,12 @@
                 for (const text of (screen.candidate_titles || [])) {
                     const key = `${screen.index}:${text}`;
                     if (existingTexts.has(key)) continue;
-                    _session = await API.post(`/testcasegen/sessions/${_session.id}/titles`, {
+                    const updated = await API.post(`/testcasegen/sessions/${_session.id}/titles`, {
                         screen_index: screen.index, text,
                     });
+                    // Sadece titles sunucudan gelsin; _session.screens icindeki yerel
+                    // duzenlemeler (Adim 2'de yapilan) sunucunun eski kopyasiyla ezilmesin.
+                    _session.titles = updated.titles;
                     existingTexts.add(key);
                 }
             }

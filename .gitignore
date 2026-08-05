@@ -18,6 +18,7 @@ backend/workspaces/
 backend/logs/
 backend/desktop_data/
 backend/screenshots/
+backend/testcasegen_data/
 
 # OS
 .DS_Store

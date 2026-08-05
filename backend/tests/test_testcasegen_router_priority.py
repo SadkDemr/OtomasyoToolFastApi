@@ -77,6 +77,41 @@ def test_manual_priority_override_sets_level_source_manual(client, monkeypatch):
     assert title["level_source"] == "manual"
 
 
+def test_reprioritize_does_not_overwrite_manual_override(client, monkeypatch):
+    async def fake_text(prompt, model=None, timeout=60.0):
+        return "gerekce"
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+    session = client.post("/api/testcasegen/sessions").json()
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"screen_index": 0, "text": "Tutar girilip onaylanır"},
+    ).json()
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"screen_index": 0, "text": "SSS ekranı görüntülenir"},
+    ).json()
+
+    session = client.post(f"/api/testcasegen/sessions/{session['id']}/prioritize").json()
+    manual_title_id = session["titles"][0]["id"]
+    other_title_id = session["titles"][1]["id"]
+
+    session = client.put(
+        f"/api/testcasegen/sessions/{session['id']}/titles/{manual_title_id}/priority",
+        json={"level": "low"},
+    ).json()
+
+    # Ikinci kez onceliklendirme calistir — manuel ayarlanan basligi ezmemeli
+    session = client.post(f"/api/testcasegen/sessions/{session['id']}/prioritize").json()
+
+    manual_title = next(t for t in session["titles"] if t["id"] == manual_title_id)
+    other_title = next(t for t in session["titles"] if t["id"] == other_title_id)
+
+    assert manual_title["level"] == "low"
+    assert manual_title["level_source"] == "manual"
+    assert other_title["level_source"] == "rule"
+
+
 def test_manual_priority_rejects_invalid_level(client):
     session = _session_with_title(client)
     title_id = session["titles"][0]["id"]
