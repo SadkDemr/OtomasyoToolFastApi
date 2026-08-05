@@ -129,6 +129,23 @@
         .tcg-warning-card { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-left: 3px solid var(--ai-yellow); border-radius: var(--ai-radius-lg); padding: 16px; }
         .tcg-warning-card-header { display: flex; align-items: center; gap: 8px; color: var(--ai-yellow); font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; }
         .tcg-warning-card textarea { width: 100%; min-height: 90px; margin-top: 4px; border: 1px solid var(--border-color); border-radius: var(--ai-radius); padding: 10px 12px; background: var(--bg-primary); color: var(--text-primary); font-family: inherit; font-size: 0.85rem; resize: vertical; }
+
+        .tcg-kanban-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+        .tcg-kanban-col { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--ai-radius-lg); padding: 16px; border-top: 3px solid var(--border-color); transition: var(--ai-transition); }
+        .tcg-kanban-col.high { border-top-color: var(--ai-red); }
+        .tcg-kanban-col.medium { border-top-color: var(--ai-yellow); }
+        .tcg-kanban-col.low { border-top-color: var(--text-muted); }
+        .tcg-kanban-col.drag-over { box-shadow: 0 0 0 2px var(--ai-accent) inset; }
+        .tcg-kanban-col-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .tcg-kanban-col-header h4 { font-size: 0.9rem; font-weight: 700; margin: 0; }
+        .tcg-kanban-empty { color: var(--text-muted); font-size: 0.78rem; text-align: center; padding: 20px 8px; }
+
+        .tcg-kanban-card { padding: 10px 12px; border: 1px solid var(--border-color); border-left: 3px solid var(--border-color); border-radius: var(--ai-radius); margin-bottom: 8px; cursor: grab; background: var(--bg-primary); font-size: 0.85rem; transition: var(--ai-transition); }
+        .tcg-kanban-card:hover { box-shadow: var(--shadow-sm); }
+        .tcg-kanban-card.high { border-left-color: var(--ai-red); }
+        .tcg-kanban-card.medium { border-left-color: var(--ai-yellow); }
+        .tcg-kanban-card.low { border-left-color: var(--text-muted); }
+        .tcg-kanban-card-rationale { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -636,24 +653,27 @@
             const panel = document.getElementById("panel-3");
             panel.innerHTML = `
                 <div class="tcg-card">
-                    <h3>Önceliklendirme</h3>
-                    <button class="tcg-btn primary" id="prioritizeBtn" onclick="runPrioritize()">⚖️ Önceliklendir</button>
-                    <button class="tcg-btn" id="retryPrioritizeBtn" style="display:none;" onclick="runPrioritize()">🔁 Tekrar Dene</button>
+                    <div class="tcg-card-header">${ICONS.scale}<h3>Önceliklendirme</h3></div>
+                    <button class="tcg-btn primary" id="prioritizeBtn" onclick="runPrioritize()">${ICONS.scale} Önceliklendir</button>
+                    <button class="tcg-btn" id="retryPrioritizeBtn" style="display:none;" onclick="runPrioritize()">${ICONS.retry} Tekrar Dene</button>
                 </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:16px;">
-                    <div class="tcg-card" id="col-high" data-level="high" ondragover="event.preventDefault()" ondrop="onKanbanDrop(event)">
-                        <h4 style="color:var(--ai-red);">High</h4><div class="kanban-list"></div>
+                <div class="tcg-kanban-grid">
+                    <div class="tcg-kanban-col high" id="col-high" data-level="high" ondragover="onKanbanDragOver(event)" ondragleave="onKanbanDragLeave(event)" ondrop="onKanbanDrop(event)">
+                        <div class="tcg-kanban-col-header"><h4 style="color:var(--ai-red);">High</h4><span class="badge badge-danger" id="count-high">0</span></div>
+                        <div class="kanban-list"></div>
                     </div>
-                    <div class="tcg-card" id="col-medium" data-level="medium" ondragover="event.preventDefault()" ondrop="onKanbanDrop(event)">
-                        <h4 style="color:var(--ai-yellow);">Medium</h4><div class="kanban-list"></div>
+                    <div class="tcg-kanban-col medium" id="col-medium" data-level="medium" ondragover="onKanbanDragOver(event)" ondragleave="onKanbanDragLeave(event)" ondrop="onKanbanDrop(event)">
+                        <div class="tcg-kanban-col-header"><h4 style="color:var(--ai-yellow);">Medium</h4><span class="badge badge-warning" id="count-medium">0</span></div>
+                        <div class="kanban-list"></div>
                     </div>
-                    <div class="tcg-card" id="col-low" data-level="low" ondragover="event.preventDefault()" ondrop="onKanbanDrop(event)">
-                        <h4 style="color:var(--text-muted);">Low</h4><div class="kanban-list"></div>
+                    <div class="tcg-kanban-col low" id="col-low" data-level="low" ondragover="onKanbanDragOver(event)" ondragleave="onKanbanDragLeave(event)" ondrop="onKanbanDrop(event)">
+                        <div class="tcg-kanban-col-header"><h4 style="color:var(--text-muted);">Low</h4><span class="badge" id="count-low">0</span></div>
+                        <div class="kanban-list"></div>
                     </div>
                 </div>
                 <div class="tcg-actions">
-                    <button class="tcg-btn" onclick="goToStep(2)">← Geri</button>
-                    <button class="tcg-btn primary" onclick="goToStep(4)">Devam →</button>
+                    <button class="tcg-btn" onclick="goToStep(2)">${ICONS.chevronLeft} Geri</button>
+                    <button class="tcg-btn primary" onclick="goToStep(4)">Devam ${ICONS.chevronRight}</button>
                 </div>
             `;
             renderKanban();
@@ -662,7 +682,7 @@
         async function runPrioritize() {
             const btn = document.getElementById("prioritizeBtn");
             const retryBtn = document.getElementById("retryPrioritizeBtn");
-            btn.disabled = true;
+            setBtnBusy(btn, true, "Hesaplanıyor…");
             try {
                 await promoteCandidateTitles();
                 _session = await API.post(`/testcasegen/sessions/${_session.id}/prioritize`);
@@ -673,7 +693,7 @@
                 Toast.error(e.message);
                 retryBtn.style.display = "inline-block";
             } finally {
-                btn.disabled = false;
+                setBtnBusy(btn, false);
             }
         }
 
@@ -681,19 +701,28 @@
             ["high", "medium", "low"].forEach(level => {
                 const col = document.querySelector(`#col-${level} .kanban-list`);
                 const titles = _session.titles.filter(t => t.level === level);
-                col.innerHTML = titles.map(t => `
-                    <div class="tcg-kanban-card" draggable="true" data-id="${t.id}"
-                         style="padding:8px; border:1px solid var(--border-color); border-radius:var(--ai-radius);
-                                margin-bottom:8px; cursor:move; background:var(--bg-primary);"
+                document.getElementById(`count-${level}`).textContent = titles.length;
+                col.innerHTML = titles.length ? titles.map(t => `
+                    <div class="tcg-kanban-card ${level}" draggable="true" data-id="${t.id}"
                          ondragstart="event.dataTransfer.setData('text/plain', '${t.id}')">
                         <div>${escapeHtml(t.text)}</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">${escapeHtml(t.rationale || "")}</div>
-                    </div>`).join("");
+                        <div class="tcg-kanban-card-rationale">${escapeHtml(t.rationale || "")}</div>
+                    </div>`).join("") : `<div class="tcg-kanban-empty">Henüz başlık yok</div>`;
             });
+        }
+
+        function onKanbanDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add("drag-over");
+        }
+
+        function onKanbanDragLeave(event) {
+            event.currentTarget.classList.remove("drag-over");
         }
 
         async function onKanbanDrop(event) {
             event.preventDefault();
+            event.currentTarget.classList.remove("drag-over");
             const titleId = event.dataTransfer.getData("text/plain");
             const level = event.currentTarget.dataset.level;
             try {
