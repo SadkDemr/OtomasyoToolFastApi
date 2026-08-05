@@ -200,10 +200,130 @@
         }
 
         // GEÇİCİ — Task 15 renderStep1'i ekleyince bu bloğu sil (ve benzer şekilde Task 16-19 ile diğerlerini).
-        if (typeof renderStep1 !== "function") { window.renderStep1 = () => {}; }
         if (typeof renderStep2 !== "function") { window.renderStep2 = () => {}; }
         if (typeof renderStep3 !== "function") { window.renderStep3 = () => {}; }
         if (typeof renderStep4 !== "function") { window.renderStep4 = () => {}; }
+
+        function renderStep1() {
+            const panel = document.getElementById("panel-1");
+            panel.innerHTML = `
+                <div class="tcg-card">
+                    <h3>Ekran Görüntüsü Yükle</h3>
+                    <div id="dropzone" style="border:2px dashed var(--border-color); border-radius:var(--ai-radius);
+                         padding:30px; text-align:center; cursor:pointer; margin-bottom:16px;">
+                        Dosyaları buraya sürükleyin veya tıklayıp seçin
+                        <input type="file" id="fileInput" multiple accept="image/*" style="display:none;">
+                    </div>
+                    <div id="screenList"></div>
+                    <div class="tcg-actions">
+                        <button class="tcg-btn primary" id="step1NextBtn" onclick="goToStep(2)">Devam →</button>
+                    </div>
+                </div>
+            `;
+
+            const dropzone = document.getElementById("dropzone");
+            const fileInput = document.getElementById("fileInput");
+            dropzone.onclick = () => fileInput.click();
+            dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = "var(--ai-accent)"; };
+            dropzone.ondragleave = () => { dropzone.style.borderColor = "var(--border-color)"; };
+            dropzone.ondrop = async (e) => {
+                e.preventDefault();
+                dropzone.style.borderColor = "var(--border-color)";
+                await uploadFiles(e.dataTransfer.files);
+            };
+            fileInput.onchange = async (e) => { await uploadFiles(e.target.files); fileInput.value = ""; };
+
+            renderScreenList();
+        }
+
+        async function uploadFiles(fileList) {
+            const formData = new FormData();
+            for (const file of fileList) formData.append("files", file);
+            try {
+                const resp = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/screens/upload`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                    body: formData,
+                });
+                if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Yükleme hatası"); }
+                _session = await resp.json();
+                renderScreenList();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        function renderScreenList() {
+            const container = document.getElementById("screenList");
+            if (!_session.screens.length) {
+                container.innerHTML = '<p style="color:var(--text-muted);">Henüz ekran eklenmedi.</p>';
+                return;
+            }
+            container.innerHTML = _session.screens.map((s, i) => `
+                <div class="tcg-screen-row" draggable="true" data-index="${i}"
+                     style="display:flex; align-items:center; gap:12px; padding:8px; border:1px solid var(--border-color);
+                            border-radius:var(--ai-radius); margin-bottom:8px; cursor:move; background:var(--bg-primary);">
+                    <span style="font-weight:600;">#${i + 1}</span>
+                    <img data-index="${i}" style="height:60px; border-radius:4px;">
+                    <input type="text" value="${(s.user_note || "").replace(/"/g, '&quot;')}" placeholder="Not ekle (opsiyonel)"
+                           style="flex:1;" onchange="editScreenNote(${i}, this.value)">
+                    <button class="tcg-btn" onclick="deleteScreenAt(${i})">🗑</button>
+                </div>
+            `).join("");
+
+            _session.screens.forEach(async (_, i) => {
+                try {
+                    const resp = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/screens/${i}/image`, {
+                        headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                    });
+                    const blob = await resp.blob();
+                    const imgEl = container.querySelector(`img[data-index="${i}"]`);
+                    if (imgEl) imgEl.src = URL.createObjectURL(blob);
+                } catch (e) { /* thumbnail yuklenemedi, sessizce atla */ }
+            });
+
+            let dragSrc = null;
+            container.querySelectorAll(".tcg-screen-row").forEach(row => {
+                row.addEventListener("dragstart", () => { dragSrc = row.dataset.index; });
+                row.addEventListener("dragover", (e) => e.preventDefault());
+                row.addEventListener("drop", async (e) => {
+                    e.preventDefault();
+                    const dstIndex = parseInt(row.dataset.index, 10);
+                    const srcIndex = parseInt(dragSrc, 10);
+                    if (srcIndex === dstIndex) return;
+                    const order = _session.screens.map((_, i) => i);
+                    order.splice(srcIndex, 1);
+                    order.splice(dstIndex, 0, srcIndex);
+                    await reorderScreens(order);
+                });
+            });
+        }
+
+        async function reorderScreens(order) {
+            try {
+                _session = await API.put(`/testcasegen/sessions/${_session.id}/screens/reorder`, { order });
+                renderScreenList();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        async function editScreenNote(index, note) {
+            try {
+                _session = await API.put(`/testcasegen/sessions/${_session.id}/screens/${index}`, { note });
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        async function deleteScreenAt(index) {
+            try {
+                _session = await API.delete(`/testcasegen/sessions/${_session.id}/screens/${index}`);
+                renderScreenList();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
 
         initSession();
     </script>

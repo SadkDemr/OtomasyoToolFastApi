@@ -12,7 +12,7 @@ import uuid
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from routers.auth import get_current_user
@@ -122,6 +122,18 @@ async def delete_screen(session_id: str, idx: int, current_user: User = Depends(
     if idx < 0 or idx >= len(session["screens"]):
         raise HTTPException(404, "Ekran bulunamadı")
     return svc.delete_screen(current_user.id, session_id, idx)
+
+
+@router.get("/sessions/{session_id}/screens/{idx}/image")
+async def get_screen_image(session_id: str, idx: int, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    if idx < 0 or idx >= len(session["screens"]):
+        raise HTTPException(404, "Ekran bulunamadı")
+    screen = session["screens"][idx]
+    path = svc.screen_image_path(current_user.id, session_id, idx, screen["image_ext"])
+    if not path.exists():
+        raise HTTPException(404, "Görsel dosyası bulunamadı")
+    return FileResponse(path)
 
 
 # ── Başlık çıkarma (Adım 2) ─────────────────────────────────────────────

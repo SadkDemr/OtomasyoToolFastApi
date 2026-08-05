@@ -163,3 +163,19 @@ def test_delete_screen_negative_index_returns_404(client):
 
     resp = client.delete(f"/api/testcasegen/sessions/{session['id']}/screens/-1")
     assert resp.status_code == 404
+
+
+def test_get_screen_image_returns_file_bytes(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"raw-image-bytes"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+
+    resp = client.get(f"/api/testcasegen/sessions/{session['id']}/screens/0/image")
+    assert resp.status_code == 200
+    assert resp.content == b"raw-image-bytes"
+
+
+def test_get_screen_image_missing_index_returns_404(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.get(f"/api/testcasegen/sessions/{session['id']}/screens/0/image")
+    assert resp.status_code == 404
