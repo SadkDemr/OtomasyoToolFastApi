@@ -36,6 +36,8 @@ from routers.java_generator_router import router as java_gen_router
 from routers.bdd_generator_router import router as bdd_gen_router
 # 🗓️ AI Test Generator - Job sistemi (Faz 1: Mobil)
 from routers.ai_job_router import router as ai_job_router
+# 🧪 TestCaseGen (ekran -> baslik -> onceliklendirme -> test case + ADO export)
+from routers.testcasegen_router import router as testcasegen_router
 # 🔁 AI Test Generator - idle oturum reaper
 from routers.ai_test_generator_router import _session_idle_reaper
 # 🗓️ AI Job Sistemi - zamanlayici + baslangic temizligi
@@ -80,6 +82,8 @@ app.include_router(java_gen_router)
 app.include_router(bdd_gen_router)
 # 🗓️ AI Job Sistemi
 app.include_router(ai_job_router)
+# 🧪 TestCaseGen
+app.include_router(testcasegen_router)
 
 web_ui = os.path.join(BASE_DIR, "WebArayuz")
 if os.path.exists(web_ui):
