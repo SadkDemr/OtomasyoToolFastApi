@@ -54,6 +54,44 @@
         }
         .tcg-btn.primary { background: var(--ai-accent); border-color: var(--ai-accent); color: #fff; }
         .tcg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .tcg-btn { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+        .tcg-btn:hover:not(:disabled) { border-color: var(--ai-accent); }
+        .tcg-btn.primary:hover:not(:disabled) { background: var(--ai-accent-hover); }
+        .tcg-btn.success { background: var(--ai-green); border-color: var(--ai-green); color: #fff; }
+        .tcg-btn.success:hover:not(:disabled) { background: var(--ai-green-hover); }
+        .tcg-btn.ghost { background: transparent; border-style: dashed; color: var(--text-muted); }
+        .tcg-btn.ghost:hover:not(:disabled) { border-color: var(--ai-accent); color: var(--ai-accent); background: rgba(99,102,241,0.06); }
+        .tcg-btn.connected { background: rgba(239,68,68,0.1); border-color: var(--ai-red); color: var(--ai-red); }
+        .tcg-btn svg { flex-shrink: 0; }
+        .tcg-btn .spinner { width: 14px; height: 14px; border-width: 2px; }
+
+        .tcg-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .tcg-page-header-left { display: flex; align-items: center; gap: 14px; }
+        .tcg-page-icon {
+            width: 44px; height: 44px; border-radius: var(--ai-radius-lg);
+            background: linear-gradient(135deg, var(--ai-accent), var(--ai-cyan));
+            display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0;
+        }
+        .tcg-page-header h1 { font-size: 1.4rem; font-weight: 700; margin: 0; }
+        .tcg-page-header p { color: var(--text-muted); font-size: 0.85rem; margin: 2px 0 0; }
+        .tcg-header-actions { display: flex; gap: 8px; }
+
+        .tcg-card-header { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+        .tcg-card-header svg { color: var(--ai-accent); flex-shrink: 0; }
+        .tcg-card-header h3 { font-size: 1rem; font-weight: 600; margin: 0; }
+
+        .tcg-session-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--ai-radius); cursor: pointer; transition: var(--ai-transition); }
+        .tcg-session-item:hover { background: var(--bg-tertiary); }
+        .tcg-session-item-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .tcg-session-item-left svg { color: var(--text-muted); flex-shrink: 0; }
+        .tcg-session-item-info { min-width: 0; }
+        .tcg-session-item-id { font-size: 0.85rem; font-weight: 500; }
+        .tcg-session-item-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; }
+        .tcg-session-delete { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: var(--ai-radius); opacity: 0; transition: var(--ai-transition); display: flex; align-items: center; }
+        .tcg-session-item:hover .tcg-session-delete { opacity: 1; }
+        .tcg-session-delete:hover { background: rgba(239,68,68,0.1); color: var(--ai-red); }
+        .tcg-empty-hint { color: var(--text-muted); font-size: 0.85rem; padding: 8px 12px; }
     </style>
 </head>
 <body>
@@ -61,18 +99,7 @@
         <div id="sidebar-container"></div>
         <main class="main-content">
             <div class="page-content">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                    <div>
-                        <h1>🧪 TestCaseGen</h1>
-                        <p style="color:var(--text-muted); margin-bottom:20px;">
-                            Ekran görüntülerinden ADO formatında test case üret.
-                        </p>
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                        <button class="tcg-btn" onclick="startNewSession()">+ Yeni Oturum</button>
-                        <button class="tcg-btn" onclick="toggleSessionList()">📂 Oturumlarım</button>
-                    </div>
-                </div>
+                <div id="tcgHeader"></div>
                 <div id="sessionListPanel" class="tcg-card" style="display:none;"></div>
 
                 <div class="workflow-stepper" id="stepper"></div>
@@ -180,14 +207,21 @@
                 const data = await API.get("/testcasegen/sessions");
                 panel.innerHTML = data.sessions.length
                     ? data.sessions.map(s => `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-color);">
-                            <span style="cursor:pointer;" onclick="switchToSession('${s.id}')">
-                                ${s.id.slice(0, 8)}… — ${s.screens.length} ekran, ${s.testcases.length} test case
-                                <span style="color:var(--text-muted); font-size:0.75rem;">(${s.created_at})</span>
-                            </span>
-                            <button class="tcg-btn" onclick="deleteSessionFromList('${s.id}')">🗑</button>
+                        <div class="tcg-session-item">
+                            <div class="tcg-session-item-left" style="cursor:pointer; flex:1; min-width:0;" onclick="switchToSession('${s.id}')">
+                                ${ICONS.folder}
+                                <div class="tcg-session-item-info">
+                                    <div class="tcg-session-item-id">${s.id.slice(0, 8)}…</div>
+                                    <div class="tcg-session-item-meta">
+                                        <span class="badge badge-primary">${s.screens.length} ekran</span>
+                                        <span class="badge badge-success">${s.testcases.length} test case</span>
+                                        <span>${s.created_at}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="tcg-session-delete" onclick="deleteSessionFromList('${s.id}')" title="Sil">${ICONS.trash}</button>
                         </div>`).join("")
-                    : '<p style="color:var(--text-muted);">Henüz oturum yok.</p>';
+                    : `<p class="tcg-empty-hint">Henüz oturum yok.</p>`;
                 panel.style.display = "block";
             } catch (e) {
                 Toast.error("Oturumlar listelenemedi: " + e.message);
@@ -836,6 +870,25 @@
             }
         }
 
+        function renderHeader() {
+            document.getElementById("tcgHeader").innerHTML = `
+                <div class="tcg-page-header">
+                    <div class="tcg-page-header-left">
+                        <div class="tcg-page-icon">${ICONS.flask}</div>
+                        <div>
+                            <h1>TestCaseGen</h1>
+                            <p>Ekran görüntülerinden ADO formatında test case üret.</p>
+                        </div>
+                    </div>
+                    <div class="tcg-header-actions">
+                        <button class="tcg-btn" onclick="startNewSession()">${ICONS.plus} Yeni Oturum</button>
+                        <button class="tcg-btn" onclick="toggleSessionList()">${ICONS.folder} Oturumlarım</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        renderHeader();
         initSession();
     </script>
 </body>
