@@ -200,9 +200,6 @@
             goToStep(1);
         }
 
-        // GEÇİCİ — Task 15 renderStep1'i ekleyince bu bloğu sil (ve benzer şekilde Task 16-19 ile diğerlerini).
-        if (typeof renderStep4 !== "function") { window.renderStep4 = () => {}; }
-
         function renderStep1() {
             if (_tcgWs) {
                 _tcgWs.onopen = null;
@@ -572,6 +569,134 @@
             try {
                 _session = await API.put(`/testcasegen/sessions/${_session.id}/titles/${titleId}/priority`, { level });
                 renderKanban();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        function renderStep4() {
+            const panel = document.getElementById("panel-4");
+            const titlesById = Object.fromEntries(_session.titles.map(t => [t.id, t]));
+            const checkboxes = _session.titles.map(t => `
+                <label style="display:block; margin-bottom:4px;">
+                    <input type="checkbox" class="tcg-title-checkbox" value="${t.id}"> ${escapeHtml(t.text)}
+                    <span style="font-size:0.75rem; color:var(--text-muted);">(${t.level || "-"})</span>
+                </label>`).join("");
+
+            panel.innerHTML = `
+                <div class="tcg-card">
+                    <h3>Test Case Üretimi</h3>
+                    <div style="margin-bottom:12px;">${checkboxes || "<p>Önce Adım 3'te başlık önceliklendirin.</p>"}</div>
+                    <button class="tcg-btn primary" id="genBtn" onclick="runGenerateTestcases()">🧪 Test Case Oluştur</button>
+                    <button class="tcg-btn" id="retryGenBtn" style="display:none;" onclick="runGenerateTestcases()">🔁 Tekrar Dene</button>
+                </div>
+                <div id="testcaseTableWrap"></div>
+                <div class="tcg-actions">
+                    <button class="tcg-btn" onclick="goToStep(3)">← Geri</button>
+                    <button class="tcg-btn primary" onclick="exportSelectedTestcases()">📥 Excel'e Aktar</button>
+                </div>
+            `;
+            renderTestcaseTable();
+        }
+
+        async function runGenerateTestcases() {
+            const ids = [...document.querySelectorAll(".tcg-title-checkbox:checked")].map(el => el.value);
+            if (!ids.length) { Toast.error("En az bir başlık seçin"); return; }
+            const btn = document.getElementById("genBtn");
+            const retryBtn = document.getElementById("retryGenBtn");
+            btn.disabled = true;
+            try {
+                const result = await API.post(`/testcasegen/sessions/${_session.id}/generate-testcases`, { title_ids: ids });
+                _session.testcases = _session.testcases.concat(result.testcases);
+                retryBtn.style.display = "none";
+                renderTestcaseTable();
+                Toast.success(`${result.testcases.length} test case üretildi`);
+            } catch (e) {
+                Toast.error(e.message);
+                retryBtn.style.display = "inline-block";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderTestcaseTable() {
+            const wrap = document.getElementById("testcaseTableWrap");
+            const titlesById = Object.fromEntries(_session.titles.map(t => [t.id, t]));
+            if (!_session.testcases.length) { wrap.innerHTML = ""; return; }
+
+            let rows = "";
+            _session.testcases.forEach(tc => {
+                const title = titlesById[tc.title_id];
+                rows += `<tr>
+                    <td><input type="checkbox" class="tcg-export-checkbox" value="${tc.id}" checked></td>
+                    <td>Test Case</td>
+                    <td>${title ? escapeHtml(title.text) : ""}</td>
+                    <td colspan="2"></td>
+                </tr>`;
+                tc.steps.forEach((step, si) => {
+                    const hasViolations = step.violations && step.violations.length > 0;
+                    const rowStyle = hasViolations ? 'background:rgba(239,68,68,0.12);' : '';
+                    const tooltip = hasViolations ? step.violations.map(v => v.message).join(" | ") : "";
+                    rows += `<tr style="${rowStyle}" title="${tooltip.replace(/"/g, '&quot;')}">
+                        <td></td><td></td><td></td>
+                        <td>${si + 1}</td>
+                        <td><input type="text" value="${step.step_action.replace(/"/g, '&quot;')}"
+                                   onchange="editTestcaseStep('${tc.id}', ${si}, this.value, null)"></td>
+                        <td><input type="text" value="${step.step_expected.replace(/"/g, '&quot;')}"
+                                   onchange="editTestcaseStep('${tc.id}', ${si}, null, this.value)"></td>
+                    </tr>`;
+                });
+            });
+
+            wrap.innerHTML = `
+                <div class="tcg-card">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead><tr>
+                            <th>Seç</th><th>Work Item Type</th><th>Title</th><th>Step</th>
+                            <th>Step Action</th><th>Step Expected</th>
+                        </tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+        }
+
+        async function editTestcaseStep(tcId, stepIndex, newAction, newExpected) {
+            const tc = _session.testcases.find(t => t.id === tcId);
+            const step = tc.steps[stepIndex];
+            const action = newAction !== null ? newAction : step.step_action;
+            const expected = newExpected !== null ? newExpected : step.step_expected;
+            try {
+                const result = await API.put(
+                    `/testcasegen/sessions/${_session.id}/testcases/${tcId}/steps/${stepIndex}`,
+                    { step_action: action, step_expected: expected },
+                );
+                _session.testcases = result.testcases;
+                renderTestcaseTable();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        async function exportSelectedTestcases() {
+            const ids = [...document.querySelectorAll(".tcg-export-checkbox:checked")].map(el => el.value);
+            if (!ids.length) { Toast.error("Dışa aktarılacak test case seçilmedi"); return; }
+            try {
+                const resp = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/export`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${Auth.getToken()}`,
+                    },
+                    body: JSON.stringify({ testcase_ids: ids }),
+                });
+                if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Export hatası"); }
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `testcases_${_session.id.slice(0, 8)}.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
             } catch (e) {
                 Toast.error(e.message);
             }
