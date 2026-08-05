@@ -263,3 +263,57 @@ async def set_priority(session_id: str, title_id: str, body: PriorityIn, current
         raise HTTPException(404, "Başlık bulunamadı")
     svc.save_session(current_user.id, session_id, session)
     return session
+
+
+# ── Test case üretimi (Adım 4) ──────────────────────────────────────────
+
+class GenerateTestcasesIn(BaseModel):
+    title_ids: list[str]
+
+
+@router.post("/sessions/{session_id}/generate-testcases")
+async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    titles_by_id = {t["id"]: t for t in session["titles"]}
+    screens_by_index = {s["index"]: s for s in session["screens"]}
+
+    created = []
+    for title_id in body.title_ids:
+        title = titles_by_id.get(title_id)
+        if not title:
+            continue
+        screen = screens_by_index.get(title["screen_index"], {})
+        prompt = svc.build_testcase_prompt(title["text"], screen.get("screen_summary", ""), screen.get("user_note", ""))
+        try:
+            raw = await ai_service.ollama_generate_text(prompt)
+        except Exception as e:
+            raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
+
+        parsed = svc.extract_json_object(raw)
+        raw_steps = parsed.get("steps", []) if parsed else []
+        steps = svc.validate_steps(raw_steps)
+        testcase = {"id": str(uuid.uuid4()), "title_id": title_id, "steps": steps}
+        session["testcases"].append(testcase)
+        created.append(testcase)
+
+    svc.save_session(current_user.id, session_id, session)
+    return {"testcases": created}
+
+
+class StepIn(BaseModel):
+    step_action: str
+    step_expected: str
+
+
+@router.put("/sessions/{session_id}/testcases/{tc_id}/steps/{idx}")
+async def edit_step(session_id: str, tc_id: str, idx: int, body: StepIn, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    for tc in session["testcases"]:
+        if tc["id"] == tc_id:
+            validated = svc.validate_steps([{"step_action": body.step_action, "step_expected": body.step_expected}])
+            tc["steps"][idx] = validated[0]
+            break
+    else:
+        raise HTTPException(404, "Test case bulunamadı")
+    svc.save_session(current_user.id, session_id, session)
+    return {"testcases": session["testcases"]}
