@@ -65,6 +65,7 @@
         .tcg-btn.connected { background: rgba(239,68,68,0.1); border-color: var(--ai-red); color: var(--ai-red); }
         .tcg-btn svg { flex-shrink: 0; }
         .tcg-btn .spinner { width: 14px; height: 14px; border-width: 2px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .tcg-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
         .tcg-page-header-left { display: flex; align-items: center; gap: 14px; }
@@ -159,7 +160,8 @@
         .tcg-testcase-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; vertical-align: middle; }
         .tcg-testcase-table tr.tcg-title-row td { background: var(--bg-tertiary); font-weight: 600; }
         .tcg-testcase-table tr:hover td { background: var(--bg-hover); }
-        .tcg-testcase-table tr.tcg-violation td { background: rgba(239,68,68,0.08); border-left: 3px solid var(--ai-red); }
+        .tcg-testcase-table tr.tcg-violation td { background: rgba(239,68,68,0.08); }
+        .tcg-testcase-table tr.tcg-violation td:first-child { border-left: 3px solid var(--ai-red); }
         .tcg-testcase-table input.tcg-step-input { width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem; }
         .tcg-testcase-table input.tcg-step-input:disabled { opacity: 0.5; }
         .tcg-violation-icon { color: var(--ai-red); display: inline-flex; margin-right: 4px; vertical-align: middle; }
@@ -734,6 +736,7 @@
         }
 
         function onKanbanDragLeave(event) {
+            if (event.currentTarget.contains(event.relatedTarget)) return;
             event.currentTarget.classList.remove("drag-over");
         }
 
