@@ -146,6 +146,23 @@
         .tcg-kanban-card.medium { border-left-color: var(--ai-yellow); }
         .tcg-kanban-card.low { border-left-color: var(--text-muted); }
         .tcg-kanban-card-rationale { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+        .tcg-title-checklist { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+        .tcg-title-check-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--ai-radius); }
+        .tcg-title-check-row:hover { background: var(--bg-tertiary); }
+        .tcg-title-check-row label { display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; font-size: 0.85rem; }
+        .tcg-generated-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--ai-green); font-size: 0.72rem; font-weight: 600; }
+
+        .tcg-testcase-table-wrap { overflow-x: auto; }
+        .tcg-testcase-table { width: 100%; border-collapse: collapse; }
+        .tcg-testcase-table thead th { text-align: left; padding: 10px 12px; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid var(--border-color); background: var(--bg-tertiary); }
+        .tcg-testcase-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; vertical-align: middle; }
+        .tcg-testcase-table tr.tcg-title-row td { background: var(--bg-tertiary); font-weight: 600; }
+        .tcg-testcase-table tr:hover td { background: var(--bg-hover); }
+        .tcg-testcase-table tr.tcg-violation td { background: rgba(239,68,68,0.08); border-left: 3px solid var(--ai-red); }
+        .tcg-testcase-table input.tcg-step-input { width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem; }
+        .tcg-testcase-table input.tcg-step-input:disabled { opacity: 0.5; }
+        .tcg-violation-icon { color: var(--ai-red); display: inline-flex; margin-right: 4px; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -733,28 +750,43 @@
             }
         }
 
+        function renderTitleChecklist() {
+            const container = document.getElementById("titleChecklist");
+            const generatedTitleIds = new Set(_session.testcases.map(tc => tc.title_id));
+            const rows = _session.titles.map(t => {
+                const levelBadge = t.level
+                    ? `<span class="badge badge-${t.level === 'high' ? 'danger' : t.level === 'medium' ? 'warning' : 'primary'}">${t.level}</span>`
+                    : `<span class="badge">-</span>`;
+                const generatedTag = generatedTitleIds.has(t.id)
+                    ? `<span class="tcg-generated-badge">${ICONS.check} üretildi</span>` : "";
+                return `
+                    <div class="tcg-title-check-row">
+                        <label>
+                            <input type="checkbox" class="tcg-title-checkbox" value="${t.id}">
+                            ${escapeHtml(t.text)}
+                        </label>
+                        ${levelBadge}${generatedTag}
+                    </div>`;
+            }).join("");
+            container.innerHTML = rows || `<p class="tcg-empty-hint">Önce Adım 3'te başlık önceliklendirin.</p>`;
+        }
+
         function renderStep4() {
             const panel = document.getElementById("panel-4");
-            const titlesById = Object.fromEntries(_session.titles.map(t => [t.id, t]));
-            const checkboxes = _session.titles.map(t => `
-                <label style="display:block; margin-bottom:4px;">
-                    <input type="checkbox" class="tcg-title-checkbox" value="${t.id}"> ${escapeHtml(t.text)}
-                    <span style="font-size:0.75rem; color:var(--text-muted);">(${t.level || "-"})</span>
-                </label>`).join("");
-
             panel.innerHTML = `
                 <div class="tcg-card">
-                    <h3>Test Case Üretimi</h3>
-                    <div style="margin-bottom:12px;">${checkboxes || "<p>Önce Adım 3'te başlık önceliklendirin.</p>"}</div>
-                    <button class="tcg-btn primary" id="genBtn" onclick="runGenerateTestcases()">🧪 Test Case Oluştur</button>
-                    <button class="tcg-btn" id="retryGenBtn" style="display:none;" onclick="runGenerateTestcases()">🔁 Tekrar Dene</button>
+                    <div class="tcg-card-header">${ICONS.flask}<h3>Test Case Üretimi</h3></div>
+                    <div class="tcg-title-checklist" id="titleChecklist"></div>
+                    <button class="tcg-btn primary" id="genBtn" onclick="runGenerateTestcases()">${ICONS.flask} Test Case Oluştur</button>
+                    <button class="tcg-btn" id="retryGenBtn" style="display:none;" onclick="runGenerateTestcases()">${ICONS.retry} Tekrar Dene</button>
                 </div>
                 <div id="testcaseTableWrap"></div>
                 <div class="tcg-actions">
-                    <button class="tcg-btn" onclick="goToStep(3)">← Geri</button>
-                    <button class="tcg-btn primary" onclick="exportSelectedTestcases()">📥 Excel'e Aktar</button>
+                    <button class="tcg-btn" onclick="goToStep(3)">${ICONS.chevronLeft} Geri</button>
+                    <button class="tcg-btn success" onclick="exportSelectedTestcases()">${ICONS.download} Excel'e Aktar</button>
                 </div>
             `;
+            renderTitleChecklist();
             renderTestcaseTable();
         }
 
@@ -766,18 +798,19 @@
             if (!ids.length) { Toast.error("Seçilen başlıklar için zaten test case üretilmiş"); return; }
             const btn = document.getElementById("genBtn");
             const retryBtn = document.getElementById("retryGenBtn");
-            btn.disabled = true;
+            setBtnBusy(btn, true, "Üretiliyor…");
             try {
                 const result = await API.post(`/testcasegen/sessions/${_session.id}/generate-testcases`, { title_ids: ids });
                 _session.testcases = _session.testcases.concat(result.testcases);
                 retryBtn.style.display = "none";
+                renderTitleChecklist();
                 renderTestcaseTable();
                 Toast.success(`${result.testcases.length} test case üretildi`);
             } catch (e) {
                 Toast.error(e.message);
                 retryBtn.style.display = "inline-block";
             } finally {
-                btn.disabled = false;
+                setBtnBusy(btn, false);
             }
         }
 
@@ -789,7 +822,7 @@
             let rows = "";
             _session.testcases.forEach(tc => {
                 const title = titlesById[tc.title_id];
-                rows += `<tr>
+                rows += `<tr class="tcg-title-row">
                     <td><input type="checkbox" class="tcg-export-checkbox" value="${tc.id}" checked></td>
                     <td>Test Case</td>
                     <td>${title ? escapeHtml(title.text) : ""}</td>
@@ -797,11 +830,11 @@
                 </tr>`;
                 tc.steps.forEach((step, si) => {
                     const hasViolations = step.violations && step.violations.length > 0;
-                    const rowStyle = hasViolations ? 'background:rgba(239,68,68,0.12);' : '';
                     const tooltip = hasViolations ? step.violations.map(v => v.message).join(" | ") : "";
-                    rows += `<tr style="${rowStyle}" title="${tooltip.replace(/"/g, '&quot;')}">
+                    const violationIcon = hasViolations ? `<span class="tcg-violation-icon">${ICONS.warning}</span>` : "";
+                    rows += `<tr class="${hasViolations ? 'tcg-violation' : ''}" title="${tooltip.replace(/"/g, '&quot;')}">
                         <td></td><td></td><td></td>
-                        <td>${si + 1}</td>
+                        <td>${violationIcon}${si + 1}</td>
                         <td><input type="text" class="tcg-step-input" value="${step.step_action.replace(/"/g, '&quot;')}"
                                    onchange="editTestcaseStep('${tc.id}', ${si}, this.value, null, this)"></td>
                         <td><input type="text" class="tcg-step-input" value="${step.step_expected.replace(/"/g, '&quot;')}"
@@ -811,8 +844,8 @@
             });
 
             wrap.innerHTML = `
-                <div class="tcg-card">
-                    <table style="width:100%; border-collapse:collapse;">
+                <div class="tcg-card tcg-testcase-table-wrap">
+                    <table class="tcg-testcase-table">
                         <thead><tr>
                             <th>Seç</th><th>Work Item Type</th><th>Title</th><th>Step</th>
                             <th>Step Action</th><th>Step Expected</th>
