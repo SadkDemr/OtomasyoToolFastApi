@@ -201,7 +201,6 @@
         }
 
         // GEÇİCİ — Task 15 renderStep1'i ekleyince bu bloğu sil (ve benzer şekilde Task 16-19 ile diğerlerini).
-        if (typeof renderStep3 !== "function") { window.renderStep3 = () => {}; }
         if (typeof renderStep4 !== "function") { window.renderStep4 = () => {}; }
 
         function renderStep1() {
@@ -488,6 +487,94 @@
         function addCandidateTitle(screenIndex) {
             _session.screens[screenIndex].candidate_titles.push("Yeni başlık");
             renderTitlesResult();
+        }
+
+        async function promoteCandidateTitles() {
+            // Adim 2'de düzenlenen candidate_titles'lari, henüz _session.titles'ta
+            // karşılığı olmayanlar için sunucuda kalıcı title kaydına çevirir.
+            const existingTexts = new Set(_session.titles.map(t => `${t.screen_index}:${t.text}`));
+            for (const screen of _session.screens) {
+                for (const text of (screen.candidate_titles || [])) {
+                    const key = `${screen.index}:${text}`;
+                    if (existingTexts.has(key)) continue;
+                    _session = await API.post(`/testcasegen/sessions/${_session.id}/titles`, {
+                        screen_index: screen.index, text,
+                    });
+                    existingTexts.add(key);
+                }
+            }
+        }
+
+        function renderStep3() {
+            const panel = document.getElementById("panel-3");
+            panel.innerHTML = `
+                <div class="tcg-card">
+                    <h3>Önceliklendirme</h3>
+                    <button class="tcg-btn primary" id="prioritizeBtn" onclick="runPrioritize()">⚖️ Önceliklendir</button>
+                    <button class="tcg-btn" id="retryPrioritizeBtn" style="display:none;" onclick="runPrioritize()">🔁 Tekrar Dene</button>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:16px;">
+                    <div class="tcg-card" id="col-high" data-level="high" ondragover="event.preventDefault()" ondrop="onKanbanDrop(event)">
+                        <h4 style="color:var(--ai-red);">High</h4><div class="kanban-list"></div>
+                    </div>
+                    <div class="tcg-card" id="col-medium" data-level="medium" ondragover="event.preventDefault()" ondrop="onKanbanDrop(event)">
+                        <h4 style="color:var(--ai-yellow);">Medium</h4><div class="kanban-list"></div>
+                    </div>
+                    <div class="tcg-card" id="col-low" data-level="low" ondragover="event.preventDefault()" ondrop="onKanbanDrop(event)">
+                        <h4 style="color:var(--text-muted);">Low</h4><div class="kanban-list"></div>
+                    </div>
+                </div>
+                <div class="tcg-actions">
+                    <button class="tcg-btn" onclick="goToStep(2)">← Geri</button>
+                    <button class="tcg-btn primary" onclick="goToStep(4)">Devam →</button>
+                </div>
+            `;
+            renderKanban();
+        }
+
+        async function runPrioritize() {
+            const btn = document.getElementById("prioritizeBtn");
+            const retryBtn = document.getElementById("retryPrioritizeBtn");
+            btn.disabled = true;
+            try {
+                await promoteCandidateTitles();
+                _session = await API.post(`/testcasegen/sessions/${_session.id}/prioritize`);
+                retryBtn.style.display = "none";
+                renderKanban();
+                Toast.success("Önceliklendirme tamamlandı");
+            } catch (e) {
+                Toast.error(e.message);
+                retryBtn.style.display = "inline-block";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderKanban() {
+            ["high", "medium", "low"].forEach(level => {
+                const col = document.querySelector(`#col-${level} .kanban-list`);
+                const titles = _session.titles.filter(t => t.level === level);
+                col.innerHTML = titles.map(t => `
+                    <div class="tcg-kanban-card" draggable="true" data-id="${t.id}"
+                         style="padding:8px; border:1px solid var(--border-color); border-radius:var(--ai-radius);
+                                margin-bottom:8px; cursor:move; background:var(--bg-primary);"
+                         ondragstart="event.dataTransfer.setData('text/plain', '${t.id}')">
+                        <div>${escapeHtml(t.text)}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">${escapeHtml(t.rationale || "")}</div>
+                    </div>`).join("");
+            });
+        }
+
+        async function onKanbanDrop(event) {
+            event.preventDefault();
+            const titleId = event.dataTransfer.getData("text/plain");
+            const level = event.currentTarget.dataset.level;
+            try {
+                _session = await API.put(`/testcasegen/sessions/${_session.id}/titles/${titleId}/priority`, { level });
+                renderKanban();
+            } catch (e) {
+                Toast.error(e.message);
+            }
         }
 
         let _tcgWs = null;
