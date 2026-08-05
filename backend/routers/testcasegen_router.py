@@ -317,3 +317,31 @@ async def edit_step(session_id: str, tc_id: str, idx: int, body: StepIn, current
         raise HTTPException(404, "Test case bulunamadı")
     svc.save_session(current_user.id, session_id, session)
     return {"testcases": session["testcases"]}
+
+
+# ── Export ───────────────────────────────────────────────────────────────
+
+class ExportIn(BaseModel):
+    testcase_ids: list[str]
+
+
+@router.post("/sessions/{session_id}/export")
+async def export_testcases(session_id: str, body: ExportIn, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    if not body.testcase_ids:
+        raise HTTPException(400, "Dışa aktarılacak test case seçilmedi")
+
+    titles_by_id = {t["id"]: t for t in session["titles"]}
+    testcases = [tc for tc in session["testcases"] if tc["id"] in body.testcase_ids]
+    if not testcases:
+        raise HTTPException(400, "Seçilen test case'ler bulunamadı")
+
+    wb = svc.build_export_workbook(testcases, titles_by_id)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="testcases_{session_id[:8]}.xlsx"'},
+    )
