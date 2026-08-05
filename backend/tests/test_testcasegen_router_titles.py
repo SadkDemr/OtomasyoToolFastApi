@@ -104,10 +104,11 @@ def test_add_edit_delete_title(client):
     session = client.post("/api/testcasegen/sessions").json()
     resp = client.post(
         f"/api/testcasegen/sessions/{session['id']}/titles",
-        json={"screen_index": 0, "text": "Elle eklenen baslik"},
+        json={"screen_indices": [0], "text": "Elle eklenen baslik"},
     )
     assert resp.status_code == 200
     title_id = resp.json()["titles"][0]["id"]
+    assert resp.json()["titles"][0]["screen_indices"] == [0]
 
     resp2 = client.put(
         f"/api/testcasegen/sessions/{session['id']}/titles/{title_id}",
@@ -117,3 +118,22 @@ def test_add_edit_delete_title(client):
 
     resp3 = client.delete(f"/api/testcasegen/sessions/{session['id']}/titles/{title_id}")
     assert resp3.json()["titles"] == []
+
+
+def test_add_title_with_multiple_screen_indices(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"screen_indices": [0, 1, 2], "text": "Kar Payı Hesaplama Akışı"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["titles"][0]["screen_indices"] == [0, 1, 2]
+
+
+def test_add_title_with_empty_screen_indices_returns_400(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"screen_indices": [], "text": "Baslik"},
+    )
+    assert resp.status_code == 400

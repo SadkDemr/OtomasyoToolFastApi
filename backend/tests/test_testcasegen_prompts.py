@@ -28,7 +28,8 @@ def test_rationale_prompt_asks_for_explanation_not_decision():
 
 
 def test_testcase_prompt_includes_all_four_rules():
-    prompt = build_testcase_prompt("Ödeme onaylanır", "Ekranda tutar ve onay butonu var", "not yok")
+    screens = [{"index": 0, "summary": "Ekranda tutar ve onay butonu var", "note": "not yok"}]
+    prompt = build_testcase_prompt("Ödeme onaylanır", screens)
     assert "pasif" in prompt.lower()
     assert "@Param" in prompt or "@" in prompt
     assert "Step Expected" in prompt
@@ -36,7 +37,27 @@ def test_testcase_prompt_includes_all_four_rules():
 
 
 def test_testcase_prompt_requires_json_steps_schema():
-    prompt = build_testcase_prompt("Baslik", "ozet", "not")
+    screens = [{"index": 0, "summary": "ozet", "note": "not"}]
+    prompt = build_testcase_prompt("Baslik", screens)
     assert "steps" in prompt
     assert "step_action" in prompt
     assert "step_expected" in prompt
+
+
+def test_testcase_prompt_multi_screen_includes_all_screens_in_order():
+    screens = [
+        {"index": 0, "summary": "Login ekranı", "note": ""},
+        {"index": 1, "summary": "Diğer İşlemler menüsü", "note": ""},
+        {"index": 2, "summary": "Kar Payı Hesapla ekranı", "note": ""},
+    ]
+    prompt = build_testcase_prompt("Kar Payı Hesaplama Akışı", screens)
+    assert "Login ekranı" in prompt
+    assert "Diğer İşlemler menüsü" in prompt
+    assert "Kar Payı Hesapla ekranı" in prompt
+    assert prompt.index("Login ekranı") < prompt.index("Diğer İşlemler menüsü") < prompt.index("Kar Payı Hesapla ekranı")
+
+
+def test_testcase_prompt_single_screen_has_no_flow_instruction():
+    screens = [{"index": 0, "summary": "tek ekran", "note": ""}]
+    prompt = build_testcase_prompt("Baslik", screens)
+    assert "SIRAYLA" not in prompt

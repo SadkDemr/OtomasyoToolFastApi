@@ -31,7 +31,7 @@ def _session_with_generated_testcase(client, monkeypatch):
     session = client.post("/api/testcasegen/sessions").json()
     session = client.post(
         f"/api/testcasegen/sessions/{session['id']}/titles",
-        json={"screen_index": 0, "text": "Baslik"},
+        json={"screen_indices": [0], "text": "Baslik"},
     ).json()
     title_id = session["titles"][0]["id"]
     gen = client.post(

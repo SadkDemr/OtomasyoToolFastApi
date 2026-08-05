@@ -113,7 +113,11 @@ def load_session(user_id: int, session_id: str) -> dict:
     if not json_path.exists():
         raise FileNotFoundError(f"Oturum bulunamadı: {session_id}")
     with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        session = json.load(f)
+    for title in session.get("titles", []):
+        if "screen_indices" not in title and "screen_index" in title:
+            title["screen_indices"] = [title.pop("screen_index")]
+    return session
 
 
 def save_session(user_id: int, session_id: str, session: dict) -> None:
@@ -147,6 +151,8 @@ def add_screen(user_id: int, session_id: str, image_bytes: bytes, ext: str = ".p
         "candidate_titles": [],
         "screen_summary": "",
         "parse_error": False,
+        "flow_id": None,
+        "flow_name": None,
     })
     save_session(user_id, session_id, session)
     return session
@@ -177,9 +183,25 @@ def reorder_screens(user_id: int, session_id: str, order: list) -> dict:
     return session
 
 
-def update_screen_note(user_id: int, session_id: str, index: int, note: str) -> dict:
+_UNSET = object()  # "note"/"flow_id"/"flow_name" ayirt edici: hic gonderilmedi (dokunma) vs. null gonderildi (temizle)
+
+
+def update_screen_note(
+    user_id: int,
+    session_id: str,
+    index: int,
+    note=_UNSET,
+    flow_id=_UNSET,
+    flow_name=_UNSET,
+) -> dict:
     session = load_session(user_id, session_id)
-    session["screens"][index]["user_note"] = note
+    screen = session["screens"][index]
+    if note is not _UNSET:
+        screen["user_note"] = note
+    if flow_id is not _UNSET:
+        screen["flow_id"] = flow_id  # None gonderilirse akistan cikarir
+    if flow_name is not _UNSET:
+        screen["flow_name"] = flow_name
     save_session(user_id, session_id, session)
     return session
 
@@ -349,13 +371,24 @@ def build_rationale_prompt(title_text: str, level: str, score: float) -> str:
     )
 
 
-def build_testcase_prompt(title_text: str, screen_summary: str, screen_note: str) -> str:
+def build_testcase_prompt(title_text: str, screens: list) -> str:
+    """screens: [{"index": int, "summary": str, "note": str}, ...] — akistaki ekranlar, sirali."""
+    screens_block = "\n".join(
+        f"Ekran {i + 1} (özet: \"{s.get('summary', '')}\", not: \"{s.get('note', '')}\")"
+        for i, s in enumerate(screens)
+    )
+    flow_note = (
+        "Bu test case, kullanıcının yukarıdaki ekranları SIRAYLA baştan sona kat ederek "
+        "ulaştığı tek bir akıştır — adımların TAMAMI bu ekran sırasını takip etmeli "
+        "(önce Ekran 1'e ait gezinme adımları, sonra Ekran 2'ye ait, ... son ekrandaki asıl işlem adımlarıyla biter).\n\n"
+        if len(screens) > 1 else ""
+    )
     return (
         "Sen bir mobil uygulama test otomasyon uzmanısın. Aşağıdaki test case başlığı için "
         "adım adım test senaryosu üret.\n\n"
         f"Test case başlığı: \"{title_text}\"\n"
-        f"Ekran özeti: \"{screen_summary}\"\n"
-        f"Kullanıcı notu: \"{screen_note}\"\n\n"
+        f"{screens_block}\n\n"
+        f"{flow_note}"
         "KESİN KURALLAR:\n"
         "1. Her Step Action pasif fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
         "\"tıkla\", \"aç\" gibi EMİR KİPİ YASAK).\n"

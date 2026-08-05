@@ -118,7 +118,9 @@ async def reorder_screens(session_id: str, body: ReorderIn, current_user: User =
 
 
 class NoteIn(BaseModel):
-    note: str
+    note: Optional[str] = None
+    flow_id: Optional[str] = None
+    flow_name: Optional[str] = None
 
 
 @router.put("/sessions/{session_id}/screens/{idx}")
@@ -126,7 +128,17 @@ async def edit_screen_note(session_id: str, idx: int, body: NoteIn, current_user
     session = _load_or_404(current_user.id, session_id)
     if idx < 0 or idx >= len(session["screens"]):
         raise HTTPException(404, "Ekran bulunamadı")
-    return svc.update_screen_note(current_user.id, session_id, idx, body.note)
+    provided = body.model_dump(exclude_unset=True)
+    if not provided:
+        raise HTTPException(400, "Güncellenecek alan belirtilmedi")
+    kwargs = {}
+    if "note" in provided:
+        kwargs["note"] = provided["note"]
+    if "flow_id" in provided:
+        kwargs["flow_id"] = provided["flow_id"]
+    if "flow_name" in provided:
+        kwargs["flow_name"] = provided["flow_name"]
+    return svc.update_screen_note(current_user.id, session_id, idx, **kwargs)
 
 
 @router.delete("/sessions/{session_id}/screens/{idx}")
@@ -202,16 +214,18 @@ async def extract_titles(session_id: str, current_user: User = Depends(get_curre
 
 
 class TitleIn(BaseModel):
-    screen_index: int
+    screen_indices: list[int]
     text: str
 
 
 @router.post("/sessions/{session_id}/titles")
 async def add_title(session_id: str, body: TitleIn, current_user: User = Depends(get_current_user)):
     session = _load_or_404(current_user.id, session_id)
+    if not body.screen_indices:
+        raise HTTPException(400, "En az bir ekran belirtilmeli")
     session["titles"].append({
         "id": str(uuid.uuid4()),
-        "screen_index": body.screen_index,
+        "screen_indices": body.screen_indices,
         "text": body.text,
         "score": None,
         "level": None,
@@ -258,8 +272,11 @@ async def prioritize(session_id: str, current_user: User = Depends(get_current_u
         if title.get("level_source") == "manual":
             continue  # kullanıcı elle ayarladı, otomatik hesaplama ezmez
 
-        screen = screens_by_index.get(title["screen_index"], {})
-        score, level = svc.score_title(title["text"], screen.get("user_note", ""), title["screen_index"])
+        indices = title["screen_indices"]
+        combined_note = " ".join(
+            screens_by_index[i]["user_note"] for i in indices if i in screens_by_index and screens_by_index[i].get("user_note")
+        )
+        score, level = svc.score_title(title["text"], combined_note, indices[-1])
         title["score"] = score
         title["level"] = level
         title["level_source"] = "rule"
@@ -313,8 +330,15 @@ async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current
         title = titles_by_id.get(title_id)
         if not title:
             continue
-        screen = screens_by_index.get(title["screen_index"], {})
-        prompt = svc.build_testcase_prompt(title["text"], screen.get("screen_summary", ""), screen.get("user_note", ""))
+        screens = [
+            {
+                "index": i,
+                "summary": screens_by_index[i].get("screen_summary", ""),
+                "note": screens_by_index[i].get("user_note", ""),
+            }
+            for i in title["screen_indices"] if i in screens_by_index
+        ]
+        prompt = svc.build_testcase_prompt(title["text"], screens)
         try:
             raw = await ai_service.ollama_generate_text(prompt)
         except Exception as e:

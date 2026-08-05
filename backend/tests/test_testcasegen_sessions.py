@@ -87,3 +87,47 @@ def test_delete_screen_removes_and_reindexes():
     assert svc.screen_image_path(1, session["id"], 0, ".png").read_bytes() == b"b"
     # Verify old index 1 file no longer exists
     assert not svc.screen_image_path(1, session["id"], 1, ".png").exists()
+
+
+def test_add_screen_defaults_flow_fields_to_none():
+    session = svc.create_session(user_id=1)
+    session = svc.add_screen(1, session["id"], b"a", note="A")
+    assert session["screens"][0]["flow_id"] is None
+    assert session["screens"][0]["flow_name"] is None
+
+
+def test_update_screen_note_sets_flow_id_and_name():
+    session = svc.create_session(user_id=1)
+    session = svc.add_screen(1, session["id"], b"a", note="A")
+    session = svc.update_screen_note(1, session["id"], index=0, flow_id="f1", flow_name="Kar Payı Hesaplama")
+    assert session["screens"][0]["flow_id"] == "f1"
+    assert session["screens"][0]["flow_name"] == "Kar Payı Hesaplama"
+    assert session["screens"][0]["user_note"] == "A"  # note verilmedi, dokunulmadi
+
+
+def test_update_screen_note_can_explicitly_clear_flow_id():
+    session = svc.create_session(user_id=1)
+    session = svc.add_screen(1, session["id"], b"a", note="A")
+    session = svc.update_screen_note(1, session["id"], index=0, flow_id="f1", flow_name="Akis")
+    session = svc.update_screen_note(1, session["id"], index=0, flow_id=None, flow_name=None)
+    assert session["screens"][0]["flow_id"] is None
+    assert session["screens"][0]["flow_name"] is None
+
+
+def test_load_session_migrates_old_screen_index_titles():
+    session = svc.create_session(user_id=1)
+    session["titles"] = [{"id": "t1", "screen_index": 2, "text": "Eski format basligi"}]
+    svc.save_session(1, session["id"], session)
+
+    loaded = svc.load_session(1, session["id"])
+    assert loaded["titles"][0]["screen_indices"] == [2]
+    assert "screen_index" not in loaded["titles"][0]
+
+
+def test_load_session_leaves_new_format_titles_untouched():
+    session = svc.create_session(user_id=1)
+    session["titles"] = [{"id": "t1", "screen_indices": [0, 1, 2], "text": "Akis basligi"}]
+    svc.save_session(1, session["id"], session)
+
+    loaded = svc.load_session(1, session["id"])
+    assert loaded["titles"][0]["screen_indices"] == [0, 1, 2]

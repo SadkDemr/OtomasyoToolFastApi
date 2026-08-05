@@ -147,6 +147,49 @@ def test_edit_screen_note_negative_index_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_edit_screen_note_sets_flow_id_and_name(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+
+    resp = client.put(
+        f"/api/testcasegen/sessions/{session['id']}/screens/0",
+        json={"flow_id": "f1", "flow_name": "Kar Payı Hesaplama"},
+    )
+    assert resp.status_code == 200
+    screen = resp.json()["screens"][0]
+    assert screen["flow_id"] == "f1"
+    assert screen["flow_name"] == "Kar Payı Hesaplama"
+
+
+def test_edit_screen_note_can_clear_flow_id_with_explicit_null(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+    client.put(
+        f"/api/testcasegen/sessions/{session['id']}/screens/0",
+        json={"flow_id": "f1", "flow_name": "Akis"},
+    )
+
+    resp = client.put(
+        f"/api/testcasegen/sessions/{session['id']}/screens/0",
+        json={"flow_id": None, "flow_name": None},
+    )
+    assert resp.status_code == 200
+    screen = resp.json()["screens"][0]
+    assert screen["flow_id"] is None
+    assert screen["flow_name"] is None
+
+
+def test_edit_screen_note_empty_body_returns_400(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]
+    client.post(f"/api/testcasegen/sessions/{session['id']}/screens/upload", files=files)
+
+    resp = client.put(f"/api/testcasegen/sessions/{session['id']}/screens/0", json={})
+    assert resp.status_code == 400
+
+
 def test_delete_screen_out_of_range_returns_404(client):
     session = client.post("/api/testcasegen/sessions").json()
     files = [("files", ("a.png", io.BytesIO(b"a"), "image/png"))]

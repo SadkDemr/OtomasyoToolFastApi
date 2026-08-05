@@ -24,7 +24,7 @@ def _session_with_title(client):
     session = client.post("/api/testcasegen/sessions").json()
     session = client.post(
         f"/api/testcasegen/sessions/{session['id']}/titles",
-        json={"screen_index": 0, "text": "Tutar girilip onaylanır"},
+        json={"screen_indices": [0], "text": "Tutar girilip onaylanır"},
     ).json()
     return session
 
@@ -85,11 +85,11 @@ def test_reprioritize_does_not_overwrite_manual_override(client, monkeypatch):
     session = client.post("/api/testcasegen/sessions").json()
     session = client.post(
         f"/api/testcasegen/sessions/{session['id']}/titles",
-        json={"screen_index": 0, "text": "Tutar girilip onaylanır"},
+        json={"screen_indices": [0], "text": "Tutar girilip onaylanır"},
     ).json()
     session = client.post(
         f"/api/testcasegen/sessions/{session['id']}/titles",
-        json={"screen_index": 0, "text": "SSS ekranı görüntülenir"},
+        json={"screen_indices": [0], "text": "SSS ekranı görüntülenir"},
     ).json()
 
     session = client.post(f"/api/testcasegen/sessions/{session['id']}/prioritize").json()
@@ -110,6 +110,38 @@ def test_reprioritize_does_not_overwrite_manual_override(client, monkeypatch):
     assert manual_title["level"] == "low"
     assert manual_title["level_source"] == "manual"
     assert other_title["level_source"] == "rule"
+
+
+def test_prioritize_combines_notes_from_all_flow_screens(client, monkeypatch):
+    captured = {}
+    original_score_title = svc.score_title
+
+    def spy_score_title(text, screen_note, screen_index):
+        captured["screen_note"] = screen_note
+        captured["screen_index"] = screen_index
+        return original_score_title(text, screen_note, screen_index)
+
+    async def fake_text(prompt, model=None, timeout=60.0):
+        return "gerekce"
+
+    monkeypatch.setattr(svc, "score_title", spy_score_title)
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+
+    session = client.post("/api/testcasegen/sessions").json()
+    session_id = session["id"]
+    svc.add_screen(1, session_id, b"a", note="ilk ekran notu")
+    svc.add_screen(1, session_id, b"b", note="ikinci ekran notu")
+
+    client.post(
+        f"/api/testcasegen/sessions/{session_id}/titles",
+        json={"screen_indices": [0, 1], "text": "Akis basligi"},
+    )
+
+    resp = client.post(f"/api/testcasegen/sessions/{session_id}/prioritize")
+    assert resp.status_code == 200
+    assert "ilk ekran notu" in captured["screen_note"]
+    assert "ikinci ekran notu" in captured["screen_note"]
+    assert captured["screen_index"] == 1  # screen_indices[-1] kullanilir
 
 
 def test_manual_priority_rejects_invalid_level(client):

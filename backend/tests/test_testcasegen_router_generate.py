@@ -24,7 +24,7 @@ def _session_with_title(client):
     session = client.post("/api/testcasegen/sessions").json()
     session = client.post(
         f"/api/testcasegen/sessions/{session['id']}/titles",
-        json={"screen_index": 0, "text": "Odeme onaylanir"},
+        json={"screen_indices": [0], "text": "Odeme onaylanir"},
     ).json()
     return session
 
@@ -82,6 +82,43 @@ def test_generate_testcases_ollama_failure_returns_503(client, monkeypatch):
         json={"title_ids": [title_id]},
     )
     assert resp.status_code == 503
+
+
+def test_generate_testcases_multi_screen_flow_includes_all_screens_in_prompt(client, monkeypatch):
+    captured = {}
+
+    async def fake_text(prompt, model=None, timeout=60.0):
+        captured["prompt"] = prompt
+        return '{"steps": [{"step_action": "X tıklanır", "step_expected": "Y"}]}'
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+
+    session = client.post("/api/testcasegen/sessions").json()
+    session_id = session["id"]
+    for note in ("Login ekranı", "Diğer İşlemler ekranı", "Kar Payı Hesapla ekranı"):
+        svc.add_screen(1, session_id, b"fake-png", note="")
+    loaded = svc.load_session(1, session_id)
+    summaries = ["Login ekranı görüntülenir", "Diğer İşlemler menüsü açılır", "Kar Payı Hesapla ekranı açılır"]
+    for i, summary in enumerate(summaries):
+        loaded["screens"][i]["screen_summary"] = summary
+    svc.save_session(1, session_id, loaded)
+
+    title = client.post(
+        f"/api/testcasegen/sessions/{session_id}/titles",
+        json={"screen_indices": [0, 1, 2], "text": "Kar Payı Hesaplama Akışı"},
+    ).json()["titles"][0]
+
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session_id}/generate-testcases",
+        json={"title_ids": [title["id"]]},
+    )
+    assert resp.status_code == 200
+
+    prompt = captured["prompt"]
+    assert "Login ekranı görüntülenir" in prompt
+    assert "Diğer İşlemler menüsü açılır" in prompt
+    assert "Kar Payı Hesapla ekranı açılır" in prompt
+    assert prompt.index(summaries[0]) < prompt.index(summaries[1]) < prompt.index(summaries[2])
 
 
 def test_edit_step_revalidates(client, monkeypatch):
