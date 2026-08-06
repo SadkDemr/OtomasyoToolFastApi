@@ -66,8 +66,12 @@ class DeviceService:
     def sync_adb_devices(self, db: Session):
         """ADB ile bağlı cihazları tarar ve veritabanını günceller"""
         try:
-            # ADB yolunu bul
-            adb_path = shutil.which("adb")
+            # ADB yolunu bul (once proje-ici platform-tools, sonra PATH, sonra bilinen sabit konumlar
+            # - emulator_service.py::_find_adb() ile ayni oncelik sirasi)
+            base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            adb_path = os.path.join(base, "platform-tools", "adb.exe")
+            if not os.path.exists(adb_path):
+                adb_path = shutil.which("adb")
             if not adb_path:
                 user_path = os.path.expanduser("~")
                 paths = [
@@ -79,8 +83,8 @@ class DeviceService:
                     if os.path.exists(p):
                         adb_path = p
                         break
-            
-            if not adb_path: 
+
+            if not adb_path:
                 print("❌ ADB bulunamadı.")
                 return
 
