@@ -12,6 +12,11 @@ from services import ai_service, testcasegen_service as svc
 
 class _FakeUser:
     id = 1
+    full_name = "Test Kullanici"
+    username = "tester"
+    tcg_area_path = "Mobil\\Hesaplama"
+    tcg_assigned_to = "Test Kullanici"
+    tcg_state = "Ready"
 
 
 @pytest.fixture
@@ -57,3 +62,16 @@ def test_export_no_testcase_ids_returns_400(client, monkeypatch):
     session_id, _ = _session_with_generated_testcase(client, monkeypatch)
     resp = client.post(f"/api/testcasegen/sessions/{session_id}/export", json={"testcase_ids": []})
     assert resp.status_code == 400
+
+
+def test_export_writes_area_path_assigned_to_state_on_testcase_row(client, monkeypatch):
+    session_id, tc_id = _session_with_generated_testcase(client, monkeypatch)
+    resp = client.post(f"/api/testcasegen/sessions/{session_id}/export", json={"testcase_ids": [tc_id]})
+    assert resp.status_code == 200
+
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    ws = wb.active
+    testcase_row = ws[2]
+    assert testcase_row[6].value == "Mobil\\Hesaplama"
+    assert testcase_row[7].value == "Test Kullanici"
+    assert testcase_row[8].value == "Ready"

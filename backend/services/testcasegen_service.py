@@ -405,7 +405,7 @@ def build_testcase_prompt(title_text: str, screens: list) -> str:
 # Excel export builder (ADO format)
 # ──────────────────────────────────────────────────────
 
-def build_export_workbook(testcases: list, titles_by_id: dict):
+def build_export_workbook(testcases: list, titles_by_id: dict, area_path: str, assigned_to: str, state: str):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Test Cases"
@@ -422,7 +422,7 @@ def build_export_workbook(testcases: list, titles_by_id: dict):
 
     for tc in testcases:
         title_text = titles_by_id.get(tc["title_id"], {}).get("text", "")
-        ws.append([None, "Test Case", title_text, None, None, None, None, None, None])
+        ws.append([None, "Test Case", title_text, None, None, None, area_path, assigned_to, state])
         for i, step in enumerate(tc["steps"], start=1):
             ws.append([None, None, None, i, step.get("step_action", ""),
                        step.get("step_expected", ""), None, None, None])

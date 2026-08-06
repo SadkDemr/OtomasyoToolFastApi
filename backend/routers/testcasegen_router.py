@@ -434,7 +434,11 @@ async def export_testcases(session_id: str, body: ExportIn, current_user: User =
     if not testcases:
         raise HTTPException(400, "Seçilen test case'ler bulunamadı")
 
-    wb = svc.build_export_workbook(testcases, titles_by_id)
+    defaults = _tcg_defaults_dict(current_user)
+    wb = svc.build_export_workbook(
+        testcases, titles_by_id,
+        defaults["area_path"], defaults["assigned_to"], defaults["state"],
+    )
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)

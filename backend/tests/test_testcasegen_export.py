@@ -16,7 +16,7 @@ def _sample_testcases():
 
 def test_export_header_row():
     testcases, titles_by_id = _sample_testcases()
-    wb = build_export_workbook(testcases, titles_by_id)
+    wb = build_export_workbook(testcases, titles_by_id, "Alan\\Yolu", "Atanan Kisi", "Design")
     ws = wb.active
     header = [cell.value for cell in ws[1]]
     assert header == [
@@ -28,7 +28,7 @@ def test_export_header_row():
 
 def test_export_title_row_has_title_and_type_only():
     testcases, titles_by_id = _sample_testcases()
-    wb = build_export_workbook(testcases, titles_by_id)
+    wb = build_export_workbook(testcases, titles_by_id, "Alan\\Yolu", "Atanan Kisi", "Design")
     ws = wb.active
     title_row = [cell.value for cell in ws[2]]
     assert title_row[1] == "Test Case"
@@ -39,7 +39,7 @@ def test_export_title_row_has_title_and_type_only():
 
 def test_export_step_rows_have_step_fields_only():
     testcases, titles_by_id = _sample_testcases()
-    wb = build_export_workbook(testcases, titles_by_id)
+    wb = build_export_workbook(testcases, titles_by_id, "Alan\\Yolu", "Atanan Kisi", "Design")
     ws = wb.active
     step1_row = [cell.value for cell in ws[3]]
     assert step1_row[2] is None  # Title boş
@@ -53,7 +53,7 @@ def test_export_step_rows_have_step_fields_only():
 
 def test_export_uses_arial_font():
     testcases, titles_by_id = _sample_testcases()
-    wb = build_export_workbook(testcases, titles_by_id)
+    wb = build_export_workbook(testcases, titles_by_id, "Alan\\Yolu", "Atanan Kisi", "Design")
     ws = wb.active
     assert ws[3][4].font.name == "Arial"
 
@@ -64,7 +64,7 @@ def test_export_multiple_testcases_appended_sequentially():
         {"id": "tc1", "title_id": "t1", "steps": [{"step_action": "A", "step_expected": "B"}]},
         {"id": "tc2", "title_id": "t2", "steps": [{"step_action": "C", "step_expected": "D"}]},
     ]
-    wb = build_export_workbook(testcases, titles_by_id)
+    wb = build_export_workbook(testcases, titles_by_id, "Alan\\Yolu", "Atanan Kisi", "Design")
     ws = wb.active
     # satir1=header, satir2=tc1 baslik, satir3=tc1 step, satir4=tc2 baslik, satir5=tc2 step
     assert ws[4][2].value == "Başlık 2"
