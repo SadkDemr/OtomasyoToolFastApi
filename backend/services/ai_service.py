@@ -183,11 +183,11 @@ async def _ollama_post(payload: dict, timeout: float) -> str:
         return (resp.json().get("response") or "").strip()
 
 
-async def ollama_generate_text(prompt: str, model: Optional[str] = None, timeout: float = 60.0) -> str:
+async def ollama_generate_text(prompt: str, model: Optional[str] = None, timeout: float = 300.0) -> str:
     """Ollama'ya salt metin isteği gönderir, 'response' alanını döndürür."""
     return await _ollama_post({"model": model, "prompt": prompt, "stream": False}, timeout)
 
 
-async def ollama_generate_vision(prompt: str, images_b64: List[str], model: Optional[str] = None, timeout: float = 90.0) -> str:
+async def ollama_generate_vision(prompt: str, images_b64: List[str], model: Optional[str] = None, timeout: float = 300.0) -> str:
     """Ollama'ya görüntü(ler) + metin isteği gönderir (vision-capable model gerekir)."""
     return await _ollama_post({"model": model, "prompt": prompt, "images": images_b64, "stream": False}, timeout)
