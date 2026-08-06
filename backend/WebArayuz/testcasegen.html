@@ -451,6 +451,16 @@
         let _selectedScreenIndices = new Set();
         const FLOW_COLORS = ["var(--ai-accent)", "var(--ai-cyan)", "var(--ai-green)", "var(--ai-yellow)", "var(--ai-red)"];
 
+        function _newFlowId() {
+            // crypto.randomUUID() sadece güvenli bağlamda (HTTPS/localhost) var —
+            // düz HTTP ile sunucudan açılan sayfada undefined olup TypeError fırlatır.
+            if (window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+            return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0;
+                return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+            });
+        }
+
         function flowColor(flowId) {
             let hash = 0;
             for (let i = 0; i < flowId.length; i++) hash = (hash * 31 + flowId.charCodeAt(i)) >>> 0;
@@ -534,7 +544,7 @@
         async function createFlowFromSelection() {
             if (_selectedScreenIndices.size < 2) return;
             const name = (prompt("Akış adı:", "") || "").trim();
-            const flowId = crypto.randomUUID();
+            const flowId = _newFlowId();
             const flowName = name || `Akış ${flowId.slice(0, 4)}`;
             const indices = [..._selectedScreenIndices].sort((a, b) => a - b);
             try {
