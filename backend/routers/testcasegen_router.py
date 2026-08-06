@@ -15,7 +15,9 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from database import get_db
 from routers.auth import get_current_user
 from models.db_models import User
 from services import ai_service, testcasegen_service as svc
@@ -372,6 +374,47 @@ async def edit_step(session_id: str, tc_id: str, idx: int, body: StepIn, current
         raise HTTPException(404, "Test case bulunamadı")
     svc.save_session(current_user.id, session_id, session)
     return {"testcases": session["testcases"]}
+
+
+# ── Export Varsayılanları ────────────────────────────────────────────────
+
+class TcgDefaultsOut(BaseModel):
+    area_path: str
+    assigned_to: str
+    state: str
+
+
+def _tcg_defaults_dict(user: User) -> dict:
+    return {
+        "area_path": user.tcg_area_path or "",
+        "assigned_to": user.tcg_assigned_to or user.full_name or user.username,
+        "state": user.tcg_state or "Design",
+    }
+
+
+@router.get("/defaults", response_model=TcgDefaultsOut)
+async def get_tcg_defaults(current_user: User = Depends(get_current_user)):
+    return _tcg_defaults_dict(current_user)
+
+
+class TcgDefaultsIn(BaseModel):
+    area_path: str = ""
+    assigned_to: str = ""
+    state: Literal["Design", "Ready", "Closed"] = "Design"
+
+
+@router.put("/defaults", response_model=TcgDefaultsOut)
+async def set_tcg_defaults(
+    body: TcgDefaultsIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.tcg_area_path = body.area_path
+    current_user.tcg_assigned_to = body.assigned_to
+    current_user.tcg_state = body.state
+    db.commit()
+    db.refresh(current_user)
+    return _tcg_defaults_dict(current_user)
 
 
 # ── Export ───────────────────────────────────────────────────────────────
