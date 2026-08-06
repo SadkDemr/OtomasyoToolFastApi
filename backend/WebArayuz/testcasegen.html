@@ -968,20 +968,29 @@
             }
         }
 
+        // Export butonu tıklandığında aynı click önce odaklı input'un change'ini (blur) tetikleyip
+        // saveTcgDefaults()'u başlatır, sonra exportSelectedTestcases() çalışır. İkisi de async olduğu
+        // için await edilmeden bırakılırsa export, henüz commit edilmemiş eski değerleri okuyabilir
+        // (race condition). Bu promise'i paylaşarak export, o an süren kaydı bekler.
+        let _tcgDefaultsSave = Promise.resolve();
+
         async function saveTcgDefaults() {
-            const fields = ["tcgAreaPath", "tcgAssignedTo", "tcgState"].map(id => document.getElementById(id));
-            fields.forEach(el => { el.disabled = true; });
-            try {
-                await API.put("/testcasegen/defaults", {
-                    area_path: document.getElementById("tcgAreaPath").value,
-                    assigned_to: document.getElementById("tcgAssignedTo").value,
-                    state: document.getElementById("tcgState").value,
-                });
-            } catch (e) {
-                Toast.error(e.message);
-            } finally {
-                fields.forEach(el => { el.disabled = false; });
-            }
+            _tcgDefaultsSave = (async () => {
+                const fields = ["tcgAreaPath", "tcgAssignedTo", "tcgState"].map(id => document.getElementById(id));
+                fields.forEach(el => { el.disabled = true; });
+                try {
+                    await API.put("/testcasegen/defaults", {
+                        area_path: document.getElementById("tcgAreaPath").value,
+                        assigned_to: document.getElementById("tcgAssignedTo").value,
+                        state: document.getElementById("tcgState").value,
+                    });
+                } catch (e) {
+                    Toast.error(e.message);
+                } finally {
+                    fields.forEach(el => { el.disabled = false; });
+                }
+            })();
+            await _tcgDefaultsSave;
         }
 
         async function runGenerateTestcases() {
@@ -1090,6 +1099,7 @@
         async function exportSelectedTestcases() {
             const ids = [...document.querySelectorAll(".tcg-export-checkbox:checked")].map(el => el.value);
             if (!ids.length) { Toast.error("Dışa aktarılacak test case seçilmedi"); return; }
+            await _tcgDefaultsSave;
             try {
                 const resp = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/export`, {
                     method: "POST",
