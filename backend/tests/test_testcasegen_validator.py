@@ -61,3 +61,17 @@ def test_validate_steps_preserves_original_fields():
     result = validate_steps(steps)
     assert result[0]["step_action"] == "X"
     assert result[0]["step_expected"] == "Y"
+
+
+def test_echoed_screen_context_is_flagged():
+    steps = [{"step_action": "Ekran 1 (özet: '', not: 'Login ') açılır", "step_expected": "Ekran 1 açılır"}]
+    result = validate_steps(steps)
+    rules = [v["rule"] for v in result[0]["violations"]]
+    assert "context_echo" in rules
+
+
+def test_normal_step_is_not_flagged_as_context_echo():
+    steps = [{"step_action": '"Daha Fazlası" butonuna tıklanır', "step_expected": "Menü görülür"}]
+    result = validate_steps(steps)
+    rules = [v["rule"] for v in result[0]["violations"]]
+    assert "context_echo" not in rules

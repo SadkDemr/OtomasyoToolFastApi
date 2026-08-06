@@ -61,3 +61,10 @@ def test_testcase_prompt_single_screen_has_no_flow_instruction():
     screens = [{"index": 0, "summary": "tek ekran", "note": ""}]
     prompt = build_testcase_prompt("Baslik", screens)
     assert "SIRAYLA" not in prompt
+
+
+def test_testcase_prompt_forbids_echoing_screen_context_and_gives_example():
+    screens = [{"index": 0, "summary": "", "note": "Hesaplama Araçları"}]
+    prompt = build_testcase_prompt("Baslik", screens)
+    assert "KOPYALAMA" in prompt
+    assert "ÖRNEK" in prompt

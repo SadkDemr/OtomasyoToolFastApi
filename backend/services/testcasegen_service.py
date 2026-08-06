@@ -319,12 +319,22 @@ def _check_empty_expected(step_expected: str) -> Optional[str]:
     return None
 
 
+_CONTEXT_ECHO_PATTERN = re.compile(r'ekran\s*\d+|özet\s*:|not\s*:', re.IGNORECASE)
+
+
+def _check_context_echo(step_action: str) -> Optional[str]:
+    if _CONTEXT_ECHO_PATTERN.search(step_action):
+        return "Step Action, prompt'a verilen ekran bağlamını (\"Ekran N\", \"özet:\", \"not:\") birebir tekrar ediyor gibi görünüyor"
+    return None
+
+
 def validate_steps(steps: list) -> list:
     checks = [
         ("imperative_mood", lambda s: _check_imperative(s["step_action"])),
         ("missing_variable_notation", lambda s: _check_variable_notation(s["step_action"])),
         ("multiple_actions", lambda s: _check_multiple_actions(s["step_action"])),
         ("empty_expected", lambda s: _check_empty_expected(s["step_expected"])),
+        ("context_echo", lambda s: _check_context_echo(s["step_action"])),
     ]
     result = []
     for step in steps:
@@ -383,19 +393,40 @@ def build_testcase_prompt(title_text: str, screens: list) -> str:
         "(önce Ekran 1'e ait gezinme adımları, sonra Ekran 2'ye ait, ... son ekrandaki asıl işlem adımlarıyla biter).\n\n"
         if len(screens) > 1 else ""
     )
+    example = (
+        "ÖRNEK (sadece adım granülerliği ve üslup için referans — kendi ekran/başlığına göre uyarlanacak, "
+        "bu örneği olduğu gibi KOPYALAMA):\n"
+        '{"steps": ['
+        '{"step_action": "\\"Daha Fazlası\\" butonuna tıklanır", '
+        '"step_expected": "\\"Hesaplama Araçları\\" menüsü görülür"}, '
+        '{"step_action": "\\"Hesaplama Araçları\\" menüsüne tıklanır", '
+        '"step_expected": "\\"Kar Payı Hesapla\\" seçeneği görülür"}, '
+        '{"step_action": "\\"Altın\\" tabına tıklanır", '
+        '"step_expected": "Altın için hesaplama alanları görülür"}'
+        ']}\n\n'
+    )
     return (
         "Sen bir mobil uygulama test otomasyon uzmanısın. Aşağıdaki test case başlığı için "
         "adım adım test senaryosu üret.\n\n"
         f"Test case başlığı: \"{title_text}\"\n"
         f"{screens_block}\n\n"
         f"{flow_note}"
+        "ÖNEMLİ: Yukarıdaki \"Ekran N (özet: ..., not: ...)\" satırları SADECE senin bağlam olarak okuman "
+        "içindir — bunları KOPYALAMA, bir step_action/step_expected içine \"Ekran N\", \"özet:\" veya \"not:\" "
+        "şeklinde YAZMA. Bunun yerine, o ekranda kullanıcının gerçekte yapacağı SOMUT arayüz etkileşimini "
+        "(hangi butona/menüye/tab'a dokunduğunu, ne yazdığını, ne seçtiğini) not ve özetten çıkarım yaparak yaz. "
+        "Not çok kısaysa (örn. sadece bir menü adı) bile, o menüye giden somut tıklama adımını üret — notu adım "
+        "metni olarak birebir tekrar etme.\n\n"
+        f"{example}"
         "KESİN KURALLAR:\n"
         "1. Her Step Action pasif fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
         "\"tıkla\", \"aç\" gibi EMİR KİPİ YASAK).\n"
         "2. Her Step Action'da TEK bir aksiyon olmalı (birden fazla tıklama/yazma tek satırda birleştirilmemeli).\n"
         "3. Dinamik/değişken değerler (güncel kur, hesaplanan tutar gibi) @ParamAdı notasyonuyla yazılmalı "
         "(örn. @güncel_kur, @hesaplanan_tutar).\n"
-        "4. Her step'in boş olmayan bir Step Expected (beklenen sonuç) alanı olmalı.\n\n"
+        "4. Her step'in boş olmayan bir Step Expected (beklenen sonuç) alanı olmalı.\n"
+        "5. \"Ekran N\" ifadesini veya özet/not metnini birebir bir Step Action/Step Expected içine YAZMA — "
+        "bunlar sadece bağlam bilgisi, çıktıda asla görünmemeli.\n\n"
         "SADECE aşağıdaki şemaya uyan JSON döndür, başka metin/markdown fence ekleme:\n"
         '{"steps": [{"step_action": "...", "step_expected": "..."}]}'
     )
