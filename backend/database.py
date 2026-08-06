@@ -53,6 +53,9 @@ def _run_migrations():
         "ALTER TABLE scenario_share_permissions ADD COLUMN owner_user_id INTEGER",
         "ALTER TABLE users ADD COLUMN last_login DATETIME",
         "ALTER TABLE users ADD COLUMN upload_only BOOLEAN NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN tcg_area_path TEXT",
+        "ALTER TABLE users ADD COLUMN tcg_assigned_to TEXT",
+        "ALTER TABLE users ADD COLUMN tcg_state TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

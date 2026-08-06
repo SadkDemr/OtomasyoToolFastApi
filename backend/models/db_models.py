@@ -24,6 +24,9 @@ class User(Base):
     full_name = Column(String, nullable=True)
     role = Column(String, default="user") # admin, user
     upload_only = Column(Boolean, default=False)  # True ise login sonrasi sadece dosya yukleme sayfasi gorunur
+    tcg_area_path = Column(String, nullable=True)
+    tcg_assigned_to = Column(String, nullable=True)
+    tcg_state = Column(String, nullable=True)  # "Design" | "Ready" | "Closed"
 
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
