@@ -114,6 +114,14 @@
         .tcg-live-panel { display: flex; flex-direction: column; align-items: center; gap: 14px; }
         .tcg-live-controls { display: flex; gap: 10px; align-items: center; width: 100%; max-width: 320px; }
         .tcg-live-controls select { flex: 1; padding: 8px 12px; border-radius: var(--ai-radius); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); font-size: 0.85rem; }
+        .tcg-defaults-panel { display: flex; gap: 16px; flex-wrap: wrap; }
+        .tcg-defaults-field { display: flex; flex-direction: column; gap: 4px; min-width: 160px; flex: 1; }
+        .tcg-defaults-field label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; }
+        .tcg-defaults-field input, .tcg-defaults-field select {
+            padding: 8px 12px; border-radius: var(--ai-radius); border: 1px solid var(--border-color);
+            background: var(--bg-secondary); color: var(--text-primary); font-size: 0.85rem;
+        }
+        .tcg-defaults-field input:disabled, .tcg-defaults-field select:disabled { opacity: 0.5; }
         #tcgScreenImage { pointer-events: auto; width: 100%; height: 100%; object-fit: contain; }
 
         .tcg-title-chip { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -912,6 +920,27 @@
             const panel = document.getElementById("panel-4");
             panel.innerHTML = `
                 <div class="tcg-card">
+                    <div class="tcg-card-header">${ICONS.download}<h3>Export Bilgileri</h3></div>
+                    <div class="tcg-defaults-panel">
+                        <div class="tcg-defaults-field">
+                            <label for="tcgAreaPath">Area Path</label>
+                            <input type="text" id="tcgAreaPath" onchange="saveTcgDefaults()">
+                        </div>
+                        <div class="tcg-defaults-field">
+                            <label for="tcgAssignedTo">Assigned To</label>
+                            <input type="text" id="tcgAssignedTo" onchange="saveTcgDefaults()">
+                        </div>
+                        <div class="tcg-defaults-field">
+                            <label for="tcgState">State</label>
+                            <select id="tcgState" onchange="saveTcgDefaults()">
+                                <option value="Design">Design</option>
+                                <option value="Ready">Ready</option>
+                                <option value="Closed">Closed</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="tcg-card">
                     <div class="tcg-card-header">${ICONS.flask}<h3>Test Case Üretimi</h3></div>
                     <div class="tcg-title-checklist" id="titleChecklist"></div>
                     <button class="tcg-btn primary" id="genBtn" onclick="runGenerateTestcases()">${ICONS.flask} Test Case Oluştur</button>
@@ -925,6 +954,34 @@
             `;
             renderTitleChecklist();
             renderTestcaseTable();
+            loadTcgDefaults();
+        }
+
+        async function loadTcgDefaults() {
+            try {
+                const d = await API.get("/testcasegen/defaults");
+                document.getElementById("tcgAreaPath").value = d.area_path;
+                document.getElementById("tcgAssignedTo").value = d.assigned_to;
+                document.getElementById("tcgState").value = d.state;
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        async function saveTcgDefaults() {
+            const fields = ["tcgAreaPath", "tcgAssignedTo", "tcgState"].map(id => document.getElementById(id));
+            fields.forEach(el => { el.disabled = true; });
+            try {
+                await API.put("/testcasegen/defaults", {
+                    area_path: document.getElementById("tcgAreaPath").value,
+                    assigned_to: document.getElementById("tcgAssignedTo").value,
+                    state: document.getElementById("tcgState").value,
+                });
+            } catch (e) {
+                Toast.error(e.message);
+            } finally {
+                fields.forEach(el => { el.disabled = false; });
+            }
         }
 
         async function runGenerateTestcases() {
