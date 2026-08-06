@@ -1019,7 +1019,8 @@
                 rows += `<tr class="tcg-title-row">
                     <td><input type="checkbox" class="tcg-export-checkbox" value="${tc.id}" checked></td>
                     <td>Test Case</td>
-                    <td>${title ? escapeHtml(title.text) : ""}</td>
+                    <td><input type="text" class="tcg-step-input" value="${title ? title.text.replace(/"/g, '&quot;') : ''}"
+                               onchange="editTestcaseTitle('${tc.id}', this.value, this)"></td>
                     <td colspan="2"></td>
                 </tr>`;
                 tc.steps.forEach((step, si) => {
@@ -1070,6 +1071,19 @@
                 Toast.error(e.message);
             } finally {
                 rowInputs.forEach(el => { el.disabled = false; });
+            }
+        }
+
+        async function editTestcaseTitle(tcId, newTitle, inputEl) {
+            const tc = _session.testcases.find(t => t.id === tcId);
+            inputEl.disabled = true;
+            try {
+                _session = await API.put(`/testcasegen/sessions/${_session.id}/titles/${tc.title_id}`, { text: newTitle });
+                renderTitleChecklist();
+                renderTestcaseTable();
+            } catch (e) {
+                Toast.error(e.message);
+                inputEl.disabled = false;
             }
         }
 
