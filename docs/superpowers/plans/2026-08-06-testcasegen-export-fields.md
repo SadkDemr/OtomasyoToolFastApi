@@ -126,10 +126,13 @@ def client():
     db.commit()
     db.refresh(user)
 
+    def override_get_db():
+        yield db
+
     app = FastAPI()
     app.include_router(testcasegen_router)
     app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_db] = lambda: iter([db])
+    app.dependency_overrides[get_db] = override_get_db
     return TestClient(app)
 
 
