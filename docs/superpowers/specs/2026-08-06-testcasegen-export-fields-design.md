@@ -49,11 +49,9 @@ Body: `{"area_path": str, "assigned_to": str, "state": str}` (Pydantic model, `s
 
 `current_user` satırının 3 kolonunu günceller, DB'ye commit eder. Dönüş: güncellenmiş `{"area_path", "assigned_to", "state"}`.
 
-### `PUT /api/testcasegen/sessions/{session_id}/testcases/{tc_id}/title`
+### Title override — yeni endpoint gerekmiyor
 
-Body: `{"title": str}` (boş olamaz).
-
-Mevcut `PUT .../testcases/{tc_id}/steps/{stepIndex}` deseniyle aynı şekilde çalışır: session'ı yükler, `tc.title_id`'ye karşılık gelen `session["titles"]` girdisinin `text` alanını günceller (başlık nesnesi paylaşımlı olduğu için Adım 3 kanban'ında da güncel görünür), `save_session` çağrılır, güncel `{"testcases": ...}` döner (mevcut step-edit endpoint'inin dönüş şekliyle tutarlı).
+Kod incelemesinde, `session["titles"]` girdisinin `text` alanını güncelleyen bir endpoint **zaten mevcut**: `PUT /api/testcasegen/sessions/{session_id}/titles/{title_id}` (body `{"text": str}`, döner: güncel `session`). Bu endpoint şu an sadece Adım 2/3'ün başlık düzenleme akışlarında kullanılıyor; Adım 4 tablosu bunu hiç çağırmıyor. Title override için yeni bir backend endpoint'i eklenmeyecek — Adım 4 tablosundaki Title hücresi bu mevcut endpoint'e bağlanacak (frontend-only değişiklik).
 
 ### `export_testcases` (mevcut endpoint, değişiklik)
 
