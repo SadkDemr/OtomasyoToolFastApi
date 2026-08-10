@@ -3,7 +3,7 @@
    (FIXED: [object Object] hatası giderildi)
    ============================================ */
 
-const API_URL = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+const API_URL = `${window.location.protocol}//${window.location.host}/api`;
 
 // Storage
 const Storage = {

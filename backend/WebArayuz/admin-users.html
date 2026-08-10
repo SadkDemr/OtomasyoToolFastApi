@@ -191,7 +191,7 @@
 <script>
 (function () {
     "use strict";
-    const API = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+    const API = `${window.location.protocol}//${window.location.host}/api`;
 
     function hdrs() { return { "Content-Type":"application/json", "Authorization":`Bearer ${Auth.getToken()}` }; }
 

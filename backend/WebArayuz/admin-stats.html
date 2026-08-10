@@ -194,7 +194,7 @@
 <script>
 (function () {
     "use strict";
-    const API = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+    const API = `${window.location.protocol}//${window.location.host}/api`;
     function hdrs() { return { "Authorization": `Bearer ${Auth.getToken()}` }; }
 
     const platIcon  = { web:"🌐", mobile:"📱", desktop:"🖥" };

@@ -579,7 +579,7 @@
     function connectWs(runId) {
         if (ws) { try { ws.close(); } catch (e) {} }
         const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        ws = new WebSocket(`${proto}://${window.location.hostname}:8000/api/ai-jobs/ws/${runId}`);
+        ws = new WebSocket(`${proto}://${window.location.host}/api/ai-jobs/ws/${runId}`);
         ws.onmessage = (ev) => {
             const event = JSON.parse(ev.data);
             if (event.type === 'cell_update' && currentRunCells[event.cell_id]) {

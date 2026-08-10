@@ -549,7 +549,7 @@
         
         function connectWebSocket(deviceId) {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.hostname}:8000/api/emulator/${deviceId}/stream`;
+            const wsUrl = `${protocol}//${window.location.host}/api/emulator/${deviceId}/stream`;
             
             ws = new WebSocket(wsUrl);
             

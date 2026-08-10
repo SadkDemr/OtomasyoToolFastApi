@@ -529,7 +529,7 @@ Telefon alanına "05001234567" yaz
         updateGenerateBtn();
     };
 
-    const _JAVA_API = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+    const _JAVA_API = `${window.location.protocol}//${window.location.host}/api`;
 
     async function readFile(file) {
         const fname   = file.name.toLowerCase();
