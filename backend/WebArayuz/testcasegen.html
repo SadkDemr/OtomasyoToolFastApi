@@ -721,10 +721,12 @@
 
         function editDocCandidateTitle(index, value) {
             _docCandidates[index].text = value;
+            _session.document.candidate_titles = _docCandidates;
         }
 
         function removeDocCandidateTitle(index) {
             _docCandidates.splice(index, 1);
+            _session.document.candidate_titles = _docCandidates;
             renderDocTitlesResult();
         }
 
