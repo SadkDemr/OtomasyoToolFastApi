@@ -163,6 +163,76 @@ async def get_screen_image(session_id: str, idx: int, current_user: User = Depen
     return FileResponse(path)
 
 
+# ── Analiz Dökümanı (Adım 1 alternatifi) ────────────────────────────────
+
+_ALLOWED_DOC_EXTS = {".docx", ".xlsx"}
+
+
+@router.post("/sessions/{session_id}/document/upload")
+async def upload_document(
+    session_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    session = _load_or_404(current_user.id, session_id)
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else ""
+    if ext not in _ALLOWED_DOC_EXTS:
+        raise HTTPException(400, "Sadece .docx veya .xlsx desteklenir")
+
+    content = await file.read()
+    try:
+        if ext == ".docx":
+            text, truncated = svc.extract_text_from_docx(content)
+        else:
+            text, truncated = svc.extract_text_from_xlsx(content)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    if not text.strip():
+        raise HTTPException(400, "Dökümandan metin çıkarılamadı, dosya boş görünüyor")
+
+    session["document"] = {
+        "filename": file.filename,
+        "ext": ext,
+        "extracted_text": text,
+        "truncated": truncated,
+        "candidate_titles": [],
+    }
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+@router.delete("/sessions/{session_id}/document")
+async def delete_document(session_id: str, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    session["document"] = None
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+@router.post("/sessions/{session_id}/document/extract-titles")
+async def extract_titles_from_document(session_id: str, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    document = session.get("document")
+    if not document:
+        raise HTTPException(400, "Önce bir analiz dökümanı yükleyin")
+
+    prompt = svc.build_document_title_extraction_prompt(document["extracted_text"])
+    try:
+        raw = await ai_service.ollama_generate_text(prompt)
+    except Exception as e:
+        raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
+
+    parsed = svc.extract_json_object(raw)
+    candidates = parsed.get("titles", []) if parsed else []
+    document["candidate_titles"] = [
+        {"text": c.get("text", ""), "excerpt": c.get("excerpt", "")}
+        for c in candidates if c.get("text")
+    ]
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
 # ── Başlık çıkarma (Adım 2) ─────────────────────────────────────────────
 
 @router.post("/sessions/{session_id}/extract-titles")

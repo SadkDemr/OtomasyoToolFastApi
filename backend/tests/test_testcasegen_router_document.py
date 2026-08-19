@@ -1,0 +1,117 @@
+import io
+
+import openpyxl
+import pytest
+from docx import Document as DocxDocument
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from routers.auth import get_current_user
+from routers.testcasegen_router import router as testcasegen_router
+from services import ai_service, testcasegen_service as svc
+
+
+class _FakeUser:
+    id = 1
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setattr(svc, "DATA_DIR", tmp_path)
+    app = FastAPI()
+    app.include_router(testcasegen_router)
+    app.dependency_overrides[get_current_user] = lambda: _FakeUser()
+    return TestClient(app)
+
+
+def _docx_bytes(text):
+    doc = DocxDocument()
+    doc.add_paragraph(text)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def test_upload_document_rejects_unsupported_extension(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("analiz.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert resp.status_code == 400
+
+
+def test_upload_document_stores_extracted_text(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Giris ekrani kullanici adi ve sifre alir.")
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("analiz.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["document"]["filename"] == "analiz.docx"
+    assert "Giris ekrani kullanici adi ve sifre alir." in body["document"]["extracted_text"]
+    assert body["document"]["truncated"] is False
+
+
+def test_upload_document_empty_text_returns_400(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("")
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("bos.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert resp.status_code == 400
+
+
+def test_delete_document_clears_field(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Bir seyler yaz.")
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("a.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    ).json()
+    resp = client.delete(f"/api/testcasegen/sessions/{session['id']}/document")
+    assert resp.status_code == 200
+    assert resp.json()["document"] is None
+
+
+def test_extract_titles_from_document_without_upload_returns_400(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.post(f"/api/testcasegen/sessions/{session['id']}/document/extract-titles")
+    assert resp.status_code == 400
+
+
+def test_extract_titles_from_document_populates_candidates(client, monkeypatch):
+    async def fake_text(prompt, model=None, timeout=60.0):
+        return '{"titles": [{"text": "Giris basarili senaryo", "excerpt": "Kullanici adi ve sifre girilir"}]}'
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Kullanici adi ve sifre girilir, giris yapilir.")
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("a.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    ).json()
+
+    resp = client.post(f"/api/testcasegen/sessions/{session['id']}/document/extract-titles")
+    assert resp.status_code == 200
+    candidates = resp.json()["document"]["candidate_titles"]
+    assert candidates == [{"text": "Giris basarili senaryo", "excerpt": "Kullanici adi ve sifre girilir"}]
+
+
+def test_extract_titles_from_document_ollama_failure_returns_503(client, monkeypatch):
+    async def failing_text(prompt, model=None, timeout=60.0):
+        raise ConnectionError("ollama kapali")
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", failing_text)
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Bir metin.")
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("a.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    ).json()
+
+    resp = client.post(f"/api/testcasegen/sessions/{session['id']}/document/extract-titles")
+    assert resp.status_code == 503
