@@ -379,6 +379,10 @@
                     <div id="screenList"></div>
                 </div>
                 <div class="tcg-card">
+                    <div class="tcg-card-header">${ICONS.upload}<h3>Analiz Dökümanı Yükle</h3></div>
+                    <div id="docUploadArea"></div>
+                </div>
+                <div class="tcg-card">
                     <div class="tcg-card-header">${ICONS.link}<h3>ADB ile Canlı Yakalama</h3></div>
                     <div class="tcg-live-panel">
                         <div class="tcg-live-controls">
@@ -414,6 +418,7 @@
             fileInput.onchange = async (e) => { await uploadFiles(e.target.files); fileInput.value = ""; };
 
             renderScreenList();
+            renderDocUploadArea();
 
             loadTcgDevices();
             document.getElementById("tcgScreenImage").addEventListener("click", (e) => {
@@ -443,6 +448,67 @@
                 if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Yükleme hatası"); }
                 _session = await resp.json();
                 renderScreenList();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        function renderDocUploadArea() {
+            const area = document.getElementById("docUploadArea");
+            if (!area) return;
+            const doc = _session.document;
+            if (doc) {
+                area.innerHTML = `
+                    <div class="tcg-doc-uploaded" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span>${escapeHtml(doc.filename)}</span>
+                        ${doc.truncated ? `<span class="badge badge-warning">Kısaltıldı (ilk 15.000 karakter)</span>` : ""}
+                        <button class="tcg-btn" onclick="removeDocument()">${ICONS.trash} Kaldır</button>
+                    </div>`;
+                return;
+            }
+            area.innerHTML = `
+                <div id="docDropzone" class="tcg-dropzone">
+                    ${ICONS.upload}
+                    <div class="tcg-dropzone-title">Word (.docx) veya Excel (.xlsx) dosyasını sürükleyin ya da tıklayıp seçin</div>
+                    <input type="file" id="docFileInput" accept=".docx,.xlsx" style="display:none;">
+                </div>`;
+            const docDropzone = document.getElementById("docDropzone");
+            const docFileInput = document.getElementById("docFileInput");
+            docDropzone.onclick = () => docFileInput.click();
+            docDropzone.ondragover = (e) => { e.preventDefault(); docDropzone.classList.add("dragover"); };
+            docDropzone.ondragleave = () => { docDropzone.classList.remove("dragover"); };
+            docDropzone.ondrop = async (e) => {
+                e.preventDefault();
+                docDropzone.classList.remove("dragover");
+                if (e.dataTransfer.files[0]) await uploadDocument(e.dataTransfer.files[0]);
+            };
+            docFileInput.onchange = async (e) => {
+                if (e.target.files[0]) await uploadDocument(e.target.files[0]);
+                docFileInput.value = "";
+            };
+        }
+
+        async function uploadDocument(file) {
+            const formData = new FormData();
+            formData.append("file", file);
+            try {
+                const resp = await fetch(`${API_URL}/testcasegen/sessions/${_session.id}/document/upload`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                    body: formData,
+                });
+                if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Yükleme hatası"); }
+                _session = await resp.json();
+                renderDocUploadArea();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        }
+
+        async function removeDocument() {
+            try {
+                _session = await API.delete(`/testcasegen/sessions/${_session.id}/document`);
+                renderDocUploadArea();
             } catch (e) {
                 Toast.error(e.message);
             }
