@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import openpyxl
+from docx import Document as DocxDocument
 from openpyxl.styles import Font
 
 
@@ -469,3 +470,49 @@ def build_export_workbook(testcases: list, titles_by_id: dict, area_path: str, a
                 cell.font = Font(name="Arial", bold=False)
 
     return wb
+
+
+# ──────────────────────────────────────────────────────
+# Analiz dökümanından metin çıkarma (Word/Excel)
+# ──────────────────────────────────────────────────────
+
+DOC_TEXT_CHAR_LIMIT = 15000
+
+
+def _truncate_doc_text(text: str) -> tuple[str, bool]:
+    if len(text) > DOC_TEXT_CHAR_LIMIT:
+        return text[:DOC_TEXT_CHAR_LIMIT], True
+    return text, False
+
+
+def extract_text_from_docx(file_bytes: bytes) -> tuple[str, bool]:
+    import io
+    try:
+        doc = DocxDocument(io.BytesIO(file_bytes))
+    except Exception as e:
+        raise ValueError(f"Word dosyası okunamadı: {e}")
+
+    parts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+    return _truncate_doc_text("\n".join(parts))
+
+
+def extract_text_from_xlsx(file_bytes: bytes) -> tuple[str, bool]:
+    import io
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as e:
+        raise ValueError(f"Excel dosyası okunamadı: {e}")
+
+    parts = []
+    for sheet in wb.worksheets:
+        parts.append(f"Sayfa: {sheet.title}")
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+    return _truncate_doc_text("\n".join(parts))

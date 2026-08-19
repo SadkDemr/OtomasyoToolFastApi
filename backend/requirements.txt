@@ -32,3 +32,6 @@ defusedxml>=0.7.1
 # Excel
 openpyxl>=3.1.2
 pandas>=2.2.0
+
+# Word (analiz dökümanı okuma)
+python-docx>=1.1.0
