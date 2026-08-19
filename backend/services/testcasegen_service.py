@@ -86,6 +86,7 @@ def create_session(user_id: int) -> dict:
         "screens": [],
         "titles": [],
         "testcases": [],
+        "document": None,
     }
     _session_dir(user_id, session_id).mkdir(parents=True, exist_ok=True)
     _screens_dir(user_id, session_id).mkdir(parents=True, exist_ok=True)
@@ -115,9 +116,12 @@ def load_session(user_id: int, session_id: str) -> dict:
         raise FileNotFoundError(f"Oturum bulunamadı: {session_id}")
     with open(json_path, "r", encoding="utf-8") as f:
         session = json.load(f)
+    session.setdefault("document", None)
     for title in session.get("titles", []):
         if "screen_indices" not in title and "screen_index" in title:
             title["screen_indices"] = [title.pop("screen_index")]
+        title.setdefault("source", "screens")
+        title.setdefault("doc_excerpt", None)
     return session
 
 

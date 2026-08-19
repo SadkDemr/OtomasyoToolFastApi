@@ -131,3 +131,27 @@ def test_load_session_leaves_new_format_titles_untouched():
 
     loaded = svc.load_session(1, session["id"])
     assert loaded["titles"][0]["screen_indices"] == [0, 1, 2]
+
+
+def test_create_session_has_null_document():
+    session = svc.create_session(user_id=1)
+    assert session["document"] is None
+
+
+def test_load_session_missing_document_key_defaults_to_none():
+    session = svc.create_session(user_id=1)
+    del session["document"]
+    svc.save_session(1, session["id"], session)
+
+    loaded = svc.load_session(1, session["id"])
+    assert loaded["document"] is None
+
+
+def test_load_session_adds_default_source_and_doc_excerpt_to_old_titles():
+    session = svc.create_session(user_id=1)
+    session["titles"] = [{"id": "t1", "screen_indices": [0], "text": "Eski title"}]
+    svc.save_session(1, session["id"], session)
+
+    loaded = svc.load_session(1, session["id"])
+    assert loaded["titles"][0]["source"] == "screens"
+    assert loaded["titles"][0]["doc_excerpt"] is None
