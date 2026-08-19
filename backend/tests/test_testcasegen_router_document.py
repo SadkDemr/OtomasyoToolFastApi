@@ -143,3 +143,43 @@ def test_extract_titles_from_document_ollama_failure_returns_503(client, monkeyp
 
     resp = client.post(f"/api/testcasegen/sessions/{session['id']}/document/extract-titles")
     assert resp.status_code == 503
+
+
+def test_add_title_with_doc_excerpt_sets_document_source(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"text": "Odeme akisi", "doc_excerpt": "Kullanici tutar girer, onaylar."},
+    )
+    assert resp.status_code == 200
+    title = resp.json()["titles"][0]
+    assert title["source"] == "document"
+    assert title["doc_excerpt"] == "Kullanici tutar girer, onaylar."
+    assert title["screen_indices"] == []
+
+
+def test_add_title_without_screens_or_doc_excerpt_returns_400(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"text": "Baslik"},
+    )
+    assert resp.status_code == 400
+
+
+def test_prioritize_scores_document_sourced_title_without_crash(client, monkeypatch):
+    async def fake_text(prompt, model=None, timeout=60.0):
+        return "Gerekce metni."
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+    session = client.post("/api/testcasegen/sessions").json()
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"text": "Odeme onaylanir", "doc_excerpt": "Kullanici odeme onaylar."},
+    ).json()
+
+    resp = client.post(f"/api/testcasegen/sessions/{session['id']}/prioritize")
+    assert resp.status_code == 200
+    title = resp.json()["titles"][0]
+    assert title["level"] in ("high", "medium", "low")
+    assert title["score"] is not None

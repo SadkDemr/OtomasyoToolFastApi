@@ -286,18 +286,22 @@ async def extract_titles(session_id: str, current_user: User = Depends(get_curre
 
 
 class TitleIn(BaseModel):
-    screen_indices: list[int]
     text: str
+    screen_indices: list[int] = []
+    doc_excerpt: Optional[str] = None
 
 
 @router.post("/sessions/{session_id}/titles")
 async def add_title(session_id: str, body: TitleIn, current_user: User = Depends(get_current_user)):
     session = _load_or_404(current_user.id, session_id)
-    if not body.screen_indices:
-        raise HTTPException(400, "En az bir ekran belirtilmeli")
+    if not body.screen_indices and not body.doc_excerpt:
+        raise HTTPException(400, "Ekran veya döküman alıntısı belirtilmeli")
+    source = "document" if body.doc_excerpt else "screens"
     session["titles"].append({
         "id": str(uuid.uuid4()),
+        "source": source,
         "screen_indices": body.screen_indices,
+        "doc_excerpt": body.doc_excerpt,
         "text": body.text,
         "score": None,
         "level": None,
@@ -345,10 +349,15 @@ async def prioritize(session_id: str, current_user: User = Depends(get_current_u
             continue  # kullanıcı elle ayarladı, otomatik hesaplama ezmez
 
         indices = title["screen_indices"]
-        combined_note = " ".join(
-            screens_by_index[i]["user_note"] for i in indices if i in screens_by_index and screens_by_index[i].get("user_note")
-        )
-        score, level = svc.score_title(title["text"], combined_note, indices[-1])
+        if title.get("source") == "document":
+            combined_note = title.get("doc_excerpt") or ""
+            depth_index = 0
+        else:
+            combined_note = " ".join(
+                screens_by_index[i]["user_note"] for i in indices if i in screens_by_index and screens_by_index[i].get("user_note")
+            )
+            depth_index = indices[-1] if indices else 0
+        score, level = svc.score_title(title["text"], combined_note, depth_index)
         title["score"] = score
         title["level"] = level
         title["level_source"] = "rule"
