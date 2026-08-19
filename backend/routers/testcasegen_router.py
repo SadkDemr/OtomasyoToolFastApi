@@ -340,9 +340,23 @@ async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current
             }
             for i in title["screen_indices"] if i in screens_by_index
         ]
+        images_b64 = []
+        for i in title["screen_indices"]:
+            screen = screens_by_index.get(i)
+            if not screen:
+                continue
+            image_path = svc.screen_image_path(current_user.id, session_id, i, screen["image_ext"])
+            if image_path.exists():
+                images_b64.append(base64.b64encode(image_path.read_bytes()).decode())
+
         prompt = svc.build_testcase_prompt(title["text"], screens)
         try:
-            raw = await ai_service.ollama_generate_text(prompt)
+            # Ekran görüntüleri mevcutsa vision modeliyle üret ki adımlar gerçek
+            # buton/alan adlarına dayansın, sadece özet metninden uydurulmasın.
+            if images_b64:
+                raw = await ai_service.ollama_generate_vision(prompt, images_b64)
+            else:
+                raw = await ai_service.ollama_generate_text(prompt)
         except Exception as e:
             raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
 

@@ -87,11 +87,12 @@ def test_generate_testcases_ollama_failure_returns_503(client, monkeypatch):
 def test_generate_testcases_multi_screen_flow_includes_all_screens_in_prompt(client, monkeypatch):
     captured = {}
 
-    async def fake_text(prompt, model=None, timeout=60.0):
+    async def fake_vision(prompt, images_b64, model=None, timeout=60.0):
         captured["prompt"] = prompt
+        captured["images_b64"] = images_b64
         return '{"steps": [{"step_action": "X tıklanır", "step_expected": "Y"}]}'
 
-    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+    monkeypatch.setattr(ai_service, "ollama_generate_vision", fake_vision)
 
     session = client.post("/api/testcasegen/sessions").json()
     session_id = session["id"]
@@ -119,6 +120,7 @@ def test_generate_testcases_multi_screen_flow_includes_all_screens_in_prompt(cli
     assert "Diğer İşlemler menüsü açılır" in prompt
     assert "Kar Payı Hesapla ekranı açılır" in prompt
     assert prompt.index(summaries[0]) < prompt.index(summaries[1]) < prompt.index(summaries[2])
+    assert len(captured["images_b64"]) == 3  # her ekranin gercek goruntusu de gonderilmeli
 
 
 def test_edit_step_revalidates(client, monkeypatch):
