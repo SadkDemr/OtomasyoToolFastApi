@@ -411,33 +411,39 @@ async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current
         title = titles_by_id.get(title_id)
         if not title:
             continue
-        screens = [
-            {
-                "index": i,
-                "summary": screens_by_index[i].get("screen_summary", ""),
-                "note": screens_by_index[i].get("user_note", ""),
-            }
-            for i in title["screen_indices"] if i in screens_by_index
-        ]
-        images_b64 = []
-        for i in title["screen_indices"]:
-            screen = screens_by_index.get(i)
-            if not screen:
-                continue
-            image_path = svc.screen_image_path(current_user.id, session_id, i, screen["image_ext"])
-            if image_path.exists():
-                images_b64.append(base64.b64encode(image_path.read_bytes()).decode())
 
-        prompt = svc.build_testcase_prompt(title["text"], screens)
-        try:
-            # Ekran görüntüleri mevcutsa vision modeliyle üret ki adımlar gerçek
-            # buton/alan adlarına dayansın, sadece özet metninden uydurulmasın.
-            if images_b64:
-                raw = await ai_service.ollama_generate_vision(prompt, images_b64)
-            else:
+        if title.get("source") == "document":
+            prompt = svc.build_testcase_prompt_from_document(title["text"], title.get("doc_excerpt") or "")
+            try:
                 raw = await ai_service.ollama_generate_text(prompt)
-        except Exception as e:
-            raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
+            except Exception as e:
+                raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
+        else:
+            screens = [
+                {
+                    "index": i,
+                    "summary": screens_by_index[i].get("screen_summary", ""),
+                    "note": screens_by_index[i].get("user_note", ""),
+                }
+                for i in title["screen_indices"] if i in screens_by_index
+            ]
+            images_b64 = []
+            for i in title["screen_indices"]:
+                screen = screens_by_index.get(i)
+                if not screen:
+                    continue
+                image_path = svc.screen_image_path(current_user.id, session_id, i, screen["image_ext"])
+                if image_path.exists():
+                    images_b64.append(base64.b64encode(image_path.read_bytes()).decode())
+
+            prompt = svc.build_testcase_prompt(title["text"], screens)
+            try:
+                if images_b64:
+                    raw = await ai_service.ollama_generate_vision(prompt, images_b64)
+                else:
+                    raw = await ai_service.ollama_generate_text(prompt)
+            except Exception as e:
+                raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
 
         parsed = svc.extract_json_object(raw)
         raw_steps = parsed.get("steps", []) if parsed else []

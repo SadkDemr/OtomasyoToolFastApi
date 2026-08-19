@@ -183,3 +183,33 @@ def test_prioritize_scores_document_sourced_title_without_crash(client, monkeypa
     title = resp.json()["titles"][0]
     assert title["level"] in ("high", "medium", "low")
     assert title["score"] is not None
+
+
+def test_generate_testcases_for_document_title_uses_text_prompt_not_vision(client, monkeypatch):
+    captured = {}
+
+    async def fake_text(prompt, model=None, timeout=60.0):
+        captured["prompt"] = prompt
+        return '{"steps": [{"step_action": "X tıklanır", "step_expected": "Y görülür"}]}'
+
+    async def fake_vision(prompt, images_b64, model=None, timeout=60.0):
+        raise AssertionError("Dokuman kaynakli title icin vision cagrilmamali")
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+    monkeypatch.setattr(ai_service, "ollama_generate_vision", fake_vision)
+
+    session = client.post("/api/testcasegen/sessions").json()
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/titles",
+        json={"text": "Odeme onaylanir", "doc_excerpt": "Kullanici tutari girer ve onaylar."},
+    ).json()
+    title_id = session["titles"][0]["id"]
+
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/generate-testcases",
+        json={"title_ids": [title_id]},
+    )
+    assert resp.status_code == 200
+    testcases = resp.json()["testcases"]
+    assert len(testcases) == 1
+    assert "Kullanici tutari girer ve onaylar." in captured["prompt"]
