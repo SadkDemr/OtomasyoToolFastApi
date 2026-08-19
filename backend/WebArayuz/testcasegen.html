@@ -664,7 +664,14 @@
 
         function renderStep2() {
             const panel = document.getElementById("panel-2");
+            const docCard = _session.document ? `
+                <div class="tcg-card">
+                    <div class="tcg-card-header">${ICONS.sparkle}<h3>Dökümandan Başlık Çıkarma</h3></div>
+                    <button class="tcg-btn primary" id="extractDocBtn" onclick="runExtractTitlesFromDocument()">${ICONS.sparkle} Dökümandan Başlıkları Çıkar</button>
+                    <div id="docTitlesResult" style="margin-top:16px;"></div>
+                </div>` : "";
             panel.innerHTML = `
+                ${docCard}
                 <div class="tcg-card">
                     <div class="tcg-card-header">${ICONS.sparkle}<h3>Başlık Çıkarma</h3></div>
                     <button class="tcg-btn primary" id="extractBtn" onclick="runExtractTitles()">${ICONS.sparkle} Başlıkları Çıkar</button>
@@ -678,6 +685,47 @@
                 </div>
             `;
             renderTitlesResult();
+            _docCandidates = ((_session.document && _session.document.candidate_titles) || []).map(c => ({ ...c }));
+            renderDocTitlesResult();
+        }
+
+        let _docCandidates = [];
+
+        async function runExtractTitlesFromDocument() {
+            const btn = document.getElementById("extractDocBtn");
+            setBtnBusy(btn, true, "Çıkarılıyor…");
+            try {
+                _session = await API.post(`/testcasegen/sessions/${_session.id}/document/extract-titles`);
+                _docCandidates = (_session.document.candidate_titles || []).map(c => ({ ...c }));
+                renderDocTitlesResult();
+                Toast.success("Döküman başlıkları çıkarıldı");
+            } catch (e) {
+                Toast.error(e.message);
+            } finally {
+                setBtnBusy(btn, false);
+            }
+        }
+
+        function renderDocTitlesResult() {
+            const container = document.getElementById("docTitlesResult");
+            if (!container) return;
+            container.innerHTML = _docCandidates.length ? _docCandidates.map((c, i) => `
+                <div class="tcg-title-chip">
+                    <input type="text" value="${(c.text || "").replace(/"/g, '&quot;')}"
+                           onchange="editDocCandidateTitle(${i}, this.value)">
+                    <button onclick="removeDocCandidateTitle(${i})" title="Sil">${ICONS.trash}</button>
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin:2px 0 10px;">${escapeHtml(c.excerpt || "")}</div>
+            `).join("") : `<p class="tcg-empty-hint">Henüz aday başlık yok — "Dökümandan Başlıkları Çıkar" ile üretin.</p>`;
+        }
+
+        function editDocCandidateTitle(index, value) {
+            _docCandidates[index].text = value;
+        }
+
+        function removeDocCandidateTitle(index) {
+            _docCandidates.splice(index, 1);
+            renderDocTitlesResult();
         }
 
         async function runExtractTitles() {
@@ -883,6 +931,19 @@
                     _session.titles = updated.titles;
                     existingKeys.add(key);
                 }
+            }
+
+            const existingDocKeys = new Set(
+                _session.titles.filter(t => t.source === "document").map(t => `${t.doc_excerpt}:${t.text}`)
+            );
+            for (const c of _docCandidates) {
+                const key = `${c.excerpt}:${c.text}`;
+                if (existingDocKeys.has(key)) continue;
+                const updated = await API.post(`/testcasegen/sessions/${_session.id}/titles`, {
+                    text: c.text, doc_excerpt: c.excerpt,
+                });
+                _session.titles = updated.titles;
+                existingDocKeys.add(key);
             }
         }
 
