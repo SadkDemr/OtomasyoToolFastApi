@@ -11,6 +11,13 @@ echo.
 echo GitHub'dan guncelleme cekiliyor...
 cd /d "%~dp0.."
 git remote set-url origin https://github.com/SadkDemr/OtomasyoToolFastApi.git
+
+REM ai_config.json artik takip edilmiyor (gercek API key sizintisini onlemek icin).
+REM Sunucuda hala eski tracked/degismis kopyasi varsa git pull'u bloke eder, o yuzden
+REM her baslangicta takipten dususuruyoruz (dosya diskte kalir, key kaybolmaz).
+git rm --cached --ignore-unmatch backend/ai_config.json >nul 2>&1
+git diff --cached --quiet -- backend/ai_config.json || git commit -m "auto: ai_config.json local takipten cikarildi" -- backend/ai_config.json >nul 2>&1
+
 git pull
 cd /d "%~dp0"
 echo Guncelleme tamamlandi.
