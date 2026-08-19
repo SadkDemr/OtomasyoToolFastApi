@@ -64,6 +64,49 @@ def je(s: str) -> str:
     return s.replace('\\', '\\\\').replace('"', '\\"')
 
 
+def _build_swipe_java(direction: str) -> str:
+    """W3C Actions (Selenium 4 PointerInput/Sequence) tabanlı kaydırma.
+    Appium 2'nin TouchAction/mobile-command yerine önerdiği standart yöntem —
+    Android ve iOS'ta birebir aynı kodla çalışır. Eskiden kullanılan
+    driver.executeScript("mobile:scroll" / "mobile: scroll", ...) çağrıları
+    sürücü/versiyona göre isim değiştirdiği için .jmx gibi ortamlarda
+    çalışmıyordu; bu yöntem doğrudan Selenium API'sini kullandığı için
+    sürücüden bağımsızdır."""
+    if direction in ("down", "up"):
+        start_y, end_y = ("0.75", "0.25") if direction == "down" else ("0.25", "0.75")
+        return (
+            '{\n'
+            '    Dimension _sz = driver.manage().window().getSize();\n'
+            '    int _x = _sz.width / 2;\n'
+            f'    int _startY = (int) (_sz.height * {start_y});\n'
+            f'    int _endY   = (int) (_sz.height * {end_y});\n'
+            '    PointerInput _finger = new PointerInput(PointerInput.Kind.TOUCH, "finger");\n'
+            '    Sequence _swipe = new Sequence(_finger, 1);\n'
+            '    _swipe.addAction(_finger.createPointerMove(Duration.ZERO, PointerInput.Origin.viewport(), _x, _startY));\n'
+            '    _swipe.addAction(_finger.createPointerDown(0));\n'
+            '    _swipe.addAction(_finger.createPointerMove(Duration.ofMillis(400), PointerInput.Origin.viewport(), _x, _endY));\n'
+            '    _swipe.addAction(_finger.createPointerUp(0));\n'
+            '    driver.perform(Arrays.asList(_swipe));\n'
+            '}'
+        )
+    start_x, end_x = ("0.8", "0.2") if direction == "left" else ("0.2", "0.8")
+    return (
+        '{\n'
+        '    Dimension _sz = driver.manage().window().getSize();\n'
+        '    int _y = _sz.height / 2;\n'
+        f'    int _startX = (int) (_sz.width * {start_x});\n'
+        f'    int _endX   = (int) (_sz.width * {end_x});\n'
+        '    PointerInput _finger = new PointerInput(PointerInput.Kind.TOUCH, "finger");\n'
+        '    Sequence _swipe = new Sequence(_finger, 1);\n'
+        '    _swipe.addAction(_finger.createPointerMove(Duration.ZERO, PointerInput.Origin.viewport(), _startX, _y));\n'
+        '    _swipe.addAction(_finger.createPointerDown(0));\n'
+        '    _swipe.addAction(_finger.createPointerMove(Duration.ofMillis(400), PointerInput.Origin.viewport(), _endX, _y));\n'
+        '    _swipe.addAction(_finger.createPointerUp(0));\n'
+        '    driver.perform(Arrays.asList(_swipe));\n'
+        '}'
+    )
+
+
 def action_to_java(
     action:      str,
     xpath_val:   Optional[str],
@@ -106,26 +149,36 @@ def action_to_java(
         return ([f'// {raw_step}', f'Thread.sleep({ms});'], "mapped")
 
     # ── Scroll / Kaydır ───────────────────────────────────────────────────────
+    # W3C Actions tabanlı — Android/iOS'ta aynı kod, sürücüye özel "mobile:"
+    # komut isimlerine bağımlı değil (bkz. _build_swipe_java).
     if action in ("scroll_down", "scroll_up"):
         direction = "down" if action == "scroll_down" else "up"
-        if is_ios:
-            code = (f'{{ Map<String, Object> _sc = new HashMap<>();'
-                    f' _sc.put("direction", "{direction}");'
-                    f' driver.executeScript("mobile: scroll", _sc); }}')
-        else:
-            code = f'driver.executeScript("mobile:scroll", ImmutableMap.of("direction", "{direction}"));'
-        return ([f'// {raw_step}', code], "mapped")
+        return ([f'// {raw_step}', _build_swipe_java(direction)], "mapped")
 
     # ── Sola / Sağa swipe ─────────────────────────────────────────────────────
     if action in ("swipe_left", "swipe_right"):
         direction = "left" if action == "swipe_left" else "right"
-        if is_ios:
-            code = (f'{{ Map<String, Object> _sw = new HashMap<>();'
-                    f' _sw.put("direction", "{direction}");'
-                    f' driver.executeScript("mobile: swipe", _sw); }}')
-        else:
-            code = f'driver.executeScript("mobile:scroll", ImmutableMap.of("direction", "{direction}"));'
-        return ([f'// {raw_step}', code], "mapped")
+        return ([f'// {raw_step}', _build_swipe_java(direction)], "mapped")
+
+    # ── Uzun bas / basılı tut ────────────────────────────────────────────────
+    if action == "long_press":
+        if xpath_val is None and full_xpath is None:
+            return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
+        uxp = build_ios_xpath(xpath_val, xpath_index) if is_ios else build_android_xpath(xpath_val, xpath_index)
+        by_cls = "AppiumBy" if is_ios else "By"
+        return ([
+            f'// {raw_step}',
+            '{',
+            f'    WebElement _el = driver.findElement({by_cls}.xpath("{uxp}"));',
+            '    PointerInput _finger = new PointerInput(PointerInput.Kind.TOUCH, "finger");',
+            '    Sequence _press = new Sequence(_finger, 1);',
+            '    _press.addAction(_finger.createPointerMove(Duration.ZERO, PointerInput.Origin.element(_el), 0, 0));',
+            '    _press.addAction(_finger.createPointerDown(0));',
+            '    _press.addAction(new org.openqa.selenium.interactions.Pause(_finger, Duration.ofMillis(1200)));',
+            '    _press.addAction(_finger.createPointerUp(0));',
+            '    driver.perform(Arrays.asList(_press));',
+            '}',
+        ], "mapped")
 
     # ── Back ─────────────────────────────────────────────────────────────────
     if action == "back":
@@ -257,12 +310,15 @@ import io.appium.java_client.android.AndroidDriver;
 import io.appium.java_client.android.nativekey.AndroidKey;
 import io.appium.java_client.android.nativekey.KeyEvent;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Dimension;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.interactions.PointerInput;
+import org.openqa.selenium.interactions.Sequence;
 import org.openqa.selenium.remote.DesiredCapabilities;
 import java.net.URL;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
-import com.google.common.collect.ImmutableMap;
 
 // ── CONFIG ────────────────────────────────────────────────────────
 DesiredCapabilities capabilities = new DesiredCapabilities();
@@ -318,12 +374,14 @@ def build_ios_template(
     return f"""\
 import io.appium.java_client.AppiumBy;
 import io.appium.java_client.ios.IOSDriver;
+import org.openqa.selenium.Dimension;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.interactions.PointerInput;
+import org.openqa.selenium.interactions.Sequence;
 import org.openqa.selenium.remote.DesiredCapabilities;
 import java.net.URL;
 import java.time.Duration;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.Arrays;
 
 // ── CONFIG ────────────────────────────────────────────────────────
 DesiredCapabilities capabilities = new DesiredCapabilities();

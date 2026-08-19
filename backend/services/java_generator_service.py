@@ -12,10 +12,11 @@ import re
 
 from services.appium_codegen_service import action_to_java
 
-CLICK_WORDS  = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun)'
-INPUT_WORDS  = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
-ASSERT_WORDS = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
-CLEAR_WORDS  = r'(?:temizle|sil\b)'
+CLICK_WORDS     = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun|işaretle)'
+INPUT_WORDS     = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
+ASSERT_WORDS    = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
+CLEAR_WORDS     = r'(?:temizle|sil\b)'
+LONGPRESS_WORDS = r'(?:uzun\s*bas|bas[iı]l[iı]\s*tut|long\s*press)'
 
 
 def _clean_step(raw: str) -> str:
@@ -99,7 +100,8 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
     # ── Pasif Türkçe: "X butonuna tıklanır" ──────────────────────────────────
     _PC = re.search(
         r'^(.+?)\s+(?:butonu?na|elementine|alanına|üzerine|simgesine|ikonuna'
-        r'|bağlantısına|sekmesin[ei]|linkine|metnine|metine|metinine|yazısına|tab[ıi]na)\s+t[ıi]klan[ıi]r\.?\s*$',
+        r'|bağlantısına|sekmesin[ei]|linkine|metnine|metine|metinine|yazısına|tab[ıi]na'
+        r'|men[uü]s[uü]ne|sayfas[ıi]na|kutusuna|kutucu[gğ]una|se[cç]ene[gğ]ine|resmine|g[oö]rseline)\s+t[ıi]klan[ıi]r\.?\s*$',
         s, re.IGNORECASE
     )
     if _PC:
@@ -132,6 +134,12 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
     #   gibi daha spesifik fiiller, tıklama kelimeleriyle çakıştığında öncelikli) ─
     if re.search(ASSERT_WORDS, sl) and quoted:
         lines, _ = action_to_java("assert", quoted[0], None, s, platform)
+        return lines
+
+    # ── Uzun bas / basılı tut (Tıklama'dan önce: "bas" CLICK_WORDS'te de var,
+    #   "uzun bas" düz tıklamaya düşmesin diye burada öncelikli kontrol) ──────
+    if re.search(LONGPRESS_WORDS, sl) and quoted:
+        lines, _ = action_to_java("long_press", quoted[0], None, s, platform)
         return lines
 
     # ── Tıklama ───────────────────────────────────────────────────────────────

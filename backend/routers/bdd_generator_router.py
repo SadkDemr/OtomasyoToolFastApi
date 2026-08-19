@@ -80,14 +80,16 @@ async def _llm_fill_todos(todo_steps: List[str], platform: str) -> dict:
         api_hint = (
             'driver.findElement(AppiumBy.xpath("//*[@name=\'X\']")).click();\n'
             'driver.findElement(AppiumBy.xpath("//*[@name=\'X\']")).isDisplayed();\n'
-            'driver.executeScript("mobile: scroll", Map.of("direction", "down"));\n'
+            '// scroll/swipe: do NOT use driver.executeScript("mobile:...") — unreliable across driver versions.\n'
+            '// Output only: // TODO: manual scroll/swipe gesture needed\n'
             'Thread.sleep(1000);'
         )
     else:
         api_hint = (
             'driver.findElement(By.xpath("//*[@text=\'X\']")).click();\n'
             'assertTrue(driver.findElement(By.xpath("//*[@text=\'X\']")).isDisplayed());\n'
-            'driver.executeScript("mobile:scroll", ImmutableMap.of("direction", "down"));\n'
+            '// scroll/swipe: do NOT use driver.executeScript("mobile:...") — unreliable across driver versions.\n'
+            '// Output only: // TODO: manual scroll/swipe gesture needed\n'
             'Thread.sleep(1000);'
         )
 

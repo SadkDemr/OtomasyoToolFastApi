@@ -51,6 +51,26 @@ class JavaGenerateRequest(BaseModel):
 # BÖLÜM 4: LLM FALLBACK
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _java_code_lines(block: str) -> list[str]:
+    """LLM çıktısından gerçek Java satırlarını ayıklar.
+    Önceki heuristic yalnızca sabit bir sınıf adı listesiyle (driver/Thread/
+    WebElement/Map/...) başlayan satırları veya küçük harfle başlayan ';'
+    satırlarını tutuyordu; bu yüzden `String x = ...;`, `By locator = ...;`,
+    `List<WebElement> els = ...;` gibi büyük harfle başlayan GEÇERLİ Java
+    değişken tanımları da "düz metin cümlesi" sanılıp siliniyor, üretilen kod
+    eksik/derlenmez hale geliyordu (JMeter/IntelliJ'de "cannot find symbol").
+    Artık satır sonundaki `;` / `{` / `}` zaten yeterli kod sinyali kabul
+    edilir — düz metin (prose) genelde bu karakterlerle bitmez."""
+    lines = []
+    for l in block.splitlines():
+        t = l.strip()
+        if not t:
+            continue
+        if t.startswith("//") or t.endswith((';', '{', '}')):
+            lines.append(l)
+    return lines
+
+
 async def _ask_llm_java(steps: list[str]) -> dict[str, str]:
     numbered = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))
     prompt = f"""Write Java Appium code for each test step. Use AndroidDriver.
@@ -58,9 +78,10 @@ Output only Java statements + // comments. No imports, no class/method wrapper.
 Rules:
 - Click text/button: driver.findElement(By.xpath("//*[@text='X']")).click();
 - Type text: driver.executeScript("mobile: type", Map.of("text", "VALUE")); then driver.hideKeyboard();
-- Scroll down: driver.executeScript("mobile:scroll", ImmutableMap.of("direction", "down"));
+- Scroll/swipe: do NOT use driver.executeScript("mobile:...") — it is unreliable across driver versions. Output only: // TODO: manual scroll/swipe gesture needed
 - Back key: driver.pressKey(new KeyEvent(AndroidKey.BACK));
 - Thread.sleep(ms) only when step explicitly requires waiting
+- Only use these types: driver, By, WebElement, Map, Thread, KeyEvent, AndroidKey. Do not declare or use any other class.
 
 Steps:
 {numbered}
@@ -83,12 +104,7 @@ Java code (one block per step, separated by blank lines):"""
     blocks = [b.strip() for b in re.split(r'\n\s*\n', raw) if b.strip()]
     for i, step in enumerate(steps):
         if i < len(blocks):
-            code_only = "\n".join(
-                l for l in blocks[i].splitlines()
-                if l.strip().startswith("//") or
-                   re.match(r'^\s*(driver|Thread|assert|wait|try|catch|new\s|WebElement|Map|ImmutableMap|\{|\})', l.strip()) or
-                   (l.strip().endswith(';') and not re.match(r'^[A-Z][a-z]', l.strip()))
-            )
+            code_only = "\n".join(_java_code_lines(blocks[i]))
             result[step] = code_only if code_only else f"// TODO: {step}\nThread.sleep(1000);"
         else:
             result[step] = f"// TODO: {step}\nThread.sleep(1000);"
@@ -104,9 +120,10 @@ Rules:
 - Click element: driver.findElement(AppiumBy.xpath("//*[@name='X' or @label='X' or @value='X']")).click();
 - Type text: driver.switchTo().activeElement().sendKeys("VALUE"); try {{ driver.hideKeyboard(); }} catch (Exception ignored) {{}}
 - Assert visible: driver.findElement(AppiumBy.xpath("//*[@name='X' or @label='X' or @value='X']")).isDisplayed();
-- Scroll: {{ Map<String, Object> sc = new HashMap<>(); sc.put("direction", "down"); driver.executeScript("mobile: scroll", sc); }}
+- Scroll/swipe: do NOT use driver.executeScript("mobile:...") — it is unreliable across driver versions. Output only: // TODO: manual scroll/swipe gesture needed
 - Back: driver.navigate().back();
 - Wait: Thread.sleep(ms);
+- Only use these types: driver, AppiumBy, WebElement, Thread. Do not declare or use any other class.
 
 Steps:
 {numbered}
@@ -129,12 +146,7 @@ Java code (one block per step, separated by blank lines):"""
     blocks = [b.strip() for b in re.split(r'\n\s*\n', raw) if b.strip()]
     for i, step in enumerate(steps):
         if i < len(blocks):
-            code_only = "\n".join(
-                l for l in blocks[i].splitlines()
-                if l.strip().startswith("//") or
-                   re.match(r'^\s*(driver|Thread|assert|wait|try|catch|new\s|WebElement|Map|ImmutableMap|\{|\})', l.strip()) or
-                   (l.strip().endswith(';') and not re.match(r'^[A-Z][a-z]', l.strip()))
-            )
+            code_only = "\n".join(_java_code_lines(blocks[i]))
             result[step] = code_only if code_only else f"// TODO: {step}\nThread.sleep(1000);"
         else:
             result[step] = f"// TODO: {step}\nThread.sleep(1000);"
