@@ -65,6 +65,34 @@ def test_upload_document_empty_text_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_upload_document_corrupt_docx_returns_400(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("bad.docx", b"not a docx file", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert resp.status_code == 400
+
+
+def test_upload_document_stores_extracted_text_from_xlsx(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Giris ekrani", "kullanici adi ve sifre alir"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    data = buf.getvalue()
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("analiz.xlsx", data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["document"]["ext"] == ".xlsx"
+    assert "Giris ekrani" in body["document"]["extracted_text"]
+    assert "kullanici adi ve sifre alir" in body["document"]["extracted_text"]
+
+
 def test_delete_document_clears_field(client):
     session = client.post("/api/testcasegen/sessions").json()
     data = _docx_bytes("Bir seyler yaz.")
