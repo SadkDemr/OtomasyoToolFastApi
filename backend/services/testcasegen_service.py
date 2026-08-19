@@ -438,6 +438,42 @@ def build_testcase_prompt(title_text: str, screens: list) -> str:
     )
 
 
+def build_document_title_extraction_prompt(doc_text: str) -> str:
+    return (
+        "Sen bir mobil/web uygulama test analistisin. Aşağıda bir analiz/gereksinim dökümanının "
+        "metni verildi. Bu dökümanı oku ve test edilebilecek 5-15 aday test case başlığı çıkar. "
+        "Her başlık için, o başlığı dökümanın hangi kısmına dayandırdığını gösteren kısa bir alıntı "
+        "(excerpt) ekle — alıntı dökümandan birebir veya yakın bir cümle/ifade olmalı.\n\n"
+        f"DÖKÜMAN METNİ:\n\"\"\"\n{doc_text}\n\"\"\"\n\n"
+        "SADECE aşağıdaki şemaya uyan JSON döndür, başka hiçbir metin ekleme, markdown code fence kullanma:\n"
+        '{"titles": [{"text": "...", "excerpt": "..."}]}'
+    )
+
+
+def build_testcase_prompt_from_document(title_text: str, doc_excerpt: str) -> str:
+    return (
+        "Sen bir mobil uygulama test otomasyon uzmanısın. Aşağıdaki test case başlığı ve bu başlığın "
+        "dayandığı analiz dökümanı alıntısı için adım adım test senaryosu üret.\n\n"
+        f"Test case başlığı: \"{title_text}\"\n"
+        f"Analiz dökümanı alıntısı: \"{doc_excerpt}\"\n\n"
+        "NOT: Sana bu akışın ekran görüntüsü verilmedi, sadece yazılı döküman alıntısı var. "
+        "Alıntıda somut bir buton/alan/menü adı geçiyorsa onu birebir kullan. Geçmiyorsa, "
+        "gereksinimi karşılayacak makul bir arayüz etkileşimi öner ama uydurma isimleri kesin "
+        "gerçekmiş gibi sunma — genel/açıklayıcı ifade kullan (örn. \"ilgili onay butonuna\").\n\n"
+        "KESİN KURALLAR:\n"
+        "1. Her Step Action pasif fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
+        "\"tıkla\", \"aç\" gibi EMİR KİPİ YASAK).\n"
+        "2. Her Step Action'da TEK bir aksiyon olmalı (birden fazla tıklama/yazma tek satırda birleştirilmemeli).\n"
+        "3. Dinamik/değişken değerler (güncel kur, hesaplanan tutar gibi) @ParamAdı notasyonuyla yazılmalı "
+        "(örn. @güncel_kur, @hesaplanan_tutar).\n"
+        "4. Her step'in boş olmayan bir Step Expected (beklenen sonuç) alanı olmalı.\n"
+        "5. Yukarıdaki döküman alıntısını bir Step Action/Step Expected içine birebir YAPIŞTIRMA — "
+        "bu sadece bağlam bilgisi, çıktıda asla birebir görünmemeli.\n\n"
+        "SADECE aşağıdaki şemaya uyan JSON döndür, başka metin/markdown fence ekleme:\n"
+        '{"steps": [{"step_action": "...", "step_expected": "..."}]}'
+    )
+
+
 # ──────────────────────────────────────────────────────
 # Excel export builder (ADO format)
 # ──────────────────────────────────────────────────────
