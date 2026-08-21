@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from routers.auth import get_current_user
 from models.db_models import User
-from services import ai_service, testcasegen_service as svc
+from services import ai_service, testcasegen_service as svc, knowledge_service
 
 router = APIRouter(prefix="/api/testcasegen", tags=["testcasegen"])
 
@@ -173,6 +173,7 @@ async def upload_document(
     session_id: str,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     session = _load_or_404(current_user.id, session_id)
     ext = "." + file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else ""
@@ -199,6 +200,15 @@ async def upload_document(
         "candidate_titles": [],
     }
     svc.save_session(current_user.id, session_id, session)
+
+    try:
+        await knowledge_service.add_entry(
+            db, "document", file.filename, text,
+            user_id=current_user.id, source_ref=session_id,
+        )
+    except Exception:
+        pass
+
     return session
 
 
@@ -523,7 +533,12 @@ class ExportIn(BaseModel):
 
 
 @router.post("/sessions/{session_id}/export")
-async def export_testcases(session_id: str, body: ExportIn, current_user: User = Depends(get_current_user)):
+async def export_testcases(
+    session_id: str,
+    body: ExportIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     session = _load_or_404(current_user.id, session_id)
     if not body.testcase_ids:
         raise HTTPException(400, "Dışa aktarılacak test case seçilmedi")
@@ -532,6 +547,20 @@ async def export_testcases(session_id: str, body: ExportIn, current_user: User =
     testcases = [tc for tc in session["testcases"] if tc["id"] in body.testcase_ids]
     if not testcases:
         raise HTTPException(400, "Seçilen test case'ler bulunamadı")
+
+    for tc in testcases:
+        title = titles_by_id.get(tc["title_id"])
+        title_text = title["text"] if title else ""
+        steps_text = "\n".join(
+            f"Adım: {s['step_action']} → Beklenen: {s['step_expected']}" for s in tc["steps"]
+        )
+        try:
+            await knowledge_service.add_entry(
+                db, "scenario", title_text, steps_text,
+                user_id=current_user.id, source_ref=tc["id"],
+            )
+        except Exception:
+            pass
 
     defaults = _tcg_defaults_dict(current_user)
     wb = svc.build_export_workbook(
