@@ -1,0 +1,114 @@
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from database import Base, get_db
+from models.db_models import User
+from routers.auth import get_current_user
+from routers.testcasegen_router import router as testcasegen_router
+from services import ai_service
+
+
+@pytest.fixture
+def db_session():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestSession = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    return TestSession()
+
+
+def _client_for(db, user):
+    app = FastAPI()
+    app.include_router(testcasegen_router)
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = lambda: (yield db)
+    return TestClient(app)
+
+
+def test_add_rule_requires_admin(db_session, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+
+    user = User(username="u", email="u@example.com", hashed_password="x", role="user")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    client = _client_for(db_session, user)
+    resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "Icerik"})
+    assert resp.status_code == 403
+
+
+def test_admin_can_add_list_and_delete_rule(db_session, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    add_resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "Icerik"})
+    assert add_resp.status_code == 200
+
+    list_resp = client.get("/api/testcasegen/knowledge/rules")
+    rules = list_resp.json()["rules"]
+    assert len(rules) == 1
+    assert rules[0]["title"] == "Kural"
+    assert rules[0]["content"] == "Icerik"
+
+    del_resp = client.delete(f"/api/testcasegen/knowledge/rules/{rules[0]['id']}")
+    assert del_resp.status_code == 200
+    assert client.get("/api/testcasegen/knowledge/rules").json()["rules"] == []
+
+
+def test_delete_unknown_rule_returns_404(db_session, monkeypatch):
+    async def fake_embed(text):
+        return [0.1]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    resp = client.delete("/api/testcasegen/knowledge/rules/999")
+    assert resp.status_code == 404
+
+
+def test_knowledge_status_reports_true_when_embedding_available(monkeypatch):
+    async def fake_embed_ok(text):
+        return [0.1]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed_ok)
+    app = FastAPI()
+    app.include_router(testcasegen_router)
+    client = TestClient(app)
+    resp = client.get("/api/testcasegen/knowledge/status")
+    assert resp.json() == {"embedding_model_available": True}
+
+
+def test_knowledge_status_reports_false_when_embedding_unavailable(monkeypatch):
+    async def fake_embed_fail(text):
+        return None
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed_fail)
+    app = FastAPI()
+    app.include_router(testcasegen_router)
+    client = TestClient(app)
+    resp = client.get("/api/testcasegen/knowledge/status")
+    assert resp.json() == {"embedding_model_available": False}

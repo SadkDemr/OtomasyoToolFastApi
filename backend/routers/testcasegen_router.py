@@ -18,8 +18,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from routers.auth import get_current_user
-from models.db_models import User
+from routers.auth import get_current_user, require_admin
+from models.db_models import User, KnowledgeEntry
 from services import ai_service, testcasegen_service as svc, knowledge_service
 
 router = APIRouter(prefix="/api/testcasegen", tags=["testcasegen"])
@@ -604,3 +604,61 @@ async def export_testcases(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="testcases_{session_id[:8]}.xlsx"'},
     )
+
+
+# ── Bilgi Tabanı (Admin) ────────────────────────────────────────────────
+
+class KnowledgeRuleIn(BaseModel):
+    title: str
+    content: str
+
+
+@router.post("/knowledge/rules")
+async def add_knowledge_rule(
+    body: KnowledgeRuleIn,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    await knowledge_service.add_entry(db, "rule", body.title, body.content, user_id=current_user.id)
+    return {"status": "ok"}
+
+
+@router.get("/knowledge/rules")
+async def list_knowledge_rules(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(KnowledgeEntry)
+        .filter(KnowledgeEntry.entry_type == "rule")
+        .order_by(KnowledgeEntry.created_at.desc())
+        .all()
+    )
+    return {"rules": [
+        {"id": r.id, "title": r.title, "content": r.content, "created_at": r.created_at.isoformat()}
+        for r in rows
+    ]}
+
+
+@router.delete("/knowledge/rules/{entry_id}")
+async def delete_knowledge_rule(
+    entry_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(KnowledgeEntry)
+        .filter(KnowledgeEntry.id == entry_id, KnowledgeEntry.entry_type == "rule")
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Kural bulunamadı")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/knowledge/status")
+async def knowledge_status():
+    embedding = await ai_service.ollama_embed("ping")
+    return {"embedding_model_available": embedding is not None}
