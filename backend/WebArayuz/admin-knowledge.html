@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bilgi Tabanı - Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .rules-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px; }
+        .rule-card  { padding:20px; position:relative; }
+        .rule-card h3 { font-size:1rem; font-weight:600; margin-bottom:8px; }
+        .rule-content { font-size:0.84rem; color:var(--text-muted); margin-bottom:12px; white-space:pre-wrap; max-height:120px; overflow-y:auto; line-height:1.5; }
+        .rule-meta { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+        .rule-actions { display:flex; gap:8px; }
+        .empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); grid-column:1/-1; }
+        .empty-icon  { font-size:3rem; opacity:.3; margin-bottom:12px; }
+
+        .status-banner {
+            display:flex; align-items:center; gap:10px;
+            padding:12px 16px; border-radius:10px; margin-bottom:22px;
+            font-size:0.88rem; font-weight:500;
+        }
+        .status-banner.ok      { background:rgba(34,197,94,.12); color:#22c55e; }
+        .status-banner.fail    { background:rgba(239,68,68,.12); color:var(--danger); }
+        .status-banner.loading { background:var(--bg-tertiary); color:var(--text-muted); }
+
+        .rule-modal-overlay {
+            display:none; position:fixed; inset:0;
+            background:rgba(0,0,0,.55); z-index:1000;
+            align-items:center; justify-content:center; padding:16px;
+        }
+        .rule-modal-overlay.active { display:flex; }
+        .rule-modal-box {
+            background:var(--bg-primary);
+            border:1px solid var(--border-color);
+            border-radius:16px;
+            width:min(560px,100%);
+            max-height:90vh;
+            display:flex; flex-direction:column;
+            overflow:hidden;
+            box-shadow:0 20px 60px rgba(0,0,0,.35);
+        }
+        .rule-modal-head {
+            padding:20px 24px 18px;
+            border-bottom:1px solid var(--border-color);
+            display:flex; align-items:center; justify-content:space-between;
+            flex-shrink:0;
+        }
+        .rule-modal-head-title { font-size:1.05rem; font-weight:700; display:flex; align-items:center; gap:10px; }
+        .rule-modal-close {
+            width:32px; height:32px; border-radius:8px;
+            border:1px solid var(--border-color); background:var(--bg-secondary);
+            color:var(--text-muted); font-size:1.1rem; cursor:pointer;
+            display:flex; align-items:center; justify-content:center; transition:.15s;
+        }
+        .rule-modal-close:hover { background:var(--bg-tertiary); color:var(--text-primary); }
+        .rule-modal-body { padding:22px 24px; overflow-y:auto; flex:1; }
+        .fm-group { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+        .fm-label { font-size:0.78rem; font-weight:600; color:var(--text-secondary); }
+        .fm-input, .fm-textarea {
+            padding:9px 12px; border-radius:9px;
+            border:1px solid var(--border-color);
+            background:var(--bg-secondary); color:var(--text-primary);
+            font-size:0.88rem; font-family:inherit; transition:.15s;
+            width:100%; box-sizing:border-box;
+        }
+        .fm-textarea { resize:vertical; min-height:140px; font-family:inherit; }
+        .fm-input:focus, .fm-textarea:focus {
+            outline:none; border-color:var(--accent-primary);
+            box-shadow:0 0 0 3px rgba(79,70,229,.12);
+        }
+        .rule-modal-foot {
+            padding:16px 24px;
+            border-top:1px solid var(--border-color);
+            display:flex; justify-content:flex-end; gap:10px;
+            flex-shrink:0; background:var(--bg-secondary);
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div id="sidebar-container"></div>
+    <main class="main-content">
+        <header class="header">
+            <div class="header-left"><h1 class="page-title">🧠 Bilgi Tabanı Kuralları</h1></div>
+            <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">🌙</button></div>
+        </header>
+
+        <div class="page-content">
+            <div id="statusBanner" class="status-banner loading">⏳ Bilgi tabanı durumu kontrol ediliyor...</div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+                <h2 style="font-size:1.05rem;font-weight:600;margin:0;">Tanımlı Kurallar</h2>
+                <button class="btn btn-primary" onclick="openModal()">+ Yeni Kural</button>
+            </div>
+            <div class="rules-grid" id="rulesGrid">
+                <div class="empty-state"><div class="empty-icon">🧠</div><p>Yükleniyor...</p></div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- ── Kural Modal ──────────────────────────────────────────────────────────── -->
+<div class="rule-modal-overlay" id="ruleModal">
+    <div class="rule-modal-box">
+        <div class="rule-modal-head">
+            <div class="rule-modal-head-title">
+                <span>🧠</span>
+                <span>Yeni Kural</span>
+            </div>
+            <button class="rule-modal-close" onclick="closeModal()">✕</button>
+        </div>
+
+        <div class="rule-modal-body">
+            <div class="fm-group">
+                <label class="fm-label">Başlık *</label>
+                <input class="fm-input" id="fTitle" placeholder="Örn: Şifre alanı kuralı">
+            </div>
+            <div class="fm-group" style="margin-bottom:0;">
+                <label class="fm-label">İçerik *</label>
+                <textarea class="fm-textarea" id="fContent" placeholder="Örn: Şifre alanında en az 8 karakter zorunlu tutulmalı, senaryolar buna göre yazılmalı."></textarea>
+            </div>
+        </div>
+
+        <div class="rule-modal-foot">
+            <button class="btn btn-secondary" onclick="closeModal()">İptal</button>
+            <button class="btn btn-primary" onclick="saveRule()" id="saveBtn">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    let allRules = [];
+
+    document.addEventListener("DOMContentLoaded", () => {
+        if (!Auth.checkAuth()) return;
+        if (!Auth.isAdmin()) { Toast.error("Yetkiniz yok"); location.href = "index.html"; return; }
+        loadStatus();
+        loadRules();
+    });
+
+    async function loadStatus() {
+        const banner = document.getElementById("statusBanner");
+        try {
+            const data = await API.get("/testcasegen/knowledge/status");
+            if (data.embedding_model_available) {
+                banner.className = "status-banner ok";
+                banner.textContent = "🟢 Bilgi tabanı aktif — embedding modeli kurulu";
+            } else {
+                banner.className = "status-banner fail";
+                banner.textContent = "🔴 Embedding modeli kurulu değil — kurallar eklenemez, sunucuda 'ollama pull nomic-embed-text' çalıştırın";
+            }
+        } catch (e) {
+            banner.className = "status-banner fail";
+            banner.textContent = `🔴 Durum kontrol edilemedi: ${e.message}`;
+        }
+    }
+
+    async function loadRules() {
+        try {
+            const data = await API.get("/testcasegen/knowledge/rules");
+            allRules = data.rules || [];
+            renderRules();
+        } catch (e) {
+            document.getElementById("rulesGrid").innerHTML =
+                `<div class="empty-state"><p style="color:var(--danger);">Yükleme hatası: ${e.message}</p></div>`;
+        }
+    }
+
+    function renderRules() {
+        const grid = document.getElementById("rulesGrid");
+        if (!allRules.length) {
+            grid.innerHTML = `<div class="empty-state">
+                <div class="empty-icon">🧠</div>
+                <h3 style="margin-bottom:6px;">Henüz kural yok</h3>
+                <p style="font-size:0.88rem;">"Yeni Kural" butonuyla başlayın.</p>
+            </div>`;
+            return;
+        }
+        grid.innerHTML = allRules.map(r => {
+            const created = r.created_at ? new Date(r.created_at).toLocaleString("tr-TR") : "";
+            return `
+            <div class="card rule-card">
+                <h3>🧠 ${esc(r.title)}</h3>
+                <div class="rule-content">${esc(r.content)}</div>
+                <div class="rule-meta">
+                    <span class="badge" style="background:var(--bg-tertiary);color:var(--text-muted);">${created}</span>
+                </div>
+                <div class="rule-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="deleteRule(${r.id})" style="color:var(--danger);">🗑️ Sil</button>
+                </div>
+            </div>`;
+        }).join("");
+    }
+
+    // ── Modal ──────────────────────────────────────────────────────────────────
+    window.openModal = function () {
+        document.getElementById("fTitle").value = "";
+        document.getElementById("fContent").value = "";
+        document.getElementById("ruleModal").classList.add("active");
+    };
+
+    window.closeModal = function () {
+        document.getElementById("ruleModal").classList.remove("active");
+    };
+
+    window.saveRule = async function () {
+        const btn = document.getElementById("saveBtn");
+        const title = document.getElementById("fTitle").value.trim();
+        const content = document.getElementById("fContent").value.trim();
+
+        if (!title)   { Toast.error("Başlık gerekli"); return; }
+        if (!content) { Toast.error("İçerik gerekli"); return; }
+
+        btn.disabled = true; btn.textContent = "Kaydediliyor...";
+        try {
+            const result = await API.post("/testcasegen/knowledge/rules", { title, content });
+            const chunkNote = result.chunks > 1 ? ` (${result.chunks} parçaya bölündü)` : "";
+            Toast.success(`Kural eklendi ✓${chunkNote}`);
+            closeModal();
+            loadRules();
+        } catch (e) {
+            Toast.error(e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = "Kaydet";
+        }
+    };
+
+    window.deleteRule = async function (ruleId) {
+        const r = allRules.find(x => x.id === ruleId);
+        if (!confirm(`"${r?.title}" silinsin mi?`)) return;
+        try {
+            await API.delete(`/testcasegen/knowledge/rules/${ruleId}`);
+            Toast.success("Silindi");
+            loadRules();
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+})();
+</script>
+</body>
+</html>

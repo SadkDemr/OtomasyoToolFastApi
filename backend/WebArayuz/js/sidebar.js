@@ -48,6 +48,7 @@
                 + item("admin-scenarios","&#128193;", "Senaryolar")
                 + item("admin-stats",    "&#128202;", "Koşum İstatistikleri")
                 + item("admin-logs",     "&#128203;", "Koşum Logları")
+                + item("admin-knowledge","&#129504;", "Bilgi Tabanı")
             );
         }
 
