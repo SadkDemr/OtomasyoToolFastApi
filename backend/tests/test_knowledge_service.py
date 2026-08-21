@@ -72,3 +72,74 @@ def test_add_entry_empty_content_returns_zero(db, monkeypatch):
 
     assert added == 0
     assert db.query(KnowledgeEntry).count() == 0
+
+
+def test_search_ranks_by_cosine_similarity(db, monkeypatch):
+    embeddings = {
+        "sorgu": [1.0, 0.0],
+        "alakali": [0.9, 0.1],
+        "alakasiz": [0.0, 1.0],
+    }
+
+    async def fake_embed(text):
+        return embeddings[text]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    asyncio.run(ks.add_entry(db, "document", "t1", "alakali"))
+    asyncio.run(ks.add_entry(db, "document", "t2", "alakasiz"))
+
+    result = asyncio.run(ks.search(db, "sorgu", top_k=5))
+    assert result == ["alakali", "alakasiz"]
+
+
+def test_search_respects_top_k(db, monkeypatch):
+    async def fake_embed(text):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    for i in range(3):
+        asyncio.run(ks.add_entry(db, "document", f"t{i}", f"icerik {i}"))
+
+    result = asyncio.run(ks.search(db, "sorgu", top_k=2))
+    assert len(result) == 2
+
+
+def test_search_filters_by_entry_types(db, monkeypatch):
+    async def fake_embed(text):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    asyncio.run(ks.add_entry(db, "document", "t1", "dokuman icerik"))
+    asyncio.run(ks.add_entry(db, "rule", "t2", "kural icerik"))
+
+    result = asyncio.run(ks.search(db, "sorgu", entry_types=["rule"]))
+    assert result == ["kural icerik"]
+
+
+def test_search_returns_empty_list_when_embedding_unavailable(db, monkeypatch):
+    async def failing_embed(text):
+        return None
+
+    monkeypatch.setattr(ai_service, "ollama_embed", failing_embed)
+    result = asyncio.run(ks.search(db, "sorgu"))
+    assert result == []
+
+
+def test_search_returns_empty_list_when_no_entries(db, monkeypatch):
+    async def fake_embed(text):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    result = asyncio.run(ks.search(db, "sorgu"))
+    assert result == []
+
+
+def test_format_context_block_empty_returns_empty_string():
+    assert ks.format_context_block([]) == ""
+
+
+def test_format_context_block_formats_bullet_list():
+    block = ks.format_context_block(["birinci", "ikinci"])
+    assert "İlgili geçmiş bilgi" in block
+    assert "- birinci" in block
+    assert "- ikinci" in block

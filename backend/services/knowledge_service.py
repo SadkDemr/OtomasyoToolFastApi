@@ -63,3 +63,43 @@ async def add_entry(
     if added:
         db.commit()
     return added
+
+
+async def search(
+    db: Session,
+    query_text: str,
+    top_k: int = 5,
+    entry_types: "list[str] | None" = None,
+) -> list[str]:
+    """query_text'i embed eder, kayıtlı KnowledgeEntry'ler arasından cosine similarity'ye göre
+    en alakalı top_k içeriği döner. Embedding alınamazsa veya hiç kayıt yoksa boş liste döner."""
+    query_embedding = await ai_service.ollama_embed(query_text)
+    if query_embedding is None:
+        return []
+    query_vec = np.asarray(query_embedding, dtype=np.float32)
+
+    q = db.query(KnowledgeEntry)
+    if entry_types:
+        q = q.filter(KnowledgeEntry.entry_type.in_(entry_types))
+    rows = q.all()
+    if not rows:
+        return []
+
+    scored = []
+    for row in rows:
+        vec = np.frombuffer(row.embedding, dtype=np.float32)
+        if vec.shape[0] != query_vec.shape[0]:
+            continue
+        denom = float(np.linalg.norm(query_vec) * np.linalg.norm(vec))
+        score = float(np.dot(query_vec, vec) / denom) if denom else 0.0
+        scored.append((score, row.content))
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [content for _, content in scored[:top_k]]
+
+
+def format_context_block(snippets: list[str]) -> str:
+    if not snippets:
+        return ""
+    bullet_list = "\n".join(f"- {s}" for s in snippets)
+    return f"İlgili geçmiş bilgi / kurallar:\n{bullet_list}\n\n"

@@ -35,3 +35,6 @@ pandas>=2.2.0
 
 # Word (analiz dökümanı okuma)
 python-docx>=1.1.0
+
+# Embedding / RAG
+numpy>=1.26.0
