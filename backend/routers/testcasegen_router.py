@@ -163,6 +163,76 @@ async def get_screen_image(session_id: str, idx: int, current_user: User = Depen
     return FileResponse(path)
 
 
+# ── Analiz Dökümanı (Adım 1 alternatifi) ────────────────────────────────
+
+_ALLOWED_DOC_EXTS = {".docx", ".xlsx"}
+
+
+@router.post("/sessions/{session_id}/document/upload")
+async def upload_document(
+    session_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    session = _load_or_404(current_user.id, session_id)
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else ""
+    if ext not in _ALLOWED_DOC_EXTS:
+        raise HTTPException(400, "Sadece .docx veya .xlsx desteklenir")
+
+    content = await file.read()
+    try:
+        if ext == ".docx":
+            text, truncated = svc.extract_text_from_docx(content)
+        else:
+            text, truncated = svc.extract_text_from_xlsx(content)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    if not text.strip():
+        raise HTTPException(400, "Dökümandan metin çıkarılamadı, dosya boş görünüyor")
+
+    session["document"] = {
+        "filename": file.filename,
+        "ext": ext,
+        "extracted_text": text,
+        "truncated": truncated,
+        "candidate_titles": [],
+    }
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+@router.delete("/sessions/{session_id}/document")
+async def delete_document(session_id: str, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    session["document"] = None
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
+@router.post("/sessions/{session_id}/document/extract-titles")
+async def extract_titles_from_document(session_id: str, current_user: User = Depends(get_current_user)):
+    session = _load_or_404(current_user.id, session_id)
+    document = session.get("document")
+    if not document:
+        raise HTTPException(400, "Önce bir analiz dökümanı yükleyin")
+
+    prompt = svc.build_document_title_extraction_prompt(document["extracted_text"])
+    try:
+        raw = await ai_service.ollama_generate_text(prompt)
+    except Exception as e:
+        raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
+
+    parsed = svc.extract_json_object(raw)
+    candidates = parsed.get("titles", []) if parsed else []
+    document["candidate_titles"] = [
+        {"text": c.get("text", ""), "excerpt": c.get("excerpt", "")}
+        for c in candidates if c.get("text")
+    ]
+    svc.save_session(current_user.id, session_id, session)
+    return session
+
+
 # ── Başlık çıkarma (Adım 2) ─────────────────────────────────────────────
 
 @router.post("/sessions/{session_id}/extract-titles")
@@ -216,18 +286,22 @@ async def extract_titles(session_id: str, current_user: User = Depends(get_curre
 
 
 class TitleIn(BaseModel):
-    screen_indices: list[int]
     text: str
+    screen_indices: list[int] = []
+    doc_excerpt: Optional[str] = None
 
 
 @router.post("/sessions/{session_id}/titles")
 async def add_title(session_id: str, body: TitleIn, current_user: User = Depends(get_current_user)):
     session = _load_or_404(current_user.id, session_id)
-    if not body.screen_indices:
-        raise HTTPException(400, "En az bir ekran belirtilmeli")
+    if not body.screen_indices and not body.doc_excerpt:
+        raise HTTPException(400, "Ekran veya döküman alıntısı belirtilmeli")
+    source = "document" if body.doc_excerpt else "screens"
     session["titles"].append({
         "id": str(uuid.uuid4()),
+        "source": source,
         "screen_indices": body.screen_indices,
+        "doc_excerpt": body.doc_excerpt,
         "text": body.text,
         "score": None,
         "level": None,
@@ -275,10 +349,15 @@ async def prioritize(session_id: str, current_user: User = Depends(get_current_u
             continue  # kullanıcı elle ayarladı, otomatik hesaplama ezmez
 
         indices = title["screen_indices"]
-        combined_note = " ".join(
-            screens_by_index[i]["user_note"] for i in indices if i in screens_by_index and screens_by_index[i].get("user_note")
-        )
-        score, level = svc.score_title(title["text"], combined_note, indices[-1])
+        if title.get("source") == "document":
+            combined_note = title.get("doc_excerpt") or ""
+            depth_index = 0
+        else:
+            combined_note = " ".join(
+                screens_by_index[i]["user_note"] for i in indices if i in screens_by_index and screens_by_index[i].get("user_note")
+            )
+            depth_index = indices[-1] if indices else 0
+        score, level = svc.score_title(title["text"], combined_note, depth_index)
         title["score"] = score
         title["level"] = level
         title["level_source"] = "rule"
@@ -332,33 +411,39 @@ async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current
         title = titles_by_id.get(title_id)
         if not title:
             continue
-        screens = [
-            {
-                "index": i,
-                "summary": screens_by_index[i].get("screen_summary", ""),
-                "note": screens_by_index[i].get("user_note", ""),
-            }
-            for i in title["screen_indices"] if i in screens_by_index
-        ]
-        images_b64 = []
-        for i in title["screen_indices"]:
-            screen = screens_by_index.get(i)
-            if not screen:
-                continue
-            image_path = svc.screen_image_path(current_user.id, session_id, i, screen["image_ext"])
-            if image_path.exists():
-                images_b64.append(base64.b64encode(image_path.read_bytes()).decode())
 
-        prompt = svc.build_testcase_prompt(title["text"], screens)
-        try:
-            # Ekran görüntüleri mevcutsa vision modeliyle üret ki adımlar gerçek
-            # buton/alan adlarına dayansın, sadece özet metninden uydurulmasın.
-            if images_b64:
-                raw = await ai_service.ollama_generate_vision(prompt, images_b64)
-            else:
+        if title.get("source") == "document":
+            prompt = svc.build_testcase_prompt_from_document(title["text"], title.get("doc_excerpt") or "")
+            try:
                 raw = await ai_service.ollama_generate_text(prompt)
-        except Exception as e:
-            raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
+            except Exception as e:
+                raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
+        else:
+            screens = [
+                {
+                    "index": i,
+                    "summary": screens_by_index[i].get("screen_summary", ""),
+                    "note": screens_by_index[i].get("user_note", ""),
+                }
+                for i in title["screen_indices"] if i in screens_by_index
+            ]
+            images_b64 = []
+            for i in title["screen_indices"]:
+                screen = screens_by_index.get(i)
+                if not screen:
+                    continue
+                image_path = svc.screen_image_path(current_user.id, session_id, i, screen["image_ext"])
+                if image_path.exists():
+                    images_b64.append(base64.b64encode(image_path.read_bytes()).decode())
+
+            prompt = svc.build_testcase_prompt(title["text"], screens)
+            try:
+                if images_b64:
+                    raw = await ai_service.ollama_generate_vision(prompt, images_b64)
+                else:
+                    raw = await ai_service.ollama_generate_text(prompt)
+            except Exception as e:
+                raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
 
         parsed = svc.extract_json_object(raw)
         raw_steps = parsed.get("steps", []) if parsed else []

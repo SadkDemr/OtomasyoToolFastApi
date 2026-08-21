@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import openpyxl
+from docx import Document as DocxDocument
 from openpyxl.styles import Font
 
 
@@ -85,6 +86,7 @@ def create_session(user_id: int) -> dict:
         "screens": [],
         "titles": [],
         "testcases": [],
+        "document": None,
     }
     _session_dir(user_id, session_id).mkdir(parents=True, exist_ok=True)
     _screens_dir(user_id, session_id).mkdir(parents=True, exist_ok=True)
@@ -114,9 +116,12 @@ def load_session(user_id: int, session_id: str) -> dict:
         raise FileNotFoundError(f"Oturum bulunamadı: {session_id}")
     with open(json_path, "r", encoding="utf-8") as f:
         session = json.load(f)
+    session.setdefault("document", None)
     for title in session.get("titles", []):
         if "screen_indices" not in title and "screen_index" in title:
             title["screen_indices"] = [title.pop("screen_index")]
+        title.setdefault("source", "screens")
+        title.setdefault("doc_excerpt", None)
     return session
 
 
@@ -437,6 +442,42 @@ def build_testcase_prompt(title_text: str, screens: list) -> str:
     )
 
 
+def build_document_title_extraction_prompt(doc_text: str) -> str:
+    return (
+        "Sen bir mobil/web uygulama test analistisin. Aşağıda bir analiz/gereksinim dökümanının "
+        "metni verildi. Bu dökümanı oku ve test edilebilecek 5-15 aday test case başlığı çıkar. "
+        "Her başlık için, o başlığı dökümanın hangi kısmına dayandırdığını gösteren kısa bir alıntı "
+        "(excerpt) ekle — alıntı dökümandan birebir veya yakın bir cümle/ifade olmalı.\n\n"
+        f"DÖKÜMAN METNİ:\n\"\"\"\n{doc_text}\n\"\"\"\n\n"
+        "SADECE aşağıdaki şemaya uyan JSON döndür, başka hiçbir metin ekleme, markdown code fence kullanma:\n"
+        '{"titles": [{"text": "...", "excerpt": "..."}]}'
+    )
+
+
+def build_testcase_prompt_from_document(title_text: str, doc_excerpt: str) -> str:
+    return (
+        "Sen bir mobil uygulama test otomasyon uzmanısın. Aşağıdaki test case başlığı ve bu başlığın "
+        "dayandığı analiz dökümanı alıntısı için adım adım test senaryosu üret.\n\n"
+        f"Test case başlığı: \"{title_text}\"\n"
+        f"Analiz dökümanı alıntısı: \"{doc_excerpt}\"\n\n"
+        "NOT: Sana bu akışın ekran görüntüsü verilmedi, sadece yazılı döküman alıntısı var. "
+        "Alıntıda somut bir buton/alan/menü adı geçiyorsa onu birebir kullan. Geçmiyorsa, "
+        "gereksinimi karşılayacak makul bir arayüz etkileşimi öner ama uydurma isimleri kesin "
+        "gerçekmiş gibi sunma — genel/açıklayıcı ifade kullan (örn. \"ilgili onay butonuna\").\n\n"
+        "KESİN KURALLAR:\n"
+        "1. Her Step Action pasif fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
+        "\"tıkla\", \"aç\" gibi EMİR KİPİ YASAK).\n"
+        "2. Her Step Action'da TEK bir aksiyon olmalı (birden fazla tıklama/yazma tek satırda birleştirilmemeli).\n"
+        "3. Dinamik/değişken değerler (güncel kur, hesaplanan tutar gibi) @ParamAdı notasyonuyla yazılmalı "
+        "(örn. @güncel_kur, @hesaplanan_tutar).\n"
+        "4. Her step'in boş olmayan bir Step Expected (beklenen sonuç) alanı olmalı.\n"
+        "5. Yukarıdaki döküman alıntısını bir Step Action/Step Expected içine birebir YAPIŞTIRMA — "
+        "bu sadece bağlam bilgisi, çıktıda asla birebir görünmemeli.\n\n"
+        "SADECE aşağıdaki şemaya uyan JSON döndür, başka metin/markdown fence ekleme:\n"
+        '{"steps": [{"step_action": "...", "step_expected": "..."}]}'
+    )
+
+
 # ──────────────────────────────────────────────────────
 # Excel export builder (ADO format)
 # ──────────────────────────────────────────────────────
@@ -469,3 +510,49 @@ def build_export_workbook(testcases: list, titles_by_id: dict, area_path: str, a
                 cell.font = Font(name="Arial", bold=False)
 
     return wb
+
+
+# ──────────────────────────────────────────────────────
+# Analiz dökümanından metin çıkarma (Word/Excel)
+# ──────────────────────────────────────────────────────
+
+DOC_TEXT_CHAR_LIMIT = 15000
+
+
+def _truncate_doc_text(text: str) -> tuple[str, bool]:
+    if len(text) > DOC_TEXT_CHAR_LIMIT:
+        return text[:DOC_TEXT_CHAR_LIMIT], True
+    return text, False
+
+
+def extract_text_from_docx(file_bytes: bytes) -> tuple[str, bool]:
+    import io
+    try:
+        doc = DocxDocument(io.BytesIO(file_bytes))
+    except Exception as e:
+        raise ValueError(f"Word dosyası okunamadı: {e}")
+
+    parts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+    return _truncate_doc_text("\n".join(parts))
+
+
+def extract_text_from_xlsx(file_bytes: bytes) -> tuple[str, bool]:
+    import io
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as e:
+        raise ValueError(f"Excel dosyası okunamadı: {e}")
+
+    parts = []
+    for sheet in wb.worksheets:
+        parts.append(f"Sayfa: {sheet.title}")
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+    return _truncate_doc_text("\n".join(parts))

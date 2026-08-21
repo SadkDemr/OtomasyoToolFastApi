@@ -2,6 +2,8 @@ from services.testcasegen_service import (
     build_title_extraction_prompt,
     build_rationale_prompt,
     build_testcase_prompt,
+    build_document_title_extraction_prompt,
+    build_testcase_prompt_from_document,
 )
 
 
@@ -68,3 +70,19 @@ def test_testcase_prompt_forbids_echoing_screen_context_and_gives_example():
     prompt = build_testcase_prompt("Baslik", screens)
     assert "KOPYALAMA" in prompt
     assert "ÖRNEK" in prompt
+
+
+def test_document_title_extraction_prompt_requires_json_titles_schema():
+    prompt = build_document_title_extraction_prompt("Bu dokuman giris ekranini anlatir.")
+    assert "JSON" in prompt
+    assert "titles" in prompt
+    assert "excerpt" in prompt
+    assert "Bu dokuman giris ekranini anlatir." in prompt
+
+
+def test_testcase_prompt_from_document_includes_excerpt_and_rules():
+    prompt = build_testcase_prompt_from_document("Odeme onaylanir", "Kullanici tutari girer ve onayla butonuna basar.")
+    assert "Odeme onaylanir" in prompt
+    assert "Kullanici tutari girer ve onayla butonuna basar." in prompt
+    assert "pasif" in prompt.lower()
+    assert "step_expected" in prompt
