@@ -269,3 +269,49 @@ def test_upload_document_succeeds_even_if_knowledge_add_entry_fails(client, monk
         files={"file": ("analiz.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
     )
     assert resp.status_code == 200
+
+
+def test_extract_titles_from_document_injects_rule_context(client, monkeypatch):
+    captured = {}
+
+    async def fake_text(prompt, model=None, timeout=60.0):
+        captured["prompt"] = prompt
+        return '{"titles": []}'
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+
+    async def fake_search(db, query_text, top_k=5, entry_types=None):
+        assert entry_types == ["rule"]
+        return ["Sirket standardi: her ekran icin en az 1 negatif senaryo yazilmali"]
+
+    monkeypatch.setattr(knowledge_service, "search", fake_search)
+
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Giris ekrani test edilir.")
+    client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("analiz.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    client.post(f"/api/testcasegen/sessions/{session['id']}/document/extract-titles")
+    assert "negatif senaryo" in captured["prompt"]
+
+
+def test_extract_titles_from_document_continues_when_search_fails(client, monkeypatch):
+    async def fake_text(prompt, model=None, timeout=60.0):
+        return '{"titles": []}'
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+
+    async def failing_search(db, query_text, top_k=5, entry_types=None):
+        raise RuntimeError("db hatasi")
+
+    monkeypatch.setattr(knowledge_service, "search", failing_search)
+
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Giris ekrani test edilir.")
+    client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("analiz.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    resp = client.post(f"/api/testcasegen/sessions/{session['id']}/document/extract-titles")
+    assert resp.status_code == 200

@@ -226,3 +226,46 @@ def test_edit_step_skips_correction_entry_when_unchanged(client, monkeypatch):
     )
     assert resp.status_code == 200
     assert calls == []
+
+
+def test_generate_testcases_injects_knowledge_context_into_prompt(client, monkeypatch):
+    captured = {}
+
+    async def fake_text(prompt, model=None, timeout=60.0):
+        captured["prompt"] = prompt
+        return '{"steps": [{"step_action": "X tıklanır", "step_expected": "Y"}]}'
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+
+    async def fake_search(db, query_text, top_k=5, entry_types=None):
+        return ["Onceki kural: sifre alaninda en az 8 karakter olmali"]
+
+    monkeypatch.setattr(knowledge_service, "search", fake_search)
+
+    session = _session_with_title(client)
+    title_id = session["titles"][0]["id"]
+    client.post(
+        f"/api/testcasegen/sessions/{session['id']}/generate-testcases",
+        json={"title_ids": [title_id]},
+    )
+    assert "en az 8 karakter olmali" in captured["prompt"]
+
+
+def test_generate_testcases_continues_when_knowledge_search_fails(client, monkeypatch):
+    async def fake_text(prompt, model=None, timeout=60.0):
+        return '{"steps": [{"step_action": "X tıklanır", "step_expected": "Y"}]}'
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+
+    async def failing_search(db, query_text, top_k=5, entry_types=None):
+        raise RuntimeError("db hatasi")
+
+    monkeypatch.setattr(knowledge_service, "search", failing_search)
+
+    session = _session_with_title(client)
+    title_id = session["titles"][0]["id"]
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/generate-testcases",
+        json={"title_ids": [title_id]},
+    )
+    assert resp.status_code == 200

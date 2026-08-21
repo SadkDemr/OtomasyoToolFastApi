@@ -221,13 +221,23 @@ async def delete_document(session_id: str, current_user: User = Depends(get_curr
 
 
 @router.post("/sessions/{session_id}/document/extract-titles")
-async def extract_titles_from_document(session_id: str, current_user: User = Depends(get_current_user)):
+async def extract_titles_from_document(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     session = _load_or_404(current_user.id, session_id)
     document = session.get("document")
     if not document:
         raise HTTPException(400, "Önce bir analiz dökümanı yükleyin")
 
-    prompt = svc.build_document_title_extraction_prompt(document["extracted_text"])
+    try:
+        context = await knowledge_service.search(db, document["extracted_text"][:1000], top_k=5, entry_types=["rule"])
+    except Exception:
+        context = []
+    context_block = knowledge_service.format_context_block(context)
+
+    prompt = context_block + svc.build_document_title_extraction_prompt(document["extracted_text"])
     try:
         raw = await ai_service.ollama_generate_text(prompt)
     except Exception as e:
@@ -411,7 +421,12 @@ class GenerateTestcasesIn(BaseModel):
 
 
 @router.post("/sessions/{session_id}/generate-testcases")
-async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current_user: User = Depends(get_current_user)):
+async def generate_testcases(
+    session_id: str,
+    body: GenerateTestcasesIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     session = _load_or_404(current_user.id, session_id)
     titles_by_id = {t["id"]: t for t in session["titles"]}
     screens_by_index = {s["index"]: s for s in session["screens"]}
@@ -422,8 +437,14 @@ async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current
         if not title:
             continue
 
+        try:
+            context = await knowledge_service.search(db, title["text"], top_k=5)
+        except Exception:
+            context = []
+        context_block = knowledge_service.format_context_block(context)
+
         if title.get("source") == "document":
-            prompt = svc.build_testcase_prompt_from_document(title["text"], title.get("doc_excerpt") or "")
+            prompt = context_block + svc.build_testcase_prompt_from_document(title["text"], title.get("doc_excerpt") or "")
             try:
                 raw = await ai_service.ollama_generate_text(prompt)
             except Exception as e:
@@ -446,7 +467,7 @@ async def generate_testcases(session_id: str, body: GenerateTestcasesIn, current
                 if image_path.exists():
                     images_b64.append(base64.b64encode(image_path.read_bytes()).decode())
 
-            prompt = svc.build_testcase_prompt(title["text"], screens)
+            prompt = context_block + svc.build_testcase_prompt(title["text"], screens)
             try:
                 if images_b64:
                     raw = await ai_service.ollama_generate_vision(prompt, images_b64)
