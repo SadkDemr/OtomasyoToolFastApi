@@ -619,8 +619,10 @@ async def add_knowledge_rule(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    await knowledge_service.add_entry(db, "rule", body.title, body.content, user_id=current_user.id)
-    return {"status": "ok"}
+    added = await knowledge_service.add_entry(db, "rule", body.title, body.content, user_id=current_user.id)
+    if added == 0:
+        raise HTTPException(503, "Embedding modeli kullanılamıyor, kural kaydedilemedi")
+    return {"status": "ok", "chunks": added}
 
 
 @router.get("/knowledge/rules")

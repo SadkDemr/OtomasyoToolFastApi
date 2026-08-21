@@ -62,6 +62,7 @@ def test_admin_can_add_list_and_delete_rule(db_session, monkeypatch):
     client = _client_for(db_session, admin)
     add_resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "Icerik"})
     assert add_resp.status_code == 200
+    assert add_resp.json() == {"status": "ok", "chunks": 1}
 
     list_resp = client.get("/api/testcasegen/knowledge/rules")
     rules = list_resp.json()["rules"]
@@ -71,6 +72,23 @@ def test_admin_can_add_list_and_delete_rule(db_session, monkeypatch):
 
     del_resp = client.delete(f"/api/testcasegen/knowledge/rules/{rules[0]['id']}")
     assert del_resp.status_code == 200
+    assert client.get("/api/testcasegen/knowledge/rules").json()["rules"] == []
+
+
+def test_add_rule_returns_503_when_embedding_unavailable(db_session, monkeypatch):
+    async def fake_embed_fail(text):
+        return None
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed_fail)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "Icerik"})
+    assert resp.status_code == 503
     assert client.get("/api/testcasegen/knowledge/rules").json()["rules"] == []
 
 
