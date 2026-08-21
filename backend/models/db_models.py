@@ -1,7 +1,7 @@
 """
 Database Models - FINAL VERSION + GIT INTEGRATION + ADVANCED EDITOR
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship, backref
 from database import Base
 from datetime import datetime
@@ -394,3 +394,17 @@ class AiJobRunResult(Base):
     log_json = Column(Text, nullable=True)
 
     job_run = relationship("AiJobRun", back_populates="results")
+
+
+class KnowledgeEntry(Base):
+    __tablename__ = "knowledge_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entry_type = Column(String, index=True)  # "document" | "scenario" | "correction" | "rule"
+    title = Column(String)
+    content = Column(Text)
+    embedding = Column(LargeBinary)
+    embedding_dim = Column(Integer)
+    source_ref = Column(String, nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

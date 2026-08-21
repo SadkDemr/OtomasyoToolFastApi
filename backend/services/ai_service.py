@@ -191,3 +191,25 @@ async def ollama_generate_text(prompt: str, model: Optional[str] = None, timeout
 async def ollama_generate_vision(prompt: str, images_b64: List[str], model: Optional[str] = None, timeout: float = 300.0) -> str:
     """Ollama'ya görüntü(ler) + metin isteği gönderir (vision-capable model gerekir)."""
     return await _ollama_post({"model": model, "prompt": prompt, "images": images_b64, "stream": False}, timeout)
+
+
+def get_embedding_config() -> dict:
+    """Embedding modeli URL ve model adı (config > varsayılan)"""
+    cfg = get_ai_config()
+    return {
+        "url": cfg.get("ollama_embed_url", "http://localhost:11434/api/embeddings"),
+        "model": cfg.get("ollama_embed_model", "nomic-embed-text"),
+    }
+
+
+async def ollama_embed(text: str) -> Optional[List[float]]:
+    """Embedding modeline istek atar; model kurulu değilse veya Ollama'ya ulaşılamazsa None döner
+    (çağıran taraf bunu 'bilgi tabanını atla' olarak yorumlar, asla hata fırlatmaz)."""
+    cfg = get_embedding_config()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(cfg["url"], json={"model": cfg["model"], "prompt": text})
+            resp.raise_for_status()
+            return resp.json().get("embedding")
+    except Exception:
+        return None
