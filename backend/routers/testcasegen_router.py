@@ -207,7 +207,7 @@ async def upload_document(
             user_id=current_user.id, source_ref=session_id,
         )
     except Exception:
-        pass
+        db.rollback()
 
     return session
 
@@ -560,7 +560,7 @@ async def export_testcases(
                 user_id=current_user.id, source_ref=tc["id"],
             )
         except Exception:
-            pass
+            db.rollback()
 
     defaults = _tcg_defaults_dict(current_user)
     wb = svc.build_export_workbook(

@@ -22,6 +22,12 @@ class _FakeUser:
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "DATA_DIR", tmp_path)
+
+    async def _default_ollama_embed(text):
+        return None
+
+    monkeypatch.setattr(ai_service, "ollama_embed", _default_ollama_embed)
+
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     TestSession = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
