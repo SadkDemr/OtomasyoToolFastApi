@@ -108,25 +108,49 @@ def test_delete_unknown_rule_returns_404(db_session, monkeypatch):
     assert resp.status_code == 404
 
 
-def test_knowledge_status_reports_true_when_embedding_available(monkeypatch):
+def test_knowledge_status_reports_true_when_embedding_available(db_session, monkeypatch):
     async def fake_embed_ok(text):
         return [0.1]
 
     monkeypatch.setattr(ai_service, "ollama_embed", fake_embed_ok)
-    app = FastAPI()
-    app.include_router(testcasegen_router)
-    client = TestClient(app)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
     resp = client.get("/api/testcasegen/knowledge/status")
     assert resp.json() == {"embedding_model_available": True}
 
 
-def test_knowledge_status_reports_false_when_embedding_unavailable(monkeypatch):
+def test_knowledge_status_reports_false_when_embedding_unavailable(db_session, monkeypatch):
     async def fake_embed_fail(text):
         return None
 
     monkeypatch.setattr(ai_service, "ollama_embed", fake_embed_fail)
-    app = FastAPI()
-    app.include_router(testcasegen_router)
-    client = TestClient(app)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
     resp = client.get("/api/testcasegen/knowledge/status")
     assert resp.json() == {"embedding_model_available": False}
+
+
+def test_knowledge_status_requires_admin(db_session, monkeypatch):
+    async def fake_embed_ok(text):
+        return [0.1]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed_ok)
+
+    user = User(username="u", email="u@example.com", hashed_password="x", role="user")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    client = _client_for(db_session, user)
+    resp = client.get("/api/testcasegen/knowledge/status")
+    assert resp.status_code == 403

@@ -7,11 +7,15 @@ Knowledge Service - TestCaseGen paylaşımlı bilgi tabanı (RAG)
 - search(): cosine similarity ile en alakalı içerikleri döner.
 """
 
+import logging
+
 import numpy as np
 from sqlalchemy.orm import Session
 
 from models.db_models import KnowledgeEntry
 from services import ai_service
+
+logger = logging.getLogger(__name__)
 
 CHUNK_CHAR_LIMIT = 1000
 
@@ -48,6 +52,7 @@ async def add_entry(
     for chunk in _chunk_text(content):
         embedding = await ai_service.ollama_embed(chunk)
         if embedding is None:
+            logger.warning(f"Embedding alınamadı, chunk atlanıyor: entry_type={entry_type!r} title={title!r}")
             continue
         vec = np.asarray(embedding, dtype=np.float32)
         db.add(KnowledgeEntry(

@@ -76,3 +76,23 @@ def test_ollama_embed_returns_none_on_http_error(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", ErrorClient)
     result = asyncio.run(ai_service.ollama_embed("metin"))
     assert result is None
+
+
+def test_get_embedding_config_derives_url_from_configured_ollama_url(monkeypatch):
+    monkeypatch.setattr(ai_service, "get_ai_config", lambda: {
+        "ollama_url": "http://192.168.1.50:11434/api/generate",
+    })
+    cfg = ai_service.get_embedding_config()
+    assert cfg["url"] == "http://192.168.1.50:11434/api/embeddings"
+    assert cfg["model"] == "nomic-embed-text"
+
+
+def test_get_embedding_config_explicit_embed_url_wins_over_derived_default(monkeypatch):
+    monkeypatch.setattr(ai_service, "get_ai_config", lambda: {
+        "ollama_url": "http://192.168.1.50:11434/api/generate",
+        "ollama_embed_url": "http://custom-host:9999/api/embeddings",
+        "ollama_embed_model": "custom-embed-model",
+    })
+    cfg = ai_service.get_embedding_config()
+    assert cfg["url"] == "http://custom-host:9999/api/embeddings"
+    assert cfg["model"] == "custom-embed-model"

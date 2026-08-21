@@ -8,10 +8,13 @@ AI Service - Gemini entegrasyonu
 
 import json
 import base64
+import logging
 import os
 from pathlib import Path
 from typing import Optional, List
 import httpx
+
+logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent / "ai_config.json"
 
@@ -194,10 +197,13 @@ async def ollama_generate_vision(prompt: str, images_b64: List[str], model: Opti
 
 
 def get_embedding_config() -> dict:
-    """Embedding modeli URL ve model adı (config > varsayılan)"""
+    """Embedding modeli URL ve model adı (config > varsayılan).
+    ollama_embed_url verilmemişse, configured ollama_url'den türetilir."""
     cfg = get_ai_config()
+    base_url = cfg.get("ollama_url", "http://localhost:11434/api/generate")
+    default_embed_url = base_url.replace("/api/generate", "/api/embeddings")
     return {
-        "url": cfg.get("ollama_embed_url", "http://localhost:11434/api/embeddings"),
+        "url": cfg.get("ollama_embed_url", default_embed_url),
         "model": cfg.get("ollama_embed_model", "nomic-embed-text"),
     }
 
@@ -207,9 +213,10 @@ async def ollama_embed(text: str) -> Optional[List[float]]:
     (çağıran taraf bunu 'bilgi tabanını atla' olarak yorumlar, asla hata fırlatmaz)."""
     cfg = get_embedding_config()
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(cfg["url"], json={"model": cfg["model"], "prompt": text})
             resp.raise_for_status()
             return resp.json().get("embedding")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Embedding alınamadı: {e}")
         return None

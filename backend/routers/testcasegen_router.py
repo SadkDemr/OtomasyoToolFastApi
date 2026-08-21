@@ -8,6 +8,7 @@ Veritabanı YOK — state dosya tabanlı (services/testcasegen_service.py).
 import base64
 import io
 import json as _json
+import logging
 import re
 import uuid
 from typing import Literal, Optional
@@ -23,6 +24,8 @@ from models.db_models import User, KnowledgeEntry
 from services import ai_service, testcasegen_service as svc, knowledge_service
 
 router = APIRouter(prefix="/api/testcasegen", tags=["testcasegen"])
+
+logger = logging.getLogger(__name__)
 
 # session_id her zaman create_session() icinde str(uuid.uuid4()) ile uretilir.
 # Bu sekle uymayan her deger (path traversal, '..', backslash, vb.) reddedilir —
@@ -206,7 +209,8 @@ async def upload_document(
             db, "document", file.filename, text,
             user_id=current_user.id, source_ref=session_id,
         )
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
         db.rollback()
 
     return session
@@ -233,7 +237,8 @@ async def extract_titles_from_document(
 
     try:
         context = await knowledge_service.search(db, document["extracted_text"][:1000], top_k=5, entry_types=["rule"])
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
         context = []
     context_block = knowledge_service.format_context_block(context)
 
@@ -439,7 +444,8 @@ async def generate_testcases(
 
         try:
             context = await knowledge_service.search(db, title["text"], top_k=5)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
             context = []
         context_block = knowledge_service.format_context_block(context)
 
@@ -529,7 +535,8 @@ async def edit_step(
                 db, "correction", title_text, correction_text,
                 user_id=current_user.id, source_ref=tc_id,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
             db.rollback()
 
     return {"testcases": session["testcases"]}
@@ -609,7 +616,8 @@ async def export_testcases(
                 db, "scenario", title_text, steps_text,
                 user_id=current_user.id, source_ref=tc["id"],
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
             db.rollback()
 
     defaults = _tcg_defaults_dict(current_user)
@@ -682,6 +690,6 @@ async def delete_knowledge_rule(
 
 
 @router.get("/knowledge/status")
-async def knowledge_status():
+async def knowledge_status(current_user: User = Depends(require_admin)):
     embedding = await ai_service.ollama_embed("ping")
     return {"embedding_model_available": embedding is not None}
