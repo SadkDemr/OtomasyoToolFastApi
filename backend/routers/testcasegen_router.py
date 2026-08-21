@@ -472,16 +472,45 @@ class StepIn(BaseModel):
 
 
 @router.put("/sessions/{session_id}/testcases/{tc_id}/steps/{idx}")
-async def edit_step(session_id: str, tc_id: str, idx: int, body: StepIn, current_user: User = Depends(get_current_user)):
+async def edit_step(
+    session_id: str,
+    tc_id: str,
+    idx: int,
+    body: StepIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     session = _load_or_404(current_user.id, session_id)
+    old_step = None
+    target_tc = None
     for tc in session["testcases"]:
         if tc["id"] == tc_id:
+            old_step = tc["steps"][idx]
             validated = svc.validate_steps([{"step_action": body.step_action, "step_expected": body.step_expected}])
             tc["steps"][idx] = validated[0]
+            target_tc = tc
             break
     else:
         raise HTTPException(404, "Test case bulunamadı")
     svc.save_session(current_user.id, session_id, session)
+
+    new_step = target_tc["steps"][idx]
+    if (old_step["step_action"], old_step["step_expected"]) != (new_step["step_action"], new_step["step_expected"]):
+        titles_by_id = {t["id"]: t for t in session["titles"]}
+        title = titles_by_id.get(target_tc["title_id"])
+        title_text = title["text"] if title else ""
+        correction_text = (
+            f"Eski: {old_step['step_action']} → {old_step['step_expected']}\n"
+            f"Doğrusu: {new_step['step_action']} → {new_step['step_expected']}"
+        )
+        try:
+            await knowledge_service.add_entry(
+                db, "correction", title_text, correction_text,
+                user_id=current_user.id, source_ref=tc_id,
+            )
+        except Exception:
+            db.rollback()
+
     return {"testcases": session["testcases"]}
 
 
