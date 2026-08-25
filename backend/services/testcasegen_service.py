@@ -567,3 +567,55 @@ def extract_text_from_xlsx(file_bytes: bytes) -> tuple[str, bool]:
     per_sheet_budget = max(MIN_SHEET_CHAR_SHARE, DOC_TEXT_CHAR_LIMIT // len(sheet_texts))
     truncated_sheets = [t[:per_sheet_budget] for t in sheet_texts]
     return "\n\n".join(truncated_sheets), True
+
+
+_MAX_EMBEDDED_IMAGES = 40
+_IMAGE_CONTENT_TYPE_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/bmp": ".bmp"}
+
+
+def extract_images_from_xlsx(file_bytes: bytes) -> list[tuple[bytes, str]]:
+    """Excel içine gömülü ekran görüntülerini (varsa) (bytes, uzantı) çiftleri olarak döndürür.
+    Bozuk/okunamayan bir görsel tüm dosyayı reddetmesin diye sessizce atlanır."""
+    import io
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
+    except Exception:
+        return []
+
+    images: list[tuple[bytes, str]] = []
+    for sheet in wb.worksheets:
+        for img in getattr(sheet, "_images", []):
+            if len(images) >= _MAX_EMBEDDED_IMAGES:
+                return images
+            try:
+                data = img._data()
+                fmt = (img.format or "png").lower()
+            except Exception:
+                continue
+            ext = ".jpg" if fmt in ("jpeg", "jpg") else f".{fmt}"
+            images.append((data, ext))
+    return images
+
+
+def extract_images_from_docx(file_bytes: bytes) -> list[tuple[bytes, str]]:
+    """Word içine gömülü ekran görüntülerini (varsa) (bytes, uzantı) çiftleri olarak döndürür."""
+    import io
+    from docx.opc.constants import RELATIONSHIP_TYPE as _RT
+
+    try:
+        doc = DocxDocument(io.BytesIO(file_bytes))
+    except Exception:
+        return []
+
+    images: list[tuple[bytes, str]] = []
+    for rel in doc.part.rels.values():
+        if rel.reltype != _RT.IMAGE or rel.is_external:
+            continue
+        if len(images) >= _MAX_EMBEDDED_IMAGES:
+            break
+        try:
+            part = rel.target_part
+            images.append((part.blob, _IMAGE_CONTENT_TYPE_EXT.get(part.content_type, ".png")))
+        except Exception:
+            continue
+    return images

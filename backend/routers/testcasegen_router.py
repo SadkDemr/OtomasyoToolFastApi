@@ -187,8 +187,10 @@ async def upload_document(
     try:
         if ext == ".docx":
             text, truncated = svc.extract_text_from_docx(content)
+            embedded_images = svc.extract_images_from_docx(content)
         else:
             text, truncated = svc.extract_text_from_xlsx(content)
+            embedded_images = svc.extract_images_from_xlsx(content)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -204,6 +206,15 @@ async def upload_document(
     }
     svc.save_session(current_user.id, session_id, session)
 
+    # Dökümanın içine gömülü ekran görüntüleri varsa, mevcut vision tabanlı
+    # başlık çıkarma / test case üretimi akışının kullanabilmesi için
+    # normal ekran görüntüsü gibi kaydedilir (screens listesine eklenir).
+    for image_bytes, image_ext in embedded_images:
+        svc.add_screen(
+            current_user.id, session_id, image_bytes, image_ext,
+            note=f"'{file.filename}' içinden çıkarıldı",
+        )
+
     try:
         await knowledge_service.add_entry(
             db, "document", file.filename, text,
@@ -213,7 +224,7 @@ async def upload_document(
         logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
         db.rollback()
 
-    return session
+    return svc.load_session(current_user.id, session_id)
 
 
 @router.delete("/sessions/{session_id}/document")

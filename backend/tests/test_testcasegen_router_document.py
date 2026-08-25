@@ -3,6 +3,9 @@ import io
 import openpyxl
 import pytest
 from docx import Document as DocxDocument
+from docx.shared import Inches
+from openpyxl.drawing.image import Image as XLImage
+from PIL import Image as PILImage
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -110,6 +113,41 @@ def test_upload_document_stores_extracted_text_from_xlsx(client):
     assert body["document"]["ext"] == ".xlsx"
     assert "Giris ekrani" in body["document"]["extracted_text"]
     assert "kullanici adi ve sifre alir" in body["document"]["extracted_text"]
+
+
+def test_upload_document_registers_embedded_xlsx_images_as_screens(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Ekran", "Aksiyon"])
+    img_buf = io.BytesIO()
+    PILImage.new("RGB", (20, 10), color="red").save(img_buf, format="PNG")
+    img_buf.seek(0)
+    xlimg = XLImage(img_buf)
+    xlimg.anchor = "C3"
+    ws.add_image(xlimg)
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("analiz.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["screens"]) == 1
+    assert "analiz.xlsx" in body["screens"][0]["user_note"]
+
+
+def test_upload_document_without_embedded_images_leaves_screens_empty(client):
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Sadece metin, gorsel yok.")
+    resp = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("analiz.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["screens"] == []
 
 
 def test_delete_document_clears_field(client):
