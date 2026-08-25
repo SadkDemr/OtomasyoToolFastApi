@@ -45,9 +45,27 @@ def test_extract_text_from_docx_reads_paragraphs_and_tables():
 
 
 def test_extract_text_from_docx_truncates_long_text():
-    data = _make_docx_bytes(["a" * 20000])
+    data = _make_docx_bytes(["a" * (svc.DOC_TEXT_CHAR_LIMIT + 20000)])
     text, truncated = svc.extract_text_from_docx(data)
     assert len(text) == svc.DOC_TEXT_CHAR_LIMIT
+    assert truncated is True
+
+
+def test_extract_text_from_xlsx_keeps_every_sheet_when_one_sheet_is_huge():
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws1 = wb.create_sheet("BuyukSayfa")
+    for i in range(400):
+        ws1.append([f"satir{i}", "x" * 200])
+    ws2 = wb.create_sheet("KucukSayfa")
+    ws2.append(["Login", "Kullanici giris yapar"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    text, truncated = svc.extract_text_from_xlsx(buf.getvalue())
+    assert "Sayfa: BuyukSayfa" in text
+    assert "Sayfa: KucukSayfa" in text
+    assert "Login | Kullanici giris yapar" in text
     assert truncated is True
 
 

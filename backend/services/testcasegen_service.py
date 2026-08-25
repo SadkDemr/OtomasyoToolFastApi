@@ -516,7 +516,8 @@ def build_export_workbook(testcases: list, titles_by_id: dict, area_path: str, a
 # Analiz dökümanından metin çıkarma (Word/Excel)
 # ──────────────────────────────────────────────────────
 
-DOC_TEXT_CHAR_LIMIT = 15000
+DOC_TEXT_CHAR_LIMIT = 40000
+MIN_SHEET_CHAR_SHARE = 1500
 
 
 def _truncate_doc_text(text: str) -> tuple[str, bool]:
@@ -548,11 +549,21 @@ def extract_text_from_xlsx(file_bytes: bytes) -> tuple[str, bool]:
     except Exception as e:
         raise ValueError(f"Excel dosyası okunamadı: {e}")
 
-    parts = []
+    sheet_texts = []
     for sheet in wb.worksheets:
-        parts.append(f"Sayfa: {sheet.title}")
+        parts = [f"Sayfa: {sheet.title}"]
         for row in sheet.iter_rows(values_only=True):
             cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
             if cells:
                 parts.append(" | ".join(cells))
-    return _truncate_doc_text("\n".join(parts))
+        sheet_texts.append("\n".join(parts))
+
+    full_text = "\n\n".join(sheet_texts)
+    if len(full_text) <= DOC_TEXT_CHAR_LIMIT:
+        return full_text, False
+
+    # Sayfa başına adil pay ayrılır; aksi halde büyük bir ilk sayfa tüm limiti
+    # tüketip sonraki sayfaları tamamen dışarıda bırakırdı.
+    per_sheet_budget = max(MIN_SHEET_CHAR_SHARE, DOC_TEXT_CHAR_LIMIT // len(sheet_texts))
+    truncated_sheets = [t[:per_sheet_budget] for t in sheet_texts]
+    return "\n\n".join(truncated_sheets), True

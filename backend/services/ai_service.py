@@ -178,10 +178,18 @@ Sadece JSON döndür, başka metin ekleme."""
 # Ollama yardımcıları (paylaşılan — TestCaseGen ve benzeri modüller için)
 # ──────────────────────────────────────────────────────
 
+OLLAMA_NUM_CTX = 16384
+
+
 async def _ollama_post(payload: dict, timeout: float) -> str:
     cfg = get_ollama_config()
+    body = {
+        **payload,
+        "model": payload.get("model") or cfg["model"],
+        "options": {"num_ctx": OLLAMA_NUM_CTX, **payload.get("options", {})},
+    }
     async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(cfg["url"], json={**payload, "model": payload.get("model") or cfg["model"]})
+        resp = await client.post(cfg["url"], json=body)
         resp.raise_for_status()
         return (resp.json().get("response") or "").strip()
 
