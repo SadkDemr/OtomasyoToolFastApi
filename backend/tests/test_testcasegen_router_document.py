@@ -169,7 +169,7 @@ def test_extract_titles_from_document_without_upload_returns_400(client):
 
 
 def test_extract_titles_from_document_populates_candidates(client, monkeypatch):
-    async def fake_text(prompt, model=None, timeout=60.0):
+    async def fake_text(prompt, model=None, timeout=60.0, num_ctx=None):
         return '{"titles": [{"text": "Giris basarili senaryo", "excerpt": "Kullanici adi ve sifre girilir"}]}'
 
     monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
@@ -186,8 +186,27 @@ def test_extract_titles_from_document_populates_candidates(client, monkeypatch):
     assert candidates == [{"text": "Giris basarili senaryo", "excerpt": "Kullanici adi ve sifre girilir"}]
 
 
+def test_extract_titles_from_document_uses_large_num_ctx(client, monkeypatch):
+    captured = {}
+
+    async def fake_text(prompt, model=None, timeout=60.0, num_ctx=None):
+        captured["num_ctx"] = num_ctx
+        return '{"titles": []}'
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
+    session = client.post("/api/testcasegen/sessions").json()
+    data = _docx_bytes("Kullanici adi ve sifre girilir, giris yapilir.")
+    session = client.post(
+        f"/api/testcasegen/sessions/{session['id']}/document/upload",
+        files={"file": ("a.docx", data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    ).json()
+
+    client.post(f"/api/testcasegen/sessions/{session['id']}/document/extract-titles")
+    assert captured["num_ctx"] == ai_service.OLLAMA_NUM_CTX_LARGE
+
+
 def test_extract_titles_from_document_ollama_failure_returns_503(client, monkeypatch):
-    async def failing_text(prompt, model=None, timeout=60.0):
+    async def failing_text(prompt, model=None, timeout=60.0, num_ctx=None):
         raise ConnectionError("ollama kapali")
 
     monkeypatch.setattr(ai_service, "ollama_generate_text", failing_text)
@@ -225,7 +244,7 @@ def test_add_title_without_screens_or_doc_excerpt_returns_400(client):
 
 
 def test_prioritize_scores_document_sourced_title_without_crash(client, monkeypatch):
-    async def fake_text(prompt, model=None, timeout=60.0):
+    async def fake_text(prompt, model=None, timeout=60.0, num_ctx=None):
         return "Gerekce metni."
 
     monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)
@@ -245,7 +264,7 @@ def test_prioritize_scores_document_sourced_title_without_crash(client, monkeypa
 def test_generate_testcases_for_document_title_uses_text_prompt_not_vision(client, monkeypatch):
     captured = {}
 
-    async def fake_text(prompt, model=None, timeout=60.0):
+    async def fake_text(prompt, model=None, timeout=60.0, num_ctx=None):
         captured["prompt"] = prompt
         return '{"steps": [{"step_action": "X tıklanır", "step_expected": "Y görülür"}]}'
 
@@ -312,7 +331,7 @@ def test_upload_document_succeeds_even_if_knowledge_add_entry_fails(client, monk
 def test_extract_titles_from_document_injects_rule_context(client, monkeypatch):
     captured = {}
 
-    async def fake_text(prompt, model=None, timeout=60.0):
+    async def fake_text(prompt, model=None, timeout=60.0, num_ctx=None):
         captured["prompt"] = prompt
         return '{"titles": []}'
 
@@ -335,7 +354,7 @@ def test_extract_titles_from_document_injects_rule_context(client, monkeypatch):
 
 
 def test_extract_titles_from_document_continues_when_search_fails(client, monkeypatch):
-    async def fake_text(prompt, model=None, timeout=60.0):
+    async def fake_text(prompt, model=None, timeout=60.0, num_ctx=None):
         return '{"titles": []}'
 
     monkeypatch.setattr(ai_service, "ollama_generate_text", fake_text)

@@ -178,15 +178,19 @@ Sadece JSON döndür, başka metin ekleme."""
 # Ollama yardımcıları (paylaşılan — TestCaseGen ve benzeri modüller için)
 # ──────────────────────────────────────────────────────
 
-OLLAMA_NUM_CTX = 16384
+# CPU-only sunucularda num_ctx doğrudan hesaplama süresini etkiliyor (GPU'da olduğundan
+# daha kritik) — bu yüzden varsayılan küçük tutulur. Yalnızca tüm dökümanı tek seferde
+# okuyan akışlar (ör. extract_titles_from_document) OLLAMA_NUM_CTX_LARGE'ı açıkça ister.
+OLLAMA_NUM_CTX_DEFAULT = 4096
+OLLAMA_NUM_CTX_LARGE = 16384
 
 
-async def _ollama_post(payload: dict, timeout: float) -> str:
+async def _ollama_post(payload: dict, timeout: float, num_ctx: int = OLLAMA_NUM_CTX_DEFAULT) -> str:
     cfg = get_ollama_config()
     body = {
         **payload,
         "model": payload.get("model") or cfg["model"],
-        "options": {"num_ctx": OLLAMA_NUM_CTX, **payload.get("options", {})},
+        "options": {"num_ctx": num_ctx, **payload.get("options", {})},
     }
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(cfg["url"], json=body)
@@ -194,9 +198,12 @@ async def _ollama_post(payload: dict, timeout: float) -> str:
         return (resp.json().get("response") or "").strip()
 
 
-async def ollama_generate_text(prompt: str, model: Optional[str] = None, timeout: float = 300.0) -> str:
+async def ollama_generate_text(
+    prompt: str, model: Optional[str] = None, timeout: float = 300.0,
+    num_ctx: int = OLLAMA_NUM_CTX_DEFAULT,
+) -> str:
     """Ollama'ya salt metin isteği gönderir, 'response' alanını döndürür."""
-    return await _ollama_post({"model": model, "prompt": prompt, "stream": False}, timeout)
+    return await _ollama_post({"model": model, "prompt": prompt, "stream": False}, timeout, num_ctx=num_ctx)
 
 
 async def ollama_generate_text_stream(prompt: str, model: Optional[str] = None, timeout: float = 300.0):
@@ -206,7 +213,7 @@ async def ollama_generate_text_stream(prompt: str, model: Optional[str] = None, 
         "model": model or cfg["model"],
         "prompt": prompt,
         "stream": True,
-        "options": {"num_ctx": OLLAMA_NUM_CTX},
+        "options": {"num_ctx": OLLAMA_NUM_CTX_DEFAULT},
     }
     async with httpx.AsyncClient(timeout=timeout) as client:
         async with client.stream("POST", cfg["url"], json=body) as resp:

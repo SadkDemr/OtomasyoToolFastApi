@@ -58,6 +58,33 @@ def test_ollama_generate_text_uses_configured_model(monkeypatch):
     assert "images" not in captured["json"]
 
 
+def test_ollama_generate_text_uses_small_default_num_ctx(monkeypatch):
+    captured = {}
+
+    class RecordingClient(_FakeAsyncClient):
+        async def post(self, url, json):
+            captured["json"] = json
+            return _FakeResponse({"response": "ok"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", RecordingClient)
+    asyncio.run(ai_service.ollama_generate_text("prompt"))
+    assert captured["json"]["options"]["num_ctx"] == ai_service.OLLAMA_NUM_CTX_DEFAULT
+    assert ai_service.OLLAMA_NUM_CTX_DEFAULT < ai_service.OLLAMA_NUM_CTX_LARGE
+
+
+def test_ollama_generate_text_respects_num_ctx_override(monkeypatch):
+    captured = {}
+
+    class RecordingClient(_FakeAsyncClient):
+        async def post(self, url, json):
+            captured["json"] = json
+            return _FakeResponse({"response": "ok"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", RecordingClient)
+    asyncio.run(ai_service.ollama_generate_text("prompt", num_ctx=ai_service.OLLAMA_NUM_CTX_LARGE))
+    assert captured["json"]["options"]["num_ctx"] == ai_service.OLLAMA_NUM_CTX_LARGE
+
+
 def test_ollama_generate_vision_sends_images(monkeypatch):
     captured = {}
 

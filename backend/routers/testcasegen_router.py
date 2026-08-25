@@ -255,7 +255,7 @@ async def extract_titles_from_document(
 
     prompt = context_block + svc.build_document_title_extraction_prompt(document["extracted_text"])
     try:
-        raw = await ai_service.ollama_generate_text(prompt)
+        raw = await ai_service.ollama_generate_text(prompt, num_ctx=ai_service.OLLAMA_NUM_CTX_LARGE)
     except Exception as e:
         raise HTTPException(503, f"Ollama servisine ulaşılamadı: {e}")
 

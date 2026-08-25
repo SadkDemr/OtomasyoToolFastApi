@@ -219,7 +219,7 @@
                     buffer = parts.pop();
                     for (const part of parts) {
                         const evtMatch = part.match(/^event:\s*(\S+)/m);
-                        const dataLines = [...part.matchAll(/^data:\s*(.*)/gm)].map(m => m[1]);
+                        const dataLines = [...part.matchAll(/^data: ?(.*)/gm)].map(m => m[1]);
                         const evtType = evtMatch ? evtMatch[1] : "log";
                         const dataText = dataLines.join("\n");
 
