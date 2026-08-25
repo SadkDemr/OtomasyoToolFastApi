@@ -199,6 +199,29 @@ async def ollama_generate_text(prompt: str, model: Optional[str] = None, timeout
     return await _ollama_post({"model": model, "prompt": prompt, "stream": False}, timeout)
 
 
+async def ollama_generate_text_stream(prompt: str, model: Optional[str] = None, timeout: float = 300.0):
+    """Ollama'ya stream:true ile istek atar, gelen metin parçalarını sırayla yield eder."""
+    cfg = get_ollama_config()
+    body = {
+        "model": model or cfg["model"],
+        "prompt": prompt,
+        "stream": True,
+        "options": {"num_ctx": OLLAMA_NUM_CTX},
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream("POST", cfg["url"], json=body) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                piece = chunk.get("response", "")
+                if piece:
+                    yield piece
+                if chunk.get("done"):
+                    break
+
+
 async def ollama_generate_vision(prompt: str, images_b64: List[str], model: Optional[str] = None, timeout: float = 300.0) -> str:
     """Ollama'ya görüntü(ler) + metin isteği gönderir (vision-capable model gerekir)."""
     return await _ollama_post({"model": model, "prompt": prompt, "images": images_b64, "stream": False}, timeout)

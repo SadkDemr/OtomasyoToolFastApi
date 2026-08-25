@@ -63,6 +63,7 @@
                     + item("testcasegen",  "&#128221;", "Test Case Gen")
                     + item("java-generator","&#9749;",  "Java Generator")
                     + item("bdd-generator","&#129405;", "BDD Generator")
+                    + item("chat",          "&#128172;", "AI Chat")
                     + item("test-history", "&#128203;", "Test Geçmişi")
                   )
                 + adminBlock;

@@ -704,3 +704,46 @@ async def delete_knowledge_rule(
 async def knowledge_status(current_user: User = Depends(require_admin)):
     embedding = await ai_service.ollama_embed("ping")
     return {"embedding_model_available": embedding is not None}
+
+
+# ── Bilgi Tabanı Sohbet (tüm kullanıcılar) ──────────────────────────────
+
+class ChatMessageIn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatIn(BaseModel):
+    message: str
+    history: list[ChatMessageIn] = []
+
+
+@router.post("/chat")
+async def chat(
+    body: ChatIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not body.message.strip():
+        raise HTTPException(400, "Mesaj boş olamaz")
+
+    try:
+        context = await knowledge_service.search(db, body.message, top_k=5)
+    except Exception as e:
+        logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
+        context = []
+    context_block = knowledge_service.format_context_block(context)
+
+    history = [{"role": m.role, "content": m.content} for m in body.history]
+    prompt = svc.build_chat_prompt(context_block, history, body.message)
+
+    async def stream():
+        try:
+            async for piece in ai_service.ollama_generate_text_stream(prompt):
+                yield _sse("token", piece)
+            yield _sse("complete", "")
+        except Exception as e:
+            yield _sse("error", f"Ollama servisine ulaşılamadı: {e}")
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

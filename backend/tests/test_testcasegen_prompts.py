@@ -4,6 +4,7 @@ from services.testcasegen_service import (
     build_testcase_prompt,
     build_document_title_extraction_prompt,
     build_testcase_prompt_from_document,
+    build_chat_prompt,
 )
 
 
@@ -86,3 +87,36 @@ def test_testcase_prompt_from_document_includes_excerpt_and_rules():
     assert "Kullanici tutari girer ve onayla butonuna basar." in prompt
     assert "pasif" in prompt.lower()
     assert "step_expected" in prompt
+
+
+def test_chat_prompt_includes_context_block_and_message():
+    prompt = build_chat_prompt("İlgili geçmiş bilgi / kurallar:\n- her ekran negatif senaryo icerir\n\n", [], "Giris ekrani nasil test edilir?")
+    assert "her ekran negatif senaryo icerir" in prompt
+    assert "Giris ekrani nasil test edilir?" in prompt
+
+
+def test_chat_prompt_without_context_has_no_context_block():
+    prompt = build_chat_prompt("", [], "Bir soru")
+    assert "İlgili geçmiş bilgi" not in prompt
+    assert "Bir soru" in prompt
+
+
+def test_chat_prompt_includes_conversation_history_in_order():
+    history = [
+        {"role": "user", "content": "Login ekrani nasil test edilir?"},
+        {"role": "assistant", "content": "Kullanici adi ve sifre girilir."},
+    ]
+    prompt = build_chat_prompt("", history, "Peki sifre yanlissa?")
+    assert prompt.index("Login ekrani nasil test edilir?") < prompt.index("Kullanici adi ve sifre girilir.") < prompt.index("Peki sifre yanlissa?")
+
+
+def test_chat_prompt_without_history_has_no_history_block():
+    prompt = build_chat_prompt("", [], "Bir soru")
+    assert "Önceki konuşma" not in prompt
+
+
+def test_chat_prompt_caps_history_to_last_ten_turns():
+    history = [{"role": "user", "content": f"mesaj{i}"} for i in range(15)]
+    prompt = build_chat_prompt("", history, "son soru")
+    assert "mesaj0" not in prompt
+    assert "mesaj14" in prompt

@@ -478,6 +478,26 @@ def build_testcase_prompt_from_document(title_text: str, doc_excerpt: str) -> st
     )
 
 
+CHAT_HISTORY_TURN_LIMIT = 10
+
+
+def build_chat_prompt(context_block: str, history: list[dict], message: str) -> str:
+    convo_lines = []
+    for turn in history[-CHAT_HISTORY_TURN_LIMIT:]:
+        role = "Kullanıcı" if turn.get("role") == "user" else "Asistan"
+        content = (turn.get("content") or "").strip()
+        if content:
+            convo_lines.append(f"{role}: {content}")
+    convo_block = f"Önceki konuşma:\n" + "\n".join(convo_lines) + "\n\n" if convo_lines else ""
+
+    instructions = (
+        "Sen bir test otomasyon platformunun bilgi tabanı asistanısın. Yukarıdaki ilgili bilgi/kurallara "
+        "dayanarak kullanıcının sorusunu Türkçe ve öz şekilde cevapla. Bilgi tabanında ilgili bir şey "
+        "yoksa bunu açıkça belirt, uydurma.\n\n"
+    )
+    return f"{context_block}{instructions}{convo_block}Kullanıcı: {message}\nAsistan:"
+
+
 # ──────────────────────────────────────────────────────
 # Excel export builder (ADO format)
 # ──────────────────────────────────────────────────────

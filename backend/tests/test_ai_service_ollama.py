@@ -1,5 +1,5 @@
 import asyncio
-import json
+import json as json_lib
 import httpx
 import pytest
 
@@ -80,3 +80,76 @@ def test_ollama_generate_text_propagates_connection_error(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", FailingClient)
     with pytest.raises(httpx.ConnectError):
         asyncio.run(ai_service.ollama_generate_text("prompt"))
+
+
+class _FakeStreamResponse:
+    def __init__(self, lines):
+        self._lines = lines
+
+    def raise_for_status(self):
+        pass
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
+
+
+class _FakeStreamCtx:
+    def __init__(self, response):
+        self._response = response
+
+    async def __aenter__(self):
+        return self._response
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakeStreamClient(_FakeAsyncClient):
+    def stream(self, method, url, json=None):
+        self.sent_json = json
+        self.sent_url = url
+        return _FakeStreamCtx(_FakeStreamResponse([
+            json_lib.dumps({"response": "Mer", "done": False}),
+            json_lib.dumps({"response": "haba", "done": False}),
+            json_lib.dumps({"response": "", "done": True}),
+        ]))
+
+
+class _FailingStreamClient(_FakeAsyncClient):
+    def stream(self, method, url, json=None):
+        raise httpx.ConnectError("baglanti yok", request=httpx.Request("POST", url))
+
+
+async def _collect(agen):
+    return [piece async for piece in agen]
+
+
+def test_ollama_generate_text_stream_yields_chunks_in_order(monkeypatch):
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeStreamClient)
+    pieces = asyncio.run(_collect(ai_service.ollama_generate_text_stream("bir prompt")))
+    assert pieces == ["Mer", "haba"]
+
+
+def test_ollama_generate_text_stream_sends_stream_true_and_model(monkeypatch):
+    captured_client = {}
+
+    class RecordingStreamClient(_FakeStreamClient):
+        def stream(self, method, url, json=None):
+            captured_client["json"] = json
+            return super().stream(method, url, json=json)
+
+    monkeypatch.setattr(httpx, "AsyncClient", RecordingStreamClient)
+    monkeypatch.setattr(ai_service, "get_ollama_config", lambda: {
+        "url": "http://localhost:11434/api/generate", "model": "gemma3:4b",
+    })
+    asyncio.run(_collect(ai_service.ollama_generate_text_stream("prompt")))
+    assert captured_client["json"]["model"] == "gemma3:4b"
+    assert captured_client["json"]["prompt"] == "prompt"
+    assert captured_client["json"]["stream"] is True
+
+
+def test_ollama_generate_text_stream_propagates_connection_error(monkeypatch):
+    monkeypatch.setattr(httpx, "AsyncClient", _FailingStreamClient)
+    with pytest.raises(httpx.ConnectError):
+        asyncio.run(_collect(ai_service.ollama_generate_text_stream("prompt")))
