@@ -491,9 +491,12 @@ def build_chat_prompt(context_block: str, history: list[dict], message: str) -> 
     convo_block = f"Önceki konuşma:\n" + "\n".join(convo_lines) + "\n\n" if convo_lines else ""
 
     instructions = (
-        "Sen bir test otomasyon platformunun bilgi tabanı asistanısın. Yukarıdaki ilgili bilgi/kurallara "
-        "dayanarak kullanıcının sorusunu Türkçe ve öz şekilde cevapla. Bilgi tabanında ilgili bir şey "
-        "yoksa bunu açıkça belirt, uydurma.\n\n"
+        "Sen bir test otomasyon platformunun bilgi tabanı asistanısın. Kullanıcı somut bir SORU sorarsa, "
+        "yukarıdaki ilgili bilgi/kurallara dayanarak Türkçe ve öz şekilde cevapla; bilgi tabanında ilgili "
+        "bir şey yoksa bunu açıkça belirt, uydurma.\n"
+        "Kullanıcı sadece selamlaşıyorsa veya soru sormuyorsa (\"merhaba\", \"selam\", \"nasılsın\" gibi), "
+        "bilgi tabanındaki içeriği anlatmaya/listelemeye BAŞLAMA — kısa ve doğal bir şekilde karşılık ver, "
+        "kullanıcının asıl sorusunu bekle.\n\n"
     )
     return f"{context_block}{instructions}{convo_block}Kullanıcı: {message}\nAsistan:"
 

@@ -101,6 +101,12 @@ def test_chat_prompt_without_context_has_no_context_block():
     assert "Bir soru" in prompt
 
 
+def test_chat_prompt_instructs_not_to_dump_knowledge_base_on_small_talk():
+    prompt = build_chat_prompt("İlgili geçmiş bilgi / kurallar:\n- bir kural\n\n", [], "merhaba")
+    assert "selamlaşıyorsa" in prompt or "selamlaşma" in prompt
+    assert "sor" in prompt.lower()
+
+
 def test_chat_prompt_includes_conversation_history_in_order():
     history = [
         {"role": "user", "content": "Login ekrani nasil test edilir?"},
