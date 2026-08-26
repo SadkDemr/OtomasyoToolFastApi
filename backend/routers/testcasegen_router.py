@@ -447,6 +447,15 @@ async def generate_testcases(
     titles_by_id = {t["id"]: t for t in session["titles"]}
     screens_by_index = {s["index"]: s for s in session["screens"]}
 
+    example_rows = (
+        db.query(KnowledgeEntry)
+        .filter(KnowledgeEntry.entry_type == "example")
+        .order_by(KnowledgeEntry.created_at.desc())
+        .limit(svc.MAX_PROMPT_EXAMPLES)
+        .all()
+    )
+    examples = [{"title": r.title, "content": r.content} for r in example_rows]
+
     created = []
     for title_id in body.title_ids:
         title = titles_by_id.get(title_id)
@@ -461,7 +470,9 @@ async def generate_testcases(
         context_block = knowledge_service.format_context_block(context)
 
         if title.get("source") == "document":
-            prompt = context_block + svc.build_testcase_prompt_from_document(title["text"], title.get("doc_excerpt") or "")
+            prompt = context_block + svc.build_testcase_prompt_from_document(
+                title["text"], title.get("doc_excerpt") or "", examples=examples,
+            )
             try:
                 raw = await ai_service.ollama_generate_text(prompt)
             except Exception as e:
@@ -484,7 +495,7 @@ async def generate_testcases(
                 if image_path.exists():
                     images_b64.append(base64.b64encode(image_path.read_bytes()).decode())
 
-            prompt = context_block + svc.build_testcase_prompt(title["text"], screens)
+            prompt = context_block + svc.build_testcase_prompt(title["text"], screens, examples=examples)
             try:
                 if images_b64:
                     raw = await ai_service.ollama_generate_vision(prompt, images_b64)
@@ -695,6 +706,65 @@ async def delete_knowledge_rule(
     )
     if not row:
         raise HTTPException(404, "Kural bulunamadı")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
+
+# ── Bilgi Tabanı (Admin) — Format Örnekleri ─────────────────────────────
+# "rule" kayıtlarından farkı: embedding YOK, benzerlik aramasıyla filtrelenmez —
+# generate-testcases her seferinde en yeni MAX_PROMPT_EXAMPLES tanesini prompt'a
+# few-shot olarak ekler (bkz. svc._format_examples_block).
+
+class KnowledgeExampleIn(BaseModel):
+    title: str
+    content: str
+
+
+@router.post("/knowledge/examples")
+async def add_knowledge_example(
+    body: KnowledgeExampleIn,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    title = body.title.strip()
+    content = body.content.strip()
+    if not title or not content:
+        raise HTTPException(400, "Başlık ve içerik gerekli")
+    knowledge_service.add_example(db, title, content, user_id=current_user.id)
+    return {"status": "ok"}
+
+
+@router.get("/knowledge/examples")
+async def list_knowledge_examples(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(KnowledgeEntry)
+        .filter(KnowledgeEntry.entry_type == "example")
+        .order_by(KnowledgeEntry.created_at.desc())
+        .all()
+    )
+    return {"examples": [
+        {"id": r.id, "title": r.title, "content": r.content, "created_at": r.created_at.isoformat()}
+        for r in rows
+    ]}
+
+
+@router.delete("/knowledge/examples/{entry_id}")
+async def delete_knowledge_example(
+    entry_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(KnowledgeEntry)
+        .filter(KnowledgeEntry.id == entry_id, KnowledgeEntry.entry_type == "example")
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Örnek bulunamadı")
     db.delete(row)
     db.commit()
     return {"status": "ok"}

@@ -70,6 +70,22 @@ async def add_entry(
     return added
 
 
+def add_example(db: Session, title: str, content: str, user_id: "int | None" = None) -> None:
+    """Format örneği ekler (entry_type="example"). Embedding YOK, chunking YOK — bunlar similarity
+    search ile aranmaz, generate-testcases her seferinde TÜMÜNÜ (en yeni birkaçını) prompt'a
+    few-shot olarak ekler, bu yüzden embedding modeli çevrimdışıyken de eklenebilmeli ve bir
+    örneğin adımları parçalara bölünmemeli."""
+    db.add(KnowledgeEntry(
+        entry_type="example",
+        title=title,
+        content=content,
+        embedding=None,
+        embedding_dim=None,
+        created_by_user_id=user_id,
+    ))
+    db.commit()
+
+
 async def search(
     db: Session,
     query_text: str,

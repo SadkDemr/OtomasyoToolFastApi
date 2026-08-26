@@ -386,8 +386,52 @@ def build_rationale_prompt(title_text: str, level: str, score: float) -> str:
     )
 
 
-def build_testcase_prompt(title_text: str, screens: list) -> str:
-    """screens: [{"index": int, "summary": str, "note": str}, ...] — akistaki ekranlar, sirali."""
+EXAMPLE_CHAR_LIMIT = 1500
+MAX_PROMPT_EXAMPLES = 3
+
+
+def _format_examples_block(examples: "list[dict] | None") -> str:
+    """Admin tarafından girilen onaylı format örneklerini few-shot bloğu olarak biçimlendirir.
+    Örnek yoksa boş string döner — çağıran taraf bu durumda sabit fallback örneğe düşer."""
+    if not examples:
+        return ""
+    parts = []
+    for ex in examples[:MAX_PROMPT_EXAMPLES]:
+        title = (ex.get("title") or "").strip()
+        content = (ex.get("content") or "").strip()[:EXAMPLE_CHAR_LIMIT]
+        if not content:
+            continue
+        header = f"Örnek başlık: \"{title}\"\n" if title else ""
+        parts.append(f"{header}{content}")
+    if not parts:
+        return ""
+    joined = "\n\n".join(parts)
+    return (
+        "ÖRNEKLER (admin tarafından onaylanmış gerçek test case'lerdir — adım granülerliği, detay "
+        "seviyesi ve üslup için referans al, kendi ekran/başlığına göre uyarla, bu örnekleri olduğu "
+        "gibi KOPYALAMA):\n\n"
+        f"{joined}\n\n"
+    )
+
+
+_DEFAULT_TESTCASE_EXAMPLE = (
+    "ÖRNEK (sadece adım granülerliği ve üslup için referans — kendi ekran/başlığına göre uyarlanacak, "
+    "bu örneği olduğu gibi KOPYALAMA):\n"
+    '{"steps": ['
+    '{"step_action": "\\"Daha Fazlası\\" butonuna tıklanır", '
+    '"step_expected": "\\"Hesaplama Araçları\\" menüsü görülür"}, '
+    '{"step_action": "\\"Hesaplama Araçları\\" menüsüne tıklanır", '
+    '"step_expected": "\\"Kar Payı Hesapla\\" seçeneği görülür"}, '
+    '{"step_action": "\\"Altın\\" tabına tıklanır", '
+    '"step_expected": "Altın için hesaplama alanları görülür"}'
+    ']}\n\n'
+)
+
+
+def build_testcase_prompt(title_text: str, screens: list, examples: "list[dict] | None" = None) -> str:
+    """screens: [{"index": int, "summary": str, "note": str}, ...] — akistaki ekranlar, sirali.
+    examples: admin onaylı format örnekleri (bkz. knowledge_service, entry_type="example") — verilirse
+    sabit ÖRNEK bloğunun yerine geçer."""
     screens_block = "\n".join(
         f"Ekran {i + 1} (özet: \"{s.get('summary', '')}\", not: \"{s.get('note', '')}\")"
         for i, s in enumerate(screens)
@@ -398,18 +442,7 @@ def build_testcase_prompt(title_text: str, screens: list) -> str:
         "(önce Ekran 1'e ait gezinme adımları, sonra Ekran 2'ye ait, ... son ekrandaki asıl işlem adımlarıyla biter).\n\n"
         if len(screens) > 1 else ""
     )
-    example = (
-        "ÖRNEK (sadece adım granülerliği ve üslup için referans — kendi ekran/başlığına göre uyarlanacak, "
-        "bu örneği olduğu gibi KOPYALAMA):\n"
-        '{"steps": ['
-        '{"step_action": "\\"Daha Fazlası\\" butonuna tıklanır", '
-        '"step_expected": "\\"Hesaplama Araçları\\" menüsü görülür"}, '
-        '{"step_action": "\\"Hesaplama Araçları\\" menüsüne tıklanır", '
-        '"step_expected": "\\"Kar Payı Hesapla\\" seçeneği görülür"}, '
-        '{"step_action": "\\"Altın\\" tabına tıklanır", '
-        '"step_expected": "Altın için hesaplama alanları görülür"}'
-        ']}\n\n'
-    )
+    example = _format_examples_block(examples) or _DEFAULT_TESTCASE_EXAMPLE
     return (
         "Sen bir mobil uygulama test otomasyon uzmanısın. Aşağıdaki test case başlığı için "
         "adım adım test senaryosu üret.\n\n"
@@ -454,7 +487,8 @@ def build_document_title_extraction_prompt(doc_text: str) -> str:
     )
 
 
-def build_testcase_prompt_from_document(title_text: str, doc_excerpt: str) -> str:
+def build_testcase_prompt_from_document(title_text: str, doc_excerpt: str, examples: "list[dict] | None" = None) -> str:
+    example = _format_examples_block(examples)
     return (
         "Sen bir mobil uygulama test otomasyon uzmanısın. Aşağıdaki test case başlığı ve bu başlığın "
         "dayandığı analiz dökümanı alıntısı için adım adım test senaryosu üret.\n\n"
@@ -464,6 +498,7 @@ def build_testcase_prompt_from_document(title_text: str, doc_excerpt: str) -> st
         "Alıntıda somut bir buton/alan/menü adı geçiyorsa onu birebir kullan. Geçmiyorsa, "
         "gereksinimi karşılayacak makul bir arayüz etkileşimi öner ama uydurma isimleri kesin "
         "gerçekmiş gibi sunma — genel/açıklayıcı ifade kullan (örn. \"ilgili onay butonuna\").\n\n"
+        f"{example}"
         "KESİN KURALLAR:\n"
         "1. Her Step Action pasif fiil çatısıyla yazılmalı (\"tıklanır\", \"açılır\", \"görülür\" — "
         "\"tıkla\", \"aç\" gibi EMİR KİPİ YASAK).\n"

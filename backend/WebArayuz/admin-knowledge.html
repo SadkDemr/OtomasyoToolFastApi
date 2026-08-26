@@ -16,6 +16,8 @@
         .empty-state { text-align:center; padding:60px 20px; color:var(--text-muted); grid-column:1/-1; }
         .empty-icon  { font-size:3rem; opacity:.3; margin-bottom:12px; }
 
+        .tab-btn.active { background:var(--accent-primary); color:#fff; border-color:var(--accent-primary); }
+
         .status-banner {
             display:flex; align-items:center; gap:10px;
             padding:12px 16px; border-radius:10px; margin-bottom:22px;
@@ -90,10 +92,19 @@
         <div class="page-content">
             <div id="statusBanner" class="status-banner loading">⏳ Bilgi tabanı durumu kontrol ediliyor...</div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
-                <h2 style="font-size:1.05rem;font-weight:600;margin:0;">Tanımlı Kurallar</h2>
-                <button class="btn btn-primary" onclick="openModal()">+ Yeni Kural</button>
+            <div class="tab-bar" style="display:flex;gap:8px;margin-bottom:22px;">
+                <button class="btn btn-secondary tab-btn active" id="tabRuleBtn" onclick="switchTab('rule')">🧠 Kurallar</button>
+                <button class="btn btn-secondary tab-btn" id="tabExampleBtn" onclick="switchTab('example')">📋 Örnek Senaryolar</button>
             </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+                <h2 style="font-size:1.05rem;font-weight:600;margin:0;" id="sectionTitle">Tanımlı Kurallar</h2>
+                <button class="btn btn-primary" onclick="openModal()" id="newBtn">+ Yeni Kural</button>
+            </div>
+            <p class="tab-hint" id="tabHint" style="display:none;font-size:0.84rem;color:var(--text-muted);margin:-14px 0 18px;">
+                Buraya eklenen örnekler, senaryo üretimi sırasında her zaman AI'a "böyle bir formatta üret" referansı
+                olarak gösterilir (en yeni birkaç tanesi) — konu benzerliğine bakılmaksızın.
+            </p>
             <div class="rules-grid" id="rulesGrid">
                 <div class="empty-state"><div class="empty-icon">🧠</div><p>Yükleniyor...</p></div>
             </div>
@@ -106,20 +117,20 @@
     <div class="rule-modal-box">
         <div class="rule-modal-head">
             <div class="rule-modal-head-title">
-                <span>🧠</span>
-                <span>Yeni Kural</span>
+                <span id="modalIcon">🧠</span>
+                <span id="modalTitle">Yeni Kural</span>
             </div>
             <button class="rule-modal-close" onclick="closeModal()">✕</button>
         </div>
 
         <div class="rule-modal-body">
             <div class="fm-group">
-                <label class="fm-label">Başlık *</label>
+                <label class="fm-label" id="fTitleLabel">Başlık *</label>
                 <input class="fm-input" id="fTitle" placeholder="Örn: Şifre alanı kuralı">
             </div>
             <div class="fm-group" style="margin-bottom:0;">
-                <label class="fm-label">İçerik *</label>
-                <textarea class="fm-textarea" id="fContent" placeholder="Örn: Şifre alanında en az 8 karakter zorunlu tutulmalı, senaryolar buna göre yazılmalı."></textarea>
+                <label class="fm-label" id="fContentLabel">İçerik *</label>
+                <textarea class="fm-textarea" id="fContent" placeholder="Örn: Şifre alanında en az 8 karakter zorunlu tutulmalı, senaryolar buna göre yazılmalı." style="min-height:140px;"></textarea>
             </div>
         </div>
 
@@ -136,6 +147,36 @@
 (function () {
     "use strict";
     let allRules = [];
+    let mode = "rule"; // "rule" | "example"
+
+    const MODES = {
+        rule: {
+            listPath: "/testcasegen/knowledge/rules", addPath: "/testcasegen/knowledge/rules",
+            deletePath: id => `/testcasegen/knowledge/rules/${id}`, listKey: "rules",
+            sectionTitle: "Tanımlı Kurallar", newBtnLabel: "+ Yeni Kural",
+            modalIcon: "🧠", modalTitleNew: "Yeni Kural",
+            titleLabel: "Başlık *", titlePlaceholder: "Örn: Şifre alanı kuralı",
+            contentLabel: "İçerik *",
+            contentPlaceholder: "Örn: Şifre alanında en az 8 karakter zorunlu tutulmalı, senaryolar buna göre yazılmalı.",
+            emptyTitle: "Henüz kural yok", emptyHint: "\"Yeni Kural\" butonuyla başlayın.",
+            cardIcon: "🧠", showHint: false, savedMsg: "Kural eklendi ✓",
+        },
+        example: {
+            listPath: "/testcasegen/knowledge/examples", addPath: "/testcasegen/knowledge/examples",
+            deletePath: id => `/testcasegen/knowledge/examples/${id}`, listKey: "examples",
+            sectionTitle: "Örnek Senaryolar", newBtnLabel: "+ Yeni Örnek",
+            modalIcon: "📋", modalTitleNew: "Yeni Örnek Senaryo",
+            titleLabel: "Test Case Başlığı *", titlePlaceholder: "Örn: Geçerli Tutar - EUR - 6 Ay Vade ile başarılı hesaplama yapılması",
+            contentLabel: "Adımlar *",
+            contentPlaceholder:
+                "Adım: Vakıf Katılım mobil uygulaması açılır → Beklenen: Login ekranının açıldığı görülür\n" +
+                "Adım: \"Daha Fazlası\" butonuna tıklanır → Beklenen: \"Hesaplama Araçları\" menüsü görülür\n" +
+                "...",
+            emptyTitle: "Henüz örnek yok",
+            emptyHint: "İyi formatlanmış onaylı bir test case'i buraya ekleyin — AI üretimlerinde referans alınır.",
+            cardIcon: "📋", showHint: true, savedMsg: "Örnek eklendi ✓",
+        },
+    };
 
     document.addEventListener("DOMContentLoaded", () => {
         if (!Auth.checkAuth()) return;
@@ -143,6 +184,19 @@
         loadStatus();
         loadRules();
     });
+
+    window.switchTab = function (next) {
+        if (next === mode) return;
+        mode = next;
+        document.getElementById("tabRuleBtn").classList.toggle("active", mode === "rule");
+        document.getElementById("tabExampleBtn").classList.toggle("active", mode === "example");
+        const cfg = MODES[mode];
+        document.getElementById("sectionTitle").textContent = cfg.sectionTitle;
+        document.getElementById("newBtn").textContent = cfg.newBtnLabel;
+        const hint = document.getElementById("tabHint");
+        hint.style.display = cfg.showHint ? "block" : "none";
+        loadRules();
+    };
 
     async function loadStatus() {
         const banner = document.getElementById("statusBanner");
@@ -162,9 +216,10 @@
     }
 
     async function loadRules() {
+        const cfg = MODES[mode];
         try {
-            const data = await API.get("/testcasegen/knowledge/rules");
-            allRules = data.rules || [];
+            const data = await API.get(cfg.listPath);
+            allRules = data[cfg.listKey] || [];
             renderRules();
         } catch (e) {
             document.getElementById("rulesGrid").innerHTML =
@@ -173,12 +228,13 @@
     }
 
     function renderRules() {
+        const cfg = MODES[mode];
         const grid = document.getElementById("rulesGrid");
         if (!allRules.length) {
             grid.innerHTML = `<div class="empty-state">
-                <div class="empty-icon">🧠</div>
-                <h3 style="margin-bottom:6px;">Henüz kural yok</h3>
-                <p style="font-size:0.88rem;">"Yeni Kural" butonuyla başlayın.</p>
+                <div class="empty-icon">${cfg.cardIcon}</div>
+                <h3 style="margin-bottom:6px;">${cfg.emptyTitle}</h3>
+                <p style="font-size:0.88rem;">${cfg.emptyHint}</p>
             </div>`;
             return;
         }
@@ -186,7 +242,7 @@
             const created = r.created_at ? new Date(r.created_at).toLocaleString("tr-TR") : "";
             return `
             <div class="card rule-card">
-                <h3>🧠 ${esc(r.title)}</h3>
+                <h3>${cfg.cardIcon} ${esc(r.title)}</h3>
                 <div class="rule-content">${esc(r.content)}</div>
                 <div class="rule-meta">
                     <span class="badge" style="background:var(--bg-tertiary);color:var(--text-muted);">${created}</span>
@@ -200,8 +256,17 @@
 
     // ── Modal ──────────────────────────────────────────────────────────────────
     window.openModal = function () {
-        document.getElementById("fTitle").value = "";
-        document.getElementById("fContent").value = "";
+        const cfg = MODES[mode];
+        document.getElementById("modalIcon").textContent = cfg.modalIcon;
+        document.getElementById("modalTitle").textContent = cfg.modalTitleNew;
+        document.getElementById("fTitleLabel").textContent = cfg.titleLabel;
+        document.getElementById("fContentLabel").textContent = cfg.contentLabel;
+        const fTitle = document.getElementById("fTitle");
+        const fContent = document.getElementById("fContent");
+        fTitle.placeholder = cfg.titlePlaceholder;
+        fContent.placeholder = cfg.contentPlaceholder;
+        fTitle.value = "";
+        fContent.value = "";
         document.getElementById("ruleModal").classList.add("active");
     };
 
@@ -210,6 +275,7 @@
     };
 
     window.saveRule = async function () {
+        const cfg = MODES[mode];
         const btn = document.getElementById("saveBtn");
         const title = document.getElementById("fTitle").value.trim();
         const content = document.getElementById("fContent").value.trim();
@@ -219,9 +285,9 @@
 
         btn.disabled = true; btn.textContent = "Kaydediliyor...";
         try {
-            const result = await API.post("/testcasegen/knowledge/rules", { title, content });
+            const result = await API.post(cfg.addPath, { title, content });
             const chunkNote = result.chunks > 1 ? ` (${result.chunks} parçaya bölündü)` : "";
-            Toast.success(`Kural eklendi ✓${chunkNote}`);
+            Toast.success(`${cfg.savedMsg}${chunkNote}`);
             closeModal();
             loadRules();
         } catch (e) {
@@ -232,10 +298,11 @@
     };
 
     window.deleteRule = async function (ruleId) {
+        const cfg = MODES[mode];
         const r = allRules.find(x => x.id === ruleId);
         if (!confirm(`"${r?.title}" silinsin mi?`)) return;
         try {
-            await API.delete(`/testcasegen/knowledge/rules/${ruleId}`);
+            await API.delete(cfg.deletePath(ruleId));
             Toast.success("Silindi");
             loadRules();
         } catch (e) { Toast.error(e.message); }
