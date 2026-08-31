@@ -6,7 +6,6 @@ Kural motoru + LLM fallback (Ollama gemma3:4b).
 Sadece dönüşüm — çalıştırma yok.
 """
 
-import re
 from typing import Optional
 
 import httpx
@@ -38,6 +37,7 @@ class JavaGenerateRequest(BaseModel):
     bundle_id:        Optional[str]  = ""
     no_reset:         Optional[bool] = True
     class_name:       Optional[str]  = "GeneratedTest"
+    use_ai_fallback:  Optional[bool] = True
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -64,92 +64,80 @@ def _java_code_lines(block: str) -> list[str]:
     lines = []
     for l in block.splitlines():
         t = l.strip()
-        if not t:
+        if not t or t.startswith("```"):
             continue
         if t.startswith("//") or t.endswith((';', '{', '}')):
             lines.append(l)
-    return lines
+    if lines:
+        return lines
+    # Sıkı filtre hiçbir satırı geçiremediyse (küçük model markdown/serbest
+    # metin formatına kayabiliyor) — boş TODO placeholder'a düşmek yerine
+    # LLM'in ham çıktısını (fence satırları hariç) olduğu gibi kullan;
+    # hiç yoktan iyi ve kullanıcı elle düzeltebilir.
+    return [l for l in block.splitlines() if l.strip() and not l.strip().startswith("```")]
 
 
-async def _ask_llm_java(steps: list[str]) -> dict[str, str]:
-    numbered = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))
-    prompt = f"""Write Java Appium code for each test step. Use AndroidDriver.
-Output only Java statements + // comments. No imports, no class/method wrapper.
-Rules:
+_JAVA_STEP_RULES = """Rules:
 - Click text/button: driver.findElement(By.xpath("//*[@text='X']")).click();
 - Type text: driver.executeScript("mobile: type", Map.of("text", "VALUE")); then driver.hideKeyboard();
 - Scroll/swipe: do NOT use driver.executeScript("mobile:...") — it is unreliable across driver versions. Output only: // TODO: manual scroll/swipe gesture needed
 - Back key: driver.pressKey(new KeyEvent(AndroidKey.BACK));
 - Thread.sleep(ms) only when step explicitly requires waiting
-- Only use these types: driver, By, WebElement, Map, Thread, KeyEvent, AndroidKey. Do not declare or use any other class.
+- Only use these types: driver, By, WebElement, Map, Thread, KeyEvent, AndroidKey. Do not declare or use any other class."""
 
-Steps:
-{numbered}
-
-Java code (one block per step, separated by blank lines):"""
-
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(OLLAMA_URL, json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 512}
-            })
-            raw = resp.json().get("response", "")
-    except Exception:
-        raw = ""
-
-    result = {}
-    blocks = [b.strip() for b in re.split(r'\n\s*\n', raw) if b.strip()]
-    for i, step in enumerate(steps):
-        if i < len(blocks):
-            code_only = "\n".join(_java_code_lines(blocks[i]))
-            result[step] = code_only if code_only else f"// TODO: {step}\nThread.sleep(1000);"
-        else:
-            result[step] = f"// TODO: {step}\nThread.sleep(1000);"
-    return result
-
-
-async def _ask_llm_ios(steps: list[str]) -> dict[str, str]:
-    numbered = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))
-    prompt = f"""Write Java Appium code for each iOS test step. Use IOSDriver with XCUITest.
-Output only Java statements + // comments. No imports, no class/method wrapper.
-Variables already available: IOSDriver 'driver'.
-Rules:
+_IOS_STEP_RULES = """Rules:
 - Click element: driver.findElement(AppiumBy.xpath("//*[@name='X' or @label='X' or @value='X']")).click();
-- Type text: driver.switchTo().activeElement().sendKeys("VALUE"); try {{ driver.hideKeyboard(); }} catch (Exception ignored) {{}}
+- Type text: driver.switchTo().activeElement().sendKeys("VALUE"); try { driver.hideKeyboard(); } catch (Exception ignored) {}
 - Assert visible: driver.findElement(AppiumBy.xpath("//*[@name='X' or @label='X' or @value='X']")).isDisplayed();
 - Scroll/swipe: do NOT use driver.executeScript("mobile:...") — it is unreliable across driver versions. Output only: // TODO: manual scroll/swipe gesture needed
 - Back: driver.navigate().back();
 - Wait: Thread.sleep(ms);
-- Only use these types: driver, AppiumBy, WebElement, Thread. Do not declare or use any other class.
+- Only use these types: driver, AppiumBy, WebElement, Thread. Do not declare or use any other class."""
 
-Steps:
-{numbered}
 
-Java code (one block per step, separated by blank lines):"""
+async def _ask_llm_step(client: httpx.AsyncClient, step: str, header: str, rules: str) -> str:
+    """Tek bir adım için LLM'e ayrı istek atar.
+    Önceki sürüm tüm tanınmayan adımları TEK bir prompt'ta topluca gönderip
+    yanıtı boş satırlarla (\\n\\n) adımlara bölüyordu — küçük model (gemma3:4b)
+    bu ayraç formatını her zaman tutturamadığı için 2., 3. ... adımlar kendi
+    bloğunu bulamıyor ve LLM hiç çalıştırılmamış gibi TODO/sleep placeholder'a
+    düşüyordu. Adım başına ayrı istek, hizalama riskini tamamen kaldırır."""
+    prompt = f"""{header}
+Output only Java statements + // comments, nothing else (no markdown fences, no explanation).
+{rules}
 
+Step: {step}
+
+Java code:"""
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(OLLAMA_URL, json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 512}
-            })
-            raw = resp.json().get("response", "")
+        resp = await client.post(OLLAMA_URL, json={
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 200}
+        })
+        raw = resp.json().get("response", "")
     except Exception:
         raw = ""
+    code_only = "\n".join(_java_code_lines(raw))
+    return code_only if code_only else f"// TODO: {step}\nThread.sleep(1000);"
 
+
+async def _ask_llm_java(steps: list[str]) -> dict[str, str]:
+    header = "Write Java Appium code for this single test step. Use AndroidDriver."
     result = {}
-    blocks = [b.strip() for b in re.split(r'\n\s*\n', raw) if b.strip()]
-    for i, step in enumerate(steps):
-        if i < len(blocks):
-            code_only = "\n".join(_java_code_lines(blocks[i]))
-            result[step] = code_only if code_only else f"// TODO: {step}\nThread.sleep(1000);"
-        else:
-            result[step] = f"// TODO: {step}\nThread.sleep(1000);"
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for step in steps:
+            result[step] = await _ask_llm_step(client, step, header, _JAVA_STEP_RULES)
+    return result
+
+
+async def _ask_llm_ios(steps: list[str]) -> dict[str, str]:
+    header = "Write Java Appium code for this single iOS test step. Use IOSDriver with XCUITest. Variable already available: IOSDriver 'driver'."
+    result = {}
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for step in steps:
+            result[step] = await _ask_llm_step(client, step, header, _IOS_STEP_RULES)
     return result
 
 
@@ -188,7 +176,7 @@ async def generate_java(req: JavaGenerateRequest, current_user: User = Depends(g
             unrecognized.append(step)
 
     llm_results: dict[str, str] = {}
-    if unrecognized:
+    if unrecognized and req.use_ai_fallback:
         llm_results = await (_ask_llm_ios(unrecognized) if platform == "ios" else _ask_llm_java(unrecognized))
 
     final_lines: list[str] = []

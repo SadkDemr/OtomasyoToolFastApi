@@ -301,7 +301,16 @@ def build_android_template(
         f'driver.terminateApp("{pkg}");\ndriver.activateApp("{pkg}");'
         if pkg else "// app_package girilmedi"
     )
-    act_end = f'driver.terminateApp("{pkg}");' if pkg else ""
+    act_end = (
+        'try {\n'
+        '    driver.executeScript("mobile: shell", Map.of(\n'
+        '        "command", "am",\n'
+        f'        "args", Arrays.asList("force-stop", "{pkg}")\n'
+        '    ));\n'
+        '} catch (Exception e) {\n'
+        '    throw e;\n'
+        '}'
+    ) if pkg else "// app_package girilmedi"
 
     body = steps_code.rstrip()
 

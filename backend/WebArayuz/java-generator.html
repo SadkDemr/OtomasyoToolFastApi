@@ -239,6 +239,11 @@
             <div class="status-bar">
                 <div class="status-dot" id="statusDot"></div>
                 <span id="statusText">Ollama durumu kontrol ediliyor...</span>
+                <label style="margin-left:auto; display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--text-secondary); cursor:pointer; white-space:nowrap;"
+                       title="Kapatırsan bu dönüşümde tanınmayan adımlar LLM'e gönderilmez, direkt manuel işaretlenir. Ollama servisi kapanmaz, sadece bu istekte kullanılmaz.">
+                    <input type="checkbox" id="cfg-use-ai-fallback" checked>
+                    Bu dönüşümde AI fallback kullan
+                </label>
             </div>
 
             <div class="gen-layout">
@@ -369,6 +374,9 @@ Telefon alanına "05001234567" yaz
                             <span id="lineCountBadge" style="display:none; font-size:0.73rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-weight:400;"></span>
                         </div>
 
+                        <!-- Toplu Dönüşüm Sekmeleri -->
+                        <div class="batch-tab-strip" id="batchTabStrip"></div>
+
                         <!-- Adım Raporu -->
                         <div id="stepReport" style="display:none;">
                             <div style="font-size:0.76rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Adım Analizi</div>
@@ -385,6 +393,7 @@ Telefon alanına "05001234567" yaz
                                     <button class="header-btn" id="btnEdit"     onclick="toggleEditCode()" style="display:none;">✏ Düzenle</button>
                                     <button class="header-btn" id="btnCopy"     onclick="copyCode()"       style="display:none;">📋 Kopyala</button>
                                     <button class="header-btn" id="btnDownload" onclick="downloadCode()"   style="display:none;">⬇ İndir</button>
+                                    <button class="header-btn" id="btnDownloadAll" onclick="downloadAllCode()" style="display:none;">⬇ Hepsini İndir</button>
                                 </div>
                             </div>
                             <div class="script-code" id="javaCode">
@@ -423,6 +432,11 @@ Telefon alanına "05001234567" yaz
     let editMode        = false;
     let className       = "GeneratedTest";
     let currentPlatform = "android";
+
+    // ── Toplu dönüşüm (Excel/CSV çoklu test case) ──────────────────────────
+    let isBatchMode      = false;
+    let batchResults     = [];   // [{name, title, script, report, warnings}]
+    let batchActiveIndex = -1;
 
     // ── Ollama durum ─────────────────────────────────────────────────────
     async function checkOllamaStatus() {
@@ -630,20 +644,62 @@ Telefon alanına "05001234567" yaz
     function _javaOpenAdoModal(testCases) {
         const overlay = document.getElementById("javaAdoModal");
         const body    = document.getElementById("javaAdoBody");
+        window._javaTCs       = testCases;
+        window._javaSelected  = new Set();
         body.innerHTML = testCases.map((tc, i) => `
-            <div class="java-ado-item" onclick="window._javaPickTC(${i})">
-                <div class="java-ado-title">${(tc.title||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>
-                <div class="java-ado-meta">${tc.steps.length} adım</div>
-            </div>`).join("");
+            <label class="java-ado-item" for="javaAdoCb${i}">
+                <input type="checkbox" id="javaAdoCb${i}" onchange="window._javaToggleTC(${i}, this.checked)">
+                <div style="flex:1; min-width:0;">
+                    <div class="java-ado-title">${(tc.title||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>
+                    <div class="java-ado-meta">${tc.steps.length} adım</div>
+                </div>
+            </label>`).join("");
+        document.getElementById("javaAdoSelectAll").checked = false;
+        _javaUpdateAdoFooter();
         overlay.style.display = "flex";
-        window._javaTCs = testCases;
     }
 
-    window._javaPickTC = function(i) {
-        const tc = (window._javaTCs || [])[i];
-        if (!tc) return;
+    window._javaToggleTC = function (i, checked) {
+        if (checked) window._javaSelected.add(i); else window._javaSelected.delete(i);
+        _javaUpdateAdoFooter();
+    };
+
+    window._javaToggleSelectAll = function () {
+        const checked = document.getElementById("javaAdoSelectAll").checked;
+        const tcs = window._javaTCs || [];
+        window._javaSelected = new Set();
+        tcs.forEach((_, i) => {
+            const cb = document.getElementById(`javaAdoCb${i}`);
+            if (cb) cb.checked = checked;
+            if (checked) window._javaSelected.add(i);
+        });
+        _javaUpdateAdoFooter();
+    };
+
+    function _javaUpdateAdoFooter() {
+        const n   = (window._javaSelected || new Set()).size;
+        const all = (window._javaTCs || []).length;
+        document.getElementById("javaAdoSelCount").textContent   = `${n} seçili`;
+        document.getElementById("javaAdoImportBtn").disabled     = n !== 1;
+        document.getElementById("javaAdoConvertBtn").disabled    = n === 0;
+        document.getElementById("javaAdoConvertBtn").textContent = `☕ Seçilenleri Dönüştür (${n})`;
+        document.getElementById("javaAdoSelectAll").checked      = n > 0 && n === all;
+    }
+
+    window._javaImportToText = function () {
+        const sel = Array.from(window._javaSelected || []);
+        if (sel.length !== 1) return;
+        const tc = window._javaTCs[sel[0]];
         document.getElementById("javaAdoModal").style.display = "none";
         _javaImportAdoTC(tc);
+    };
+
+    window._javaConvertSelected = async function () {
+        const sel = Array.from(window._javaSelected || []).sort((a, b) => a - b);
+        if (!sel.length) return;
+        const tcs = sel.map(i => window._javaTCs[i]);
+        document.getElementById("javaAdoModal").style.display = "none";
+        await runBatchGenerate(tcs);
     };
 
     window._javaCloseAdoModal = function() {
@@ -665,6 +721,7 @@ Telefon alanına "05001234567" yaz
         const testCase = document.getElementById("testCaseInput").value.trim();
         if (!testCase) return;
 
+        _exitBatchMode();
         isGenerating = true;
         setGeneratingUI(true);
 
@@ -680,7 +737,8 @@ Telefon alanına "05001234567" yaz
             device_name:      document.getElementById("cfg-device-name").value      || (currentPlatform === "ios" ? "iPhone Device" : "Android Device"),
             udid:             document.getElementById("cfg-udid").value             || "",
             no_reset:         document.getElementById("cfg-no-reset").checked,
-            class_name:       className
+            class_name:       className,
+            use_ai_fallback:  document.getElementById("cfg-use-ai-fallback").checked
         };
         if (currentPlatform === "ios") {
             payload.bundle_id = document.getElementById("cfg-bundle-id").value || "";
@@ -713,6 +771,136 @@ Telefon alanına "05001234567" yaz
         document.getElementById("genSpinner").style.display = loading ? "block" : "none";
         document.getElementById("genBtnText").textContent   = loading ? "Üretiliyor..." : idleLabel;
         document.getElementById("btnGenerate").disabled     = loading;
+    }
+
+    // ── Toplu Üretim (Excel/CSV'den seçilen birden çok test case) ──────────
+    async function runBatchGenerate(testCases) {
+        if (isGenerating) return;
+        isGenerating  = true;
+        isBatchMode   = true;
+        batchResults  = [];
+        batchActiveIndex = -1;
+        setGeneratingUI(true);
+
+        const baseConfig = {
+            platform:         currentPlatform,
+            appium_url:       document.getElementById("cfg-appium-url").value       || "http://localhost:4723",
+            platform_version: document.getElementById("cfg-platform-version").value || (currentPlatform === "ios" ? "18" : "15"),
+            device_name:      document.getElementById("cfg-device-name").value      || (currentPlatform === "ios" ? "iPhone Device" : "Android Device"),
+            udid:             document.getElementById("cfg-udid").value             || "",
+            no_reset:         document.getElementById("cfg-no-reset").checked,
+            use_ai_fallback:  document.getElementById("cfg-use-ai-fallback").checked,
+        };
+        if (currentPlatform === "ios") {
+            baseConfig.bundle_id = document.getElementById("cfg-bundle-id").value || "";
+        } else {
+            baseConfig.app_package  = document.getElementById("cfg-app-package").value  || "";
+            baseConfig.app_activity = document.getElementById("cfg-app-activity").value || "";
+        }
+
+        const usedNames = new Set();
+        let failCount = 0;
+
+        for (let i = 0; i < testCases.length; i++) {
+            const tc = testCases[i];
+            document.getElementById("genBtnText").textContent =
+                `Dönüştürülüyor ${i + 1}/${testCases.length}: ${(tc.title || "").slice(0, 40)}`;
+
+            let base = sanitizeClassName(tc.title || `Test${i + 1}`) || `Test${i + 1}`;
+            let name = base, suffix = 2;
+            while (usedNames.has(name)) { name = `${base}_${suffix++}`; }
+            usedNames.add(name);
+
+            const payload = Object.assign({}, baseConfig, {
+                test_case:  (tc.steps || []).join("\n"),
+                class_name: name
+            });
+
+            try {
+                const data = await API.post("/java-gen/generate", payload);
+                batchResults.push({
+                    name, title: tc.title || name,
+                    script:   data.script   || "",
+                    report:   data.report   || [],
+                    warnings: data.warnings || []
+                });
+            } catch (err) {
+                failCount++;
+                batchResults.push({
+                    name, title: tc.title || name,
+                    script: `// Üretim hatası: ${err.message}`, report: [], warnings: []
+                });
+            }
+        }
+
+        isGenerating = false;
+        setGeneratingUI(false);
+        renderBatchTabs();
+        switchBatchTab(0);
+
+        failCount
+            ? Toast.error(`${testCases.length} test case işlendi, ${failCount} tanesi hata verdi.`)
+            : Toast.success(`${testCases.length} test case başarıyla dönüştürüldü!`);
+    }
+
+    function renderBatchTabs() {
+        const strip = document.getElementById("batchTabStrip");
+        if (batchResults.length <= 1) {
+            strip.style.display = "none";
+            strip.innerHTML = "";
+        } else {
+            strip.style.display = "flex";
+            strip.innerHTML = batchResults.map((r, i) => `
+                <button class="batch-tab" id="batchTab${i}" onclick="switchBatchTab(${i})">${r.name}.java</button>
+            `).join("");
+        }
+        document.getElementById("btnDownloadAll").style.display = batchResults.length > 1 ? "inline-block" : "none";
+    }
+
+    window.switchBatchTab = function (i) {
+        if (i < 0 || i >= batchResults.length) return;
+        batchActiveIndex = i;
+        const r = batchResults[i];
+        generatedCode = r.script;
+        editMode = false;
+
+        document.getElementById("javaFileName").textContent   = r.name + ".java";
+        document.getElementById("javaEditArea").style.display = "none";
+        document.getElementById("javaCode").style.display     = "block";
+        document.getElementById("btnEdit").textContent = "✏ Düzenle";
+        document.getElementById("btnEdit").classList.remove("active");
+
+        renderCode(r.script);
+        if (r.report && r.report.length) renderStepReport(r.report);
+        else document.getElementById("stepReport").style.display = "none";
+        if (r.warnings && r.warnings.length) showWarnings(r.warnings);
+        else hideWarnings();
+
+        document.querySelectorAll(".batch-tab").forEach((el, idx) => el.classList.toggle("active", idx === i));
+    };
+
+    window.downloadAllCode = function () {
+        if (!batchResults.length) return;
+        batchResults.forEach((r, i) => {
+            setTimeout(() => {
+                const blob = new Blob([r.script], { type: "text/x-java" });
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement("a");
+                a.href = url; a.download = r.name + ".java";
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+            }, i * 200);
+        });
+        Toast.success(`${batchResults.length} dosya indiriliyor...`);
+    };
+
+    function _exitBatchMode() {
+        isBatchMode = false;
+        batchResults = [];
+        batchActiveIndex = -1;
+        document.getElementById("batchTabStrip").style.display = "none";
+        document.getElementById("batchTabStrip").innerHTML = "";
+        document.getElementById("btnDownloadAll").style.display = "none";
     }
 
     // ── Render ───────────────────────────────────────────────────────────
@@ -767,6 +955,7 @@ Telefon alanına "05001234567" yaz
             btn.classList.remove("active");
             const lines = generatedCode.split("\n").length;
             document.getElementById("lineCountBadge").textContent = `${lines} satır`;
+            if (isBatchMode && batchActiveIndex >= 0) batchResults[batchActiveIndex].script = generatedCode;
         }
     };
 
@@ -790,13 +979,14 @@ Telefon alanına "05001234567" yaz
     window.downloadCode = function () {
         const code = editMode ? document.getElementById("javaEditArea").value : generatedCode;
         if (!code) return;
+        const fname = (isBatchMode && batchActiveIndex >= 0) ? batchResults[batchActiveIndex].name : className;
         const blob = new Blob([code], { type: "text/x-java" });
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement("a");
-        a.href = url; a.download = className + ".java";
+        a.href = url; a.download = fname + ".java";
         document.body.appendChild(a); a.click();
         document.body.removeChild(a); URL.revokeObjectURL(url);
-        Toast.success(className + ".java indirildi");
+        Toast.success(fname + ".java indirildi");
     };
 
     // ── Adım raporu ────────────────────────────────────────────────────────
@@ -843,6 +1033,7 @@ Telefon alanına "05001234567" yaz
     function _resetOutput() {
         generatedCode = "";
         editMode      = false;
+        _exitBatchMode();
         const icon = currentPlatform === "ios" ? "🍎" : "☕";
         document.getElementById("javaCode").innerHTML =
             `<div class="script-placeholder"><span class="java-icon">${icon}</span>Java kodu henüz üretilmedi.<br>` +
@@ -884,19 +1075,44 @@ Telefon alanına "05001234567" yaz
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </div>
-        <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:12px;">İçe aktarmak istediğiniz test case'i seçin:</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--text-muted); cursor:pointer;">
+                <input type="checkbox" id="javaAdoSelectAll" onchange="window._javaToggleSelectAll()">
+                Tümünü seç
+            </label>
+            <span id="javaAdoSelCount" style="font-size:0.78rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">0 seçili</span>
+        </div>
         <div id="javaAdoBody" style="display:flex; flex-direction:column; gap:8px;"></div>
+        <div style="display:flex; gap:10px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border-color);">
+            <button class="btn-reset" style="flex:1;" id="javaAdoImportBtn" onclick="window._javaImportToText()" disabled>📝 Metne Aktar</button>
+            <button class="btn-generate" style="flex:1;" id="javaAdoConvertBtn" onclick="window._javaConvertSelected()" disabled>☕ Seçilenleri Dönüştür (0)</button>
+        </div>
     </div>
 </div>
 <style>
 .java-ado-item {
+    display: flex; align-items: center; gap: 10px;
     padding: 12px 16px; border-radius: 10px; cursor: pointer;
     border: 1px solid var(--border-color); background: var(--bg-primary);
     transition: border-color 150ms, background 150ms;
 }
 .java-ado-item:hover { border-color: var(--accent-primary); background: var(--bg-tertiary); }
+.java-ado-item input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-primary); cursor: pointer; flex-shrink: 0; }
 .java-ado-title { font-size: 0.88rem; font-weight: 500; color: var(--text-primary); }
 .java-ado-meta  { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+.batch-tab-strip {
+    display: none; gap: 6px; overflow-x: auto; padding: 0 2px;
+}
+.batch-tab {
+    padding: 6px 12px; font-size: 0.76rem; font-family: 'JetBrains Mono', monospace;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    border: 1px solid #2d2d4a; border-bottom: none;
+    background: #252540; color: #8888aa; cursor: pointer;
+    white-space: nowrap; transition: var(--transition); flex-shrink: 0;
+}
+.batch-tab:hover { color: #cdd6f4; }
+.batch-tab.active { background: #1e1e2e; color: #f59e0b; }
 </style>
 </body>
 </html>
