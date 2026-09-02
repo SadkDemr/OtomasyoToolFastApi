@@ -78,6 +78,18 @@
             display:flex; justify-content:flex-end; gap:10px;
             flex-shrink:0; background:var(--bg-secondary);
         }
+
+        .kb-drop-zone {
+            border: 2px dashed var(--border-color); border-radius: 9px;
+            padding: 12px 16px; text-align: center; cursor: pointer;
+            transition: .15s; color: var(--text-muted); font-size: 0.82rem;
+            margin-bottom: 14px;
+        }
+        .kb-drop-zone:hover, .kb-drop-zone.drag-over {
+            border-color: var(--accent-primary); background: rgba(79,70,229,0.04); color: var(--accent-primary);
+        }
+        .kb-drop-zone input { display: none; }
+        .diff-modal-body { font-size: 0.9rem; line-height: 1.6; color: var(--text-primary); white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -86,7 +98,10 @@
     <main class="main-content">
         <header class="header">
             <div class="header-left"><h1 class="page-title">🧠 Bilgi Tabanı Kuralları</h1></div>
-            <div class="header-right"><button class="theme-toggle" onclick="Theme.toggle()">🌙</button></div>
+            <div class="header-right">
+                <a class="btn btn-secondary" href="admin-knowledge-history.html" style="text-decoration:none;">🕓 Değişiklik Geçmişi</a>
+                <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+            </div>
         </header>
 
         <div class="page-content">
@@ -124,6 +139,10 @@
         </div>
 
         <div class="rule-modal-body">
+            <div class="kb-drop-zone" id="kbDropZone">
+                <input type="file" id="kbFileInput" accept=".docx,.xlsx,.txt,.md">
+                📁 Dosyadan doldur (.docx, .xlsx, .txt, .md) veya <strong>tıkla</strong>
+            </div>
             <div class="fm-group">
                 <label class="fm-label" id="fTitleLabel">Başlık *</label>
                 <input class="fm-input" id="fTitle" placeholder="Örn: Şifre alanı kuralı">
@@ -137,6 +156,25 @@
         <div class="rule-modal-foot">
             <button class="btn btn-secondary" onclick="closeModal()">İptal</button>
             <button class="btn btn-primary" onclick="saveRule()" id="saveBtn">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Fark Bildirimi Modal ── -->
+<div class="rule-modal-overlay" id="diffModal">
+    <div class="rule-modal-box" style="width:min(480px,100%);">
+        <div class="rule-modal-head">
+            <div class="rule-modal-head-title">
+                <span>🔄</span>
+                <span id="diffModalTitle">Güncellendi</span>
+            </div>
+            <button class="rule-modal-close" onclick="closeDiffModal()">✕</button>
+        </div>
+        <div class="rule-modal-body">
+            <div class="diff-modal-body" id="diffModalBody"></div>
+        </div>
+        <div class="rule-modal-foot">
+            <button class="btn btn-primary" onclick="closeDiffModal()">Tamam</button>
         </div>
     </div>
 </div>
@@ -290,6 +328,7 @@
             Toast.success(`${cfg.savedMsg}${chunkNote}`);
             closeModal();
             loadRules();
+            if (result.is_update && result.diff_summary) showDiffModal(title, result.diff_summary);
         } catch (e) {
             Toast.error(e.message);
         } finally {
@@ -307,6 +346,54 @@
             loadRules();
         } catch (e) { Toast.error(e.message); }
     };
+
+    // ── Dosyadan doldurma ─────────────────────────────────────────────────────
+    const kbDropZone  = document.getElementById("kbDropZone");
+    const kbFileInput = document.getElementById("kbFileInput");
+
+    kbDropZone.addEventListener("click", () => kbFileInput.click());
+    kbDropZone.addEventListener("dragover",  e => { e.preventDefault(); kbDropZone.classList.add("drag-over"); });
+    kbDropZone.addEventListener("dragleave", () => kbDropZone.classList.remove("drag-over"));
+    kbDropZone.addEventListener("drop", e => {
+        e.preventDefault();
+        kbDropZone.classList.remove("drag-over");
+        const file = e.dataTransfer.files[0];
+        if (file) uploadKnowledgeFile(file);
+    });
+    kbFileInput.addEventListener("change", e => {
+        if (e.target.files[0]) { uploadKnowledgeFile(e.target.files[0]); e.target.value = ""; }
+    });
+
+    async function uploadKnowledgeFile(file) {
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+            const resp = await fetch(`${API_URL}/testcasegen/knowledge/extract-file`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                body: formData,
+            });
+            if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || "Dosya okunamadı"); }
+            const data = await resp.json();
+            const fTitle = document.getElementById("fTitle");
+            if (!fTitle.value.trim()) fTitle.value = data.suggested_title || "";
+            document.getElementById("fContent").value = data.text || "";
+            Toast.success("Dosya içeriği metin alanına dolduruldu");
+        } catch (e) {
+            Toast.error(e.message);
+        }
+    }
+
+    // ── Fark bildirimi ──────────────────────────────────────────────────────
+    window.closeDiffModal = function () {
+        document.getElementById("diffModal").classList.remove("active");
+    };
+
+    function showDiffModal(title, diffSummary) {
+        document.getElementById("diffModalTitle").textContent = `"${title}" güncellendi`;
+        document.getElementById("diffModalBody").textContent = diffSummary;
+        document.getElementById("diffModal").classList.add("active");
+    }
 
     function esc(s) { if (!s) return ""; const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 })();
