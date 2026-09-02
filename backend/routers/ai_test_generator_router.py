@@ -1944,27 +1944,6 @@ except Exception:
     print("[DESKTOP] pywinauto kullanılamıyor — pencere kontrolü devre dışı")
 
 
-def _ollama_url():
-    try:
-        import json as _js2, pathlib as _pl2
-        _cp2 = _pl2.Path(_AI_CONFIG_PATH) if "_AI_CONFIG_PATH" in globals() else None
-        if _cp2 and _cp2.exists():
-            return _js2.loads(_cp2.read_text(encoding="utf-8")).get("ollama_url", "http://localhost:11434/api/generate")
-    except Exception:
-        pass
-    return "http://localhost:11434/api/generate"
-
-def _ollama_model():
-    try:
-        import json as _js2, pathlib as _pl2
-        _cp2 = _pl2.Path(_AI_CONFIG_PATH) if "_AI_CONFIG_PATH" in globals() else None
-        if _cp2 and _cp2.exists():
-            return _js2.loads(_cp2.read_text(encoding="utf-8")).get("ollama_model", "gemma3:4b")
-    except Exception:
-        pass
-    return "gemma3:4b"
-
-
 def _screenshot_b64(region=None):
     """Ekran (veya belirtilen bölge) fotoğrafı → base64 PNG."""
     shot = _pag.screenshot(region=region) if region else _pag.screenshot()
@@ -4047,15 +4026,19 @@ async def parse_csv_ado(
 
 @router.get("/status")
 async def ollama_status():
+    cfg = _get_ollama_cfg()
+    tags_url = cfg["url"].replace("/api/generate", "/api/tags")
+    configured_model_base = cfg["model"].split(":")[0]
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get("http://localhost:11434/api/tags")
+            resp = await client.get(tags_url)
             if resp.status_code == 200:
                 models = [m["name"] for m in resp.json().get("models", [])]
-                return {"online": True, "model_available": any("gemma3" in m for m in models), "models": models}
+                model_available = any(m.split(":")[0] == configured_model_base for m in models)
+                return {"online": True, "model_available": model_available, "models": models, "configured_model": cfg["model"]}
     except Exception:
         pass
-    return {"online": False, "model_available": False, "models": []}
+    return {"online": False, "model_available": False, "models": [], "configured_model": cfg["model"]}
 
 
 def _find_adb() -> str:

@@ -1698,9 +1698,10 @@
             const data = await API.get("/ai-gen/status");
             if (data.online) {
                 dot.className  = "status-dot online";
+                const cm = data.configured_model || "gemma3:4b";
                 text.textContent = data.model_available
-                    ? `✓ Ollama çalışıyor · Model: gemma3:4b hazır`
-                    : `⚠ Ollama çalışıyor ama gemma3:4b bulunamadı → ollama pull gemma3:4b`;
+                    ? `✓ Ollama çalışıyor · Model: ${cm} hazır`
+                    : `⚠ Ollama çalışıyor ama ${cm} bulunamadı → ollama pull ${cm}`;
             } else {
                 dot.className  = "status-dot offline";
                 text.textContent = "✗ Ollama çevrimdışı → terminalde 'ollama serve' çalıştırın";
