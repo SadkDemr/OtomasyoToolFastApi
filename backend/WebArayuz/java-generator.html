@@ -1115,6 +1115,7 @@ Telefon alanına "05001234567" yaz
     max-height: 520px; overflow-y: auto; overflow-x: hidden; padding: 2px;
 }
 .batch-tab {
+    display: block; width: 100%; min-width: 0; box-sizing: border-box;
     padding: 8px 12px; font-size: 0.76rem; font-family: 'JetBrains Mono', monospace;
     border-radius: var(--radius-sm);
     border: 1px solid #2d2d4a;
@@ -1124,10 +1125,6 @@ Telefon alanına "05001234567" yaz
 }
 .batch-tab:hover { color: #cdd6f4; }
 .batch-tab.active { background: #1e1e2e; color: #f59e0b; border-color: #f59e0b; }
-@media (max-width: 960px) {
-    .batch-layout { flex-direction: column; }
-    .batch-tab-strip { flex-direction: row; width: auto; max-height: none; overflow-x: auto; overflow-y: hidden; }
-}
 </style>
 </body>
 </html>
