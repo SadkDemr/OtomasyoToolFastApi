@@ -408,3 +408,16 @@ class KnowledgeEntry(Base):
     source_ref = Column(String, nullable=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class KnowledgeDocumentVersion(Base):
+    __tablename__ = "knowledge_document_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entry_type = Column(String, index=True)   # "rule" | "example"
+    title = Column(String, index=True)
+    full_content = Column(Text)               # chunklanmamis tam metin (diff icin)
+    is_current = Column(Boolean, default=True, index=True)
+    diff_summary = Column(Text, nullable=True)  # None ise ilk kayit
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -143,3 +143,16 @@ def test_format_context_block_formats_bullet_list():
     assert "İlgili geçmiş bilgi" in block
     assert "- birinci" in block
     assert "- ikinci" in block
+
+
+def test_knowledge_document_version_model_defaults(db):
+    from models.db_models import KnowledgeDocumentVersion
+
+    row = KnowledgeDocumentVersion(entry_type="rule", title="T", full_content="C")
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    assert row.is_current is True
+    assert row.diff_summary is None
+    assert row.created_at is not None
