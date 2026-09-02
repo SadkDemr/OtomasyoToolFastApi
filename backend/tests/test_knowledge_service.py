@@ -156,3 +156,15 @@ def test_knowledge_document_version_model_defaults(db):
     assert row.is_current is True
     assert row.diff_summary is None
     assert row.created_at is not None
+
+
+def test_build_diff_summary_prompt_includes_title_and_diff_lines():
+    from services import testcasegen_service
+
+    prompt = testcasegen_service.build_diff_summary_prompt(
+        "Sifre Kurali", "-eski minimum 8 karakter\n+yeni minimum 10 karakter"
+    )
+
+    assert "Sifre Kurali" in prompt
+    assert "eski minimum 8 karakter" in prompt
+    assert "yeni minimum 10 karakter" in prompt

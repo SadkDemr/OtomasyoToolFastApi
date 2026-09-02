@@ -487,6 +487,20 @@ def build_document_title_extraction_prompt(doc_text: str) -> str:
     )
 
 
+def build_diff_summary_prompt(title: str, diff_text: str) -> str:
+    return (
+        "Aşağıda bir bilgi tabanı kaydının eski ve yeni içeriği arasındaki satır bazlı "
+        "fark (unified diff formatı) verildi. '-' ile başlayan satırlar kaldırıldı, "
+        "'+' ile başlayan satırlar eklendi. Bu farkı okuyup Türkçe, 2-5 cümlelik, sade "
+        "bir dille \"neler değişti\" özeti yaz. Satır numaralarından veya diff "
+        "sembollerinden (@@, ---, +++) bahsetme, sadece anlamsal değişikliği anlat. "
+        "Sadece özet metnini döndür, başka açıklama ekleme.\n\n"
+        f"Kayıt başlığı: \"{title}\"\n\n"
+        f"FARK:\n\"\"\"\n{diff_text}\n\"\"\"\n\n"
+        "Özet:"
+    )
+
+
 def build_testcase_prompt_from_document(title_text: str, doc_excerpt: str, examples: "list[dict] | None" = None) -> str:
     example = _format_examples_block(examples)
     return (
