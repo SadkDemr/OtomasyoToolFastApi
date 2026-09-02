@@ -168,3 +168,122 @@ def test_build_diff_summary_prompt_includes_title_and_diff_lines():
     assert "Sifre Kurali" in prompt
     assert "eski minimum 8 karakter" in prompt
     assert "yeni minimum 10 karakter" in prompt
+
+
+def test_save_versioned_entry_first_time_creates_version_and_search_rows(db, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    result = asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "icerik", user_id=1))
+
+    assert result == {"is_update": False, "diff_summary": None, "chunks": 1}
+    from models.db_models import KnowledgeDocumentVersion
+    versions = db.query(KnowledgeDocumentVersion).all()
+    assert len(versions) == 1
+    assert versions[0].is_current is True
+    assert versions[0].diff_summary is None
+    assert db.query(KnowledgeEntry).count() == 1
+
+
+def test_save_versioned_entry_same_content_is_noop(db, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "icerik", user_id=1))
+    result = asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "icerik", user_id=1))
+
+    assert result == {"is_update": False, "diff_summary": None, "chunks": 0}
+    from models.db_models import KnowledgeDocumentVersion
+    assert db.query(KnowledgeDocumentVersion).count() == 1
+    assert db.query(KnowledgeEntry).count() == 1
+
+
+def test_save_versioned_entry_update_replaces_search_rows_and_summarizes_diff(db, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    async def fake_generate_text(prompt, model=None, timeout=300.0, num_ctx=None):
+        return "Icerik degisti."
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_generate_text)
+
+    asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "eski icerik", user_id=1))
+    result = asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "yeni icerik", user_id=1))
+
+    assert result["is_update"] is True
+    assert result["diff_summary"] == "Icerik degisti."
+
+    from models.db_models import KnowledgeDocumentVersion
+    versions = db.query(KnowledgeDocumentVersion).order_by(KnowledgeDocumentVersion.id).all()
+    assert len(versions) == 2
+    assert versions[0].is_current is False
+    assert versions[1].is_current is True
+    assert versions[1].full_content == "yeni icerik"
+
+    entries = db.query(KnowledgeEntry).all()
+    assert len(entries) == 1
+    assert entries[0].content == "yeni icerik"
+
+
+def test_save_versioned_entry_llm_failure_falls_back_to_fixed_message(db, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    async def failing_generate_text(prompt, model=None, timeout=300.0, num_ctx=None):
+        raise RuntimeError("baglanti hatasi")
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(ai_service, "ollama_generate_text", failing_generate_text)
+
+    asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "eski icerik", user_id=1))
+    result = asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "yeni icerik", user_id=1))
+
+    assert "otomatik özet çıkarılamadı" in result["diff_summary"]
+
+
+def test_save_versioned_entry_rule_embedding_unavailable_raises_and_changes_nothing(db, monkeypatch):
+    async def failing_embed(text):
+        return None
+
+    monkeypatch.setattr(ai_service, "ollama_embed", failing_embed)
+
+    with pytest.raises(ks.KnowledgeEmbeddingUnavailable):
+        asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "icerik", user_id=1))
+
+    from models.db_models import KnowledgeDocumentVersion
+    assert db.query(KnowledgeDocumentVersion).count() == 0
+    assert db.query(KnowledgeEntry).count() == 0
+
+
+def test_save_versioned_entry_update_embedding_failure_keeps_old_content(db, monkeypatch):
+    async def ok_embed(text):
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", ok_embed)
+    asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "eski icerik", user_id=1))
+
+    async def failing_embed(text):
+        return None
+
+    monkeypatch.setattr(ai_service, "ollama_embed", failing_embed)
+    with pytest.raises(ks.KnowledgeEmbeddingUnavailable):
+        asyncio.run(ks.save_versioned_entry(db, "rule", "Kural", "yeni icerik", user_id=1))
+
+    from models.db_models import KnowledgeDocumentVersion
+    versions = db.query(KnowledgeDocumentVersion).all()
+    assert len(versions) == 1
+    assert versions[0].full_content == "eski icerik"
+    assert versions[0].is_current is True
+    entries = db.query(KnowledgeEntry).all()
+    assert len(entries) == 1
+    assert entries[0].content == "eski icerik"
+
+
+def test_save_versioned_entry_example_no_embedding_needed(db, monkeypatch):
+    result = asyncio.run(ks.save_versioned_entry(db, "example", "Ornek", "adimlar", user_id=1))
+
+    assert result == {"is_update": False, "diff_summary": None, "chunks": 1}
+    assert db.query(KnowledgeEntry).filter(KnowledgeEntry.entry_type == "example").count() == 1

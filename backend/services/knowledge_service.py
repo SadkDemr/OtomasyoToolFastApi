@@ -7,13 +7,14 @@ Knowledge Service - TestCaseGen paylaşımlı bilgi tabanı (RAG)
 - search(): cosine similarity ile en alakalı içerikleri döner.
 """
 
+import difflib
 import logging
 
 import numpy as np
 from sqlalchemy.orm import Session
 
-from models.db_models import KnowledgeEntry
-from services import ai_service
+from models.db_models import KnowledgeEntry, KnowledgeDocumentVersion
+from services import ai_service, testcasegen_service
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +125,79 @@ def format_context_block(snippets: list[str]) -> str:
         return ""
     bullet_list = "\n".join(f"- {s}" for s in snippets)
     return f"İlgili geçmiş bilgi / kurallar:\n{bullet_list}\n\n"
+
+
+class KnowledgeEmbeddingUnavailable(Exception):
+    """rule turu icin embedding alinamadi — save_versioned_entry hicbir sey degistirmedi."""
+
+
+async def save_versioned_entry(
+    db: Session,
+    entry_type: str,
+    title: str,
+    content: str,
+    user_id: "int | None" = None,
+) -> dict:
+    """(entry_type, title) icin versiyon gecmisini gunceller.
+    Ayni icerik tekrar gelirse hicbir sey yapmaz (no-op). Farkliysa eski/yeni
+    icerik farkini LLM ile ozetler, arama havuzunu (KnowledgeEntry chunk/embedding)
+    yeni icerikle yeniden olusturur, eski arama satirlarini siler ve yeni versiyon
+    satirini yazar. entry_type="rule" icin embedding alinamazsa
+    KnowledgeEmbeddingUnavailable firlatir — bu durumda HICBIR SEY degismez
+    (eski versiyon/arama satirlari oldugu gibi kalir).
+    Doner: {"is_update": bool, "diff_summary": str | None, "chunks": int}"""
+    previous = (
+        db.query(KnowledgeDocumentVersion)
+        .filter(
+            KnowledgeDocumentVersion.entry_type == entry_type,
+            KnowledgeDocumentVersion.title == title,
+            KnowledgeDocumentVersion.is_current == True,  # noqa: E712
+        )
+        .first()
+    )
+
+    if previous is not None and previous.full_content == content:
+        return {"is_update": False, "diff_summary": None, "chunks": 0}
+
+    diff_summary = None
+    if previous is not None:
+        diff_text = "\n".join(difflib.unified_diff(
+            previous.full_content.splitlines(), content.splitlines(), lineterm="",
+        ))
+        try:
+            prompt = testcasegen_service.build_diff_summary_prompt(title, diff_text)
+            raw = await ai_service.ollama_generate_text(prompt)
+            diff_summary = raw.strip() or None
+        except Exception:
+            diff_summary = (
+                "İçerik değişti ama otomatik özet çıkarılamadı — Ollama'ya ulaşılamadı."
+            )
+
+    old_rows = (
+        db.query(KnowledgeEntry)
+        .filter(KnowledgeEntry.entry_type == entry_type, KnowledgeEntry.title == title)
+        .all()
+    )
+    old_ids = [r.id for r in old_rows]
+
+    if entry_type == "rule":
+        chunks = await add_entry(db, "rule", title, content, user_id=user_id)
+        if chunks == 0:
+            raise KnowledgeEmbeddingUnavailable()
+    else:
+        add_example(db, title, content, user_id=user_id)
+        chunks = 1
+
+    if old_ids:
+        db.query(KnowledgeEntry).filter(KnowledgeEntry.id.in_(old_ids)).delete(synchronize_session=False)
+
+    if previous is not None:
+        previous.is_current = False
+
+    db.add(KnowledgeDocumentVersion(
+        entry_type=entry_type, title=title, full_content=content,
+        is_current=True, diff_summary=diff_summary, created_by_user_id=user_id,
+    ))
+    db.commit()
+
+    return {"is_update": previous is not None, "diff_summary": diff_summary, "chunks": chunks}
