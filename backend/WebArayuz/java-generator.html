@@ -374,42 +374,46 @@ Telefon alanına "05001234567" yaz
                             <span id="lineCountBadge" style="display:none; font-size:0.73rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-weight:400;"></span>
                         </div>
 
-                        <!-- Toplu Dönüşüm Sekmeleri -->
-                        <div class="batch-tab-strip" id="batchTabStrip"></div>
+                        <div class="batch-layout">
+                            <!-- Toplu Dönüşüm Sekmeleri -->
+                            <div class="batch-tab-strip" id="batchTabStrip"></div>
 
-                        <!-- Adım Raporu -->
-                        <div id="stepReport" style="display:none;">
-                            <div style="font-size:0.76rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Adım Analizi</div>
-                            <div id="stepReportBody" style="display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto;"></div>
-                        </div>
-
-                        <!-- Java Viewer -->
-                        <div class="script-viewer">
-                            <div class="script-viewer-header">
-                                <div class="svh-left">
-                                    <span id="javaFileName">GeneratedTest.java</span>
+                            <div class="batch-main">
+                                <!-- Adım Raporu -->
+                                <div id="stepReport" style="display:none;">
+                                    <div style="font-size:0.76rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Adım Analizi</div>
+                                    <div id="stepReportBody" style="display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto;"></div>
                                 </div>
-                                <div class="svh-right">
-                                    <button class="header-btn" id="btnEdit"     onclick="toggleEditCode()" style="display:none;">✏ Düzenle</button>
-                                    <button class="header-btn" id="btnCopy"     onclick="copyCode()"       style="display:none;">📋 Kopyala</button>
-                                    <button class="header-btn" id="btnDownload" onclick="downloadCode()"   style="display:none;">⬇ İndir</button>
-                                    <button class="header-btn" id="btnDownloadAll" onclick="downloadAllCode()" style="display:none;">⬇ Hepsini İndir</button>
+
+                                <!-- Java Viewer -->
+                                <div class="script-viewer">
+                                    <div class="script-viewer-header">
+                                        <div class="svh-left">
+                                            <span id="javaFileName">GeneratedTest.java</span>
+                                        </div>
+                                        <div class="svh-right">
+                                            <button class="header-btn" id="btnEdit"     onclick="toggleEditCode()" style="display:none;">✏ Düzenle</button>
+                                            <button class="header-btn" id="btnCopy"     onclick="copyCode()"       style="display:none;">📋 Kopyala</button>
+                                            <button class="header-btn" id="btnDownload" onclick="downloadCode()"   style="display:none;">⬇ İndir</button>
+                                            <button class="header-btn" id="btnDownloadAll" onclick="downloadAllCode()" style="display:none;">⬇ Hepsini İndir</button>
+                                        </div>
+                                    </div>
+                                    <div class="script-code" id="javaCode">
+                                        <div class="script-placeholder">
+                                            <span class="java-icon">☕</span>
+                                            Java kodu henüz üretilmedi.<br>
+                                            <span style="font-size:0.75rem; opacity:0.5;">Sol panelden adımları gir ve "Java Kodu Üret" butonuna bas.</span>
+                                        </div>
+                                    </div>
+                                    <textarea class="script-edit-area" id="javaEditArea" spellcheck="false"></textarea>
+                                </div>
+
+                                <!-- Uyarılar -->
+                                <div id="warningsBox" style="display:none; padding:10px 14px; background:rgba(245,158,11,0.07); border:1px solid rgba(245,158,11,0.22); border-radius:var(--radius-md);">
+                                    <div style="font-size:0.77rem; font-weight:600; color:#f59e0b; margin-bottom:5px;">⚠ Anlaşılamayan Adımlar</div>
+                                    <div id="warningsList" style="font-size:0.8rem; color:var(--text-secondary); line-height:1.8;"></div>
                                 </div>
                             </div>
-                            <div class="script-code" id="javaCode">
-                                <div class="script-placeholder">
-                                    <span class="java-icon">☕</span>
-                                    Java kodu henüz üretilmedi.<br>
-                                    <span style="font-size:0.75rem; opacity:0.5;">Sol panelden adımları gir ve "Java Kodu Üret" butonuna bas.</span>
-                                </div>
-                            </div>
-                            <textarea class="script-edit-area" id="javaEditArea" spellcheck="false"></textarea>
-                        </div>
-
-                        <!-- Uyarılar -->
-                        <div id="warningsBox" style="display:none; padding:10px 14px; background:rgba(245,158,11,0.07); border:1px solid rgba(245,158,11,0.22); border-radius:var(--radius-md);">
-                            <div style="font-size:0.77rem; font-weight:600; color:#f59e0b; margin-bottom:5px;">⚠ Anlaşılamayan Adımlar</div>
-                            <div id="warningsList" style="font-size:0.8rem; color:var(--text-secondary); line-height:1.8;"></div>
                         </div>
                     </div>
                 </div>
@@ -1101,18 +1105,28 @@ Telefon alanına "05001234567" yaz
 .java-ado-title { font-size: 0.88rem; font-weight: 500; color: var(--text-primary); }
 .java-ado-meta  { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
 
+.batch-layout { display: flex; gap: 14px; align-items: flex-start; }
+.batch-main   { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+
 .batch-tab-strip {
-    display: none; gap: 6px; overflow-x: auto; padding: 0 2px;
+    display: none; flex-direction: column; gap: 6px;
+    width: 180px; flex-shrink: 0;
+    max-height: 520px; overflow-y: auto; overflow-x: hidden; padding: 2px;
 }
 .batch-tab {
-    padding: 6px 12px; font-size: 0.76rem; font-family: 'JetBrains Mono', monospace;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    border: 1px solid #2d2d4a; border-bottom: none;
+    padding: 8px 12px; font-size: 0.76rem; font-family: 'JetBrains Mono', monospace;
+    border-radius: var(--radius-sm);
+    border: 1px solid #2d2d4a;
     background: #252540; color: #8888aa; cursor: pointer;
-    white-space: nowrap; transition: var(--transition); flex-shrink: 0;
+    text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: var(--transition); flex-shrink: 0;
 }
 .batch-tab:hover { color: #cdd6f4; }
-.batch-tab.active { background: #1e1e2e; color: #f59e0b; }
+.batch-tab.active { background: #1e1e2e; color: #f59e0b; border-color: #f59e0b; }
+@media (max-width: 960px) {
+    .batch-layout { flex-direction: column; }
+    .batch-tab-strip { flex-direction: row; width: auto; max-height: none; overflow-x: auto; overflow-y: hidden; }
+}
 </style>
 </body>
 </html>
