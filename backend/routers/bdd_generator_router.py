@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from routers.auth import get_current_user
 from models.db_models import User
+from services.ai_service import get_ollama_config
 from services.bdd_generator_service import generate_bdd_java, parse_java_custom_steps
 from services.appium_codegen_service import (
     build_ios_template,
@@ -21,9 +22,6 @@ from services.appium_codegen_service import (
 )
 
 router = APIRouter(prefix="/api/bdd-gen", tags=["bdd-generator"])
-
-OLLAMA_URL   = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "gemma3:4b"
 
 
 # ─── Pydantic ─────────────────────────────────────────────────────────────────
@@ -103,9 +101,10 @@ async def _llm_fill_todos(todo_steps: List[str], platform: str) -> dict:
     )
 
     try:
+        cfg = get_ollama_config()
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(OLLAMA_URL, json={
-                "model":   OLLAMA_MODEL,
+            resp = await client.post(cfg["url"], json={
+                "model":   cfg["model"],
                 "prompt":  prompt,
                 "stream":  False,
                 "options": {"temperature": 0.2, "num_predict": 600},
