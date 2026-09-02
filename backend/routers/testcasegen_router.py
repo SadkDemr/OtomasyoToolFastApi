@@ -659,6 +659,38 @@ async def export_testcases(
 
 # ── Bilgi Tabanı (Admin) ────────────────────────────────────────────────
 
+_KNOWLEDGE_FILE_EXTS = {".docx", ".xlsx", ".txt", ".md"}
+
+
+@router.post("/knowledge/extract-file")
+async def extract_knowledge_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_admin),
+):
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if file.filename and "." in file.filename else ""
+    if ext not in _KNOWLEDGE_FILE_EXTS:
+        raise HTTPException(400, "Sadece .docx, .xlsx, .txt veya .md desteklenir")
+
+    content = await file.read()
+    try:
+        if ext == ".docx":
+            text, _truncated = svc.extract_text_from_docx(content)
+        elif ext == ".xlsx":
+            text, _truncated = svc.extract_text_from_xlsx(content)
+        else:
+            text = content.decode("utf-8", errors="replace")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    if not text.strip():
+        raise HTTPException(400, "Dosyadan metin çıkarılamadı, dosya boş görünüyor")
+
+    base_name = file.filename.rsplit(".", 1)[0] if file.filename and "." in file.filename else (file.filename or "")
+    suggested_title = re.sub(r"[_-]+", " ", base_name).strip()
+
+    return {"text": text, "suggested_title": suggested_title}
+
+
 class KnowledgeRuleIn(BaseModel):
     title: str
     content: str

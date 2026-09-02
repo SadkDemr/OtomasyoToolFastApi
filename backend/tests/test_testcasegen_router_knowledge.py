@@ -154,3 +154,62 @@ def test_knowledge_status_requires_admin(db_session, monkeypatch):
     client = _client_for(db_session, user)
     resp = client.get("/api/testcasegen/knowledge/status")
     assert resp.status_code == 403
+
+
+def test_extract_file_txt_returns_text_and_suggested_title(db_session):
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    resp = client.post(
+        "/api/testcasegen/knowledge/extract-file",
+        files={"file": ("sifre-kurali.txt", b"En az 8 karakter zorunlu.", "text/plain")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["text"] == "En az 8 karakter zorunlu."
+    assert body["suggested_title"] == "sifre kurali"
+
+
+def test_extract_file_rejects_unsupported_extension(db_session):
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    resp = client.post(
+        "/api/testcasegen/knowledge/extract-file",
+        files={"file": ("kural.pdf", b"binary", "application/pdf")},
+    )
+    assert resp.status_code == 400
+
+
+def test_extract_file_rejects_empty_text(db_session):
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    resp = client.post(
+        "/api/testcasegen/knowledge/extract-file",
+        files={"file": ("bos.txt", b"   ", "text/plain")},
+    )
+    assert resp.status_code == 400
+
+
+def test_extract_file_requires_admin(db_session):
+    user = User(username="u", email="u@example.com", hashed_password="x", role="user")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    client = _client_for(db_session, user)
+    resp = client.post(
+        "/api/testcasegen/knowledge/extract-file",
+        files={"file": ("kural.txt", b"icerik", "text/plain")},
+    )
+    assert resp.status_code == 403
