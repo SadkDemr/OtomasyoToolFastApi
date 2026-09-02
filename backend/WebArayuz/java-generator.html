@@ -450,9 +450,10 @@ Telefon alanına "05001234567" yaz
             const data = await API.get("/java-gen/status");
             if (data.online) {
                 dot.className    = "status-dot online";
+                const cm = data.configured_model || "gemma3:4b";
                 text.textContent = data.model_available
-                    ? "✓ Ollama çalışıyor · gemma3:4b hazır — AI fallback aktif"
-                    : "⚠ Ollama çalışıyor ama gemma3:4b bulunamadı → kural motoru çalışır, AI kapalı";
+                    ? `✓ Ollama çalışıyor · ${cm} hazır — AI fallback aktif`
+                    : `⚠ Ollama çalışıyor ama ${cm} bulunamadı → kural motoru çalışır, AI kapalı`;
             } else {
                 dot.className    = "status-dot offline";
                 text.textContent = "✗ Ollama çevrimdışı — kural motoru çalışır, AI fallback kapalı";

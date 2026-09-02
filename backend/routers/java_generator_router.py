@@ -14,13 +14,11 @@ from pydantic import BaseModel
 
 from routers.auth import get_current_user
 from models.db_models import User
+from services.ai_service import get_ollama_config
 from services.java_generator_service import generate_step
 from services.appium_codegen_service import build_android_template, build_ios_template
 
 router = APIRouter(prefix="/api/java-gen", tags=["java-generator"])
-
-OLLAMA_URL   = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "gemma3:4b"
 
 
 # ─── Pydantic ─────────────────────────────────────────────────────────────────
@@ -110,8 +108,9 @@ Step: {step}
 
 Java code:"""
     try:
-        resp = await client.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL,
+        cfg = get_ollama_config()
+        resp = await client.post(cfg["url"], json={
+            "model": cfg["model"],
             "prompt": prompt,
             "stream": False,
             "options": {"temperature": 0.1, "num_predict": 200}
@@ -147,15 +146,19 @@ async def _ask_llm_ios(steps: list[str]) -> dict[str, str]:
 
 @router.get("/status")
 async def ollama_status():
+    cfg = get_ollama_config()
+    tags_url = cfg["url"].replace("/api/generate", "/api/tags")
+    configured_model_base = cfg["model"].split(":")[0]
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get("http://localhost:11434/api/tags")
+            resp = await client.get(tags_url)
             if resp.status_code == 200:
                 models = [m["name"] for m in resp.json().get("models", [])]
-                return {"online": True, "model_available": any("gemma3" in m for m in models)}
+                model_available = any(m.split(":")[0] == configured_model_base for m in models)
+                return {"online": True, "model_available": model_available, "configured_model": cfg["model"]}
     except Exception:
         pass
-    return {"online": False, "model_available": False}
+    return {"online": False, "model_available": False, "configured_model": cfg["model"]}
 
 
 @router.post("/generate")
