@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from routers.auth import get_current_user, require_admin
-from models.db_models import User, KnowledgeEntry
+from models.db_models import User, KnowledgeEntry, KnowledgeDocumentVersion
 from services import ai_service, testcasegen_service as svc, knowledge_service
 
 router = APIRouter(prefix="/api/testcasegen", tags=["testcasegen"])
@@ -814,6 +814,28 @@ async def delete_knowledge_example(
 async def knowledge_status(current_user: User = Depends(require_admin)):
     embedding = await ai_service.ollama_embed("ping")
     return {"embedding_model_available": embedding is not None}
+
+
+@router.get("/knowledge/history")
+async def knowledge_history(
+    entry_type: Optional[str] = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    q = db.query(KnowledgeDocumentVersion, User.username).outerjoin(
+        User, KnowledgeDocumentVersion.created_by_user_id == User.id
+    )
+    if entry_type:
+        q = q.filter(KnowledgeDocumentVersion.entry_type == entry_type)
+    rows = q.order_by(KnowledgeDocumentVersion.created_at.desc()).all()
+    return {"versions": [
+        {
+            "id": v.id, "entry_type": v.entry_type, "title": v.title,
+            "is_current": v.is_current, "diff_summary": v.diff_summary,
+            "created_by": username, "created_at": v.created_at.isoformat(),
+        }
+        for v, username in rows
+    ]}
 
 
 # ── Bilgi Tabanı Sohbet (tüm kullanıcılar) ──────────────────────────────

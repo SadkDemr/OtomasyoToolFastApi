@@ -323,3 +323,41 @@ def test_add_example_update_returns_diff_summary(db_session, monkeypatch):
     examples = client.get("/api/testcasegen/knowledge/examples").json()["examples"]
     assert len(examples) == 1
     assert examples[0]["content"] == "yeni adimlar"
+
+
+def test_knowledge_history_lists_versions_newest_first_with_filter(db_session, monkeypatch):
+    async def fake_embed(text):
+        return [0.1]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    client.post("/api/testcasegen/knowledge/rules", json={"title": "R1", "content": "icerik"})
+    client.post("/api/testcasegen/knowledge/examples", json={"title": "E1", "content": "adimlar"})
+
+    all_versions = client.get("/api/testcasegen/knowledge/history").json()["versions"]
+    assert len(all_versions) == 2
+    assert all_versions[0]["title"] == "E1"  # en son eklenen once gelir
+
+    rule_versions = client.get("/api/testcasegen/knowledge/history?entry_type=rule").json()["versions"]
+    assert len(rule_versions) == 1
+    assert rule_versions[0]["title"] == "R1"
+    assert rule_versions[0]["created_by"] == "a"
+    assert rule_versions[0]["is_current"] is True
+    assert rule_versions[0]["diff_summary"] is None
+
+
+def test_knowledge_history_requires_admin(db_session):
+    user = User(username="u", email="u@example.com", hashed_password="x", role="user")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    client = _client_for(db_session, user)
+    resp = client.get("/api/testcasegen/knowledge/history")
+    assert resp.status_code == 403
