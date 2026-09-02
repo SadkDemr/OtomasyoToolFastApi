@@ -178,11 +178,11 @@ Sadece JSON döndür, başka metin ekleme."""
 # Ollama yardımcıları (paylaşılan — TestCaseGen ve benzeri modüller için)
 # ──────────────────────────────────────────────────────
 
-# CPU-only sunucularda num_ctx doğrudan hesaplama süresini etkiliyor (GPU'da olduğundan
-# daha kritik) — bu yüzden varsayılan küçük tutulur. Yalnızca tüm dökümanı tek seferde
-# okuyan akışlar (ör. extract_titles_from_document) OLLAMA_NUM_CTX_LARGE'ı açıkça ister.
-OLLAMA_NUM_CTX_DEFAULT = 4096
-OLLAMA_NUM_CTX_LARGE = 16384
+# Ollama artık daha güçlü bir sunucuda çalıştığı için num_ctx yükseltildi (eskiden
+# CPU-only sunucu kısıtı vardı). Yalnızca tüm dökümanı tek seferde okuyan akışlar
+# (ör. extract_titles_from_document) OLLAMA_NUM_CTX_LARGE'ı açıkça ister.
+OLLAMA_NUM_CTX_DEFAULT = 8192
+OLLAMA_NUM_CTX_LARGE = 32768
 
 
 async def _ollama_post(payload: dict, timeout: float, num_ctx: int = OLLAMA_NUM_CTX_DEFAULT) -> str:

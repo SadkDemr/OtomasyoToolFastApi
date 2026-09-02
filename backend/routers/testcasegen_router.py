@@ -247,7 +247,7 @@ async def extract_titles_from_document(
         raise HTTPException(400, "Önce bir analiz dökümanı yükleyin")
 
     try:
-        context = await knowledge_service.search(db, document["extracted_text"][:1000], top_k=5, entry_types=["rule"])
+        context = await knowledge_service.search(db, document["extracted_text"][:1000], top_k=8, entry_types=["rule"])
     except Exception as e:
         logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
         context = []
@@ -463,7 +463,7 @@ async def generate_testcases(
             continue
 
         try:
-            context = await knowledge_service.search(db, title["text"], top_k=5)
+            context = await knowledge_service.search(db, title["text"], top_k=8)
         except Exception as e:
             logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
             context = []
@@ -798,7 +798,7 @@ async def chat(
         raise HTTPException(400, "Mesaj boş olamaz")
 
     try:
-        context = await knowledge_service.search(db, body.message, top_k=5)
+        context = await knowledge_service.search(db, body.message, top_k=8)
     except Exception as e:
         logger.warning(f"Bilgi tabanı işlemi başarısız: {e}")
         context = []
