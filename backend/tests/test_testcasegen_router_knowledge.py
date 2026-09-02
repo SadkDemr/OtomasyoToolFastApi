@@ -62,7 +62,7 @@ def test_admin_can_add_list_and_delete_rule(db_session, monkeypatch):
     client = _client_for(db_session, admin)
     add_resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "Icerik"})
     assert add_resp.status_code == 200
-    assert add_resp.json() == {"status": "ok", "chunks": 1}
+    assert add_resp.json() == {"status": "ok", "chunks": 1, "is_update": False, "diff_summary": None}
 
     list_resp = client.get("/api/testcasegen/knowledge/rules")
     rules = list_resp.json()["rules"]
@@ -213,3 +213,113 @@ def test_extract_file_requires_admin(db_session):
         files={"file": ("kural.txt", b"icerik", "text/plain")},
     )
     assert resp.status_code == 403
+
+
+def test_add_rule_same_content_is_noop(db_session, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "Icerik"})
+    resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "Icerik"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "chunks": 0, "is_update": False, "diff_summary": None}
+    assert len(client.get("/api/testcasegen/knowledge/rules").json()["rules"]) == 1
+
+
+def test_add_rule_update_replaces_content_and_returns_diff_summary(db_session, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    async def fake_generate_text(prompt, model=None, timeout=300.0, num_ctx=None):
+        return "Icerik 'eski' den 'yeni' ye degistirildi."
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_generate_text)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "eski icerik"})
+    resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "yeni icerik"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_update"] is True
+    assert body["diff_summary"] == "Icerik 'eski' den 'yeni' ye degistirildi."
+
+    rules = client.get("/api/testcasegen/knowledge/rules").json()["rules"]
+    assert len(rules) == 1
+    assert rules[0]["content"] == "yeni icerik"
+
+
+def test_add_rule_update_llm_failure_uses_fallback_message(db_session, monkeypatch):
+    async def fake_embed(text):
+        return [0.1, 0.2]
+
+    async def failing_generate_text(prompt, model=None, timeout=300.0, num_ctx=None):
+        raise RuntimeError("Ollama'ya ulasilamadi")
+
+    monkeypatch.setattr(ai_service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(ai_service, "ollama_generate_text", failing_generate_text)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "eski icerik"})
+    resp = client.post("/api/testcasegen/knowledge/rules", json={"title": "Kural", "content": "yeni icerik"})
+
+    assert resp.status_code == 200
+    assert "otomatik özet çıkarılamadı" in resp.json()["diff_summary"]
+
+
+def test_add_example_and_list(db_session):
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    resp = client.post("/api/testcasegen/knowledge/examples", json={"title": "Ornek", "content": "adimlar"})
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "is_update": False, "diff_summary": None}
+
+    examples = client.get("/api/testcasegen/knowledge/examples").json()["examples"]
+    assert len(examples) == 1
+    assert examples[0]["content"] == "adimlar"
+
+
+def test_add_example_update_returns_diff_summary(db_session, monkeypatch):
+    async def fake_generate_text(prompt, model=None, timeout=300.0, num_ctx=None):
+        return "Adim sirasi degisti."
+
+    monkeypatch.setattr(ai_service, "ollama_generate_text", fake_generate_text)
+
+    admin = User(username="a", email="a@example.com", hashed_password="x", role="admin")
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+
+    client = _client_for(db_session, admin)
+    client.post("/api/testcasegen/knowledge/examples", json={"title": "Ornek", "content": "eski adimlar"})
+    resp = client.post("/api/testcasegen/knowledge/examples", json={"title": "Ornek", "content": "yeni adimlar"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "is_update": True, "diff_summary": "Adim sirasi degisti."}
+    examples = client.get("/api/testcasegen/knowledge/examples").json()["examples"]
+    assert len(examples) == 1
+    assert examples[0]["content"] == "yeni adimlar"

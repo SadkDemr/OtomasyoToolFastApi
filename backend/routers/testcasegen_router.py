@@ -702,10 +702,16 @@ async def add_knowledge_rule(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    added = await knowledge_service.add_entry(db, "rule", body.title, body.content, user_id=current_user.id)
-    if added == 0:
+    try:
+        result = await knowledge_service.save_versioned_entry(
+            db, "rule", body.title, body.content, user_id=current_user.id
+        )
+    except knowledge_service.KnowledgeEmbeddingUnavailable:
         raise HTTPException(503, "Embedding modeli kullanılamıyor, kural kaydedilemedi")
-    return {"status": "ok", "chunks": added}
+    return {
+        "status": "ok", "chunks": result["chunks"],
+        "is_update": result["is_update"], "diff_summary": result["diff_summary"],
+    }
 
 
 @router.get("/knowledge/rules")
@@ -763,8 +769,10 @@ async def add_knowledge_example(
     content = body.content.strip()
     if not title or not content:
         raise HTTPException(400, "Başlık ve içerik gerekli")
-    knowledge_service.add_example(db, title, content, user_id=current_user.id)
-    return {"status": "ok"}
+    result = await knowledge_service.save_versioned_entry(
+        db, "example", title, content, user_id=current_user.id
+    )
+    return {"status": "ok", "is_update": result["is_update"], "diff_summary": result["diff_summary"]}
 
 
 @router.get("/knowledge/examples")
