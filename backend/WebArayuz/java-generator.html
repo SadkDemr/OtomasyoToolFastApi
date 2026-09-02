@@ -441,6 +441,105 @@ Telefon alanına "05001234567" yaz
     let isBatchMode      = false;
     let batchResults     = [];   // [{name, title, script, report, warnings}]
     let batchActiveIndex = -1;
+    let lastReport        = [];
+    let lastWarnings      = [];
+
+    // ── Kalıcı durum (F5/yenilemede kaybolmasın) ────────────────────────────
+    // Temizleme yalnızca "↺ Sıfırla" butonuyla yapılır; sayfa yenilendiğinde
+    // son üretilen kod / toplu sonuçlar / girdi ve config alanları korunur.
+    const _STORAGE_KEY = "javaGenState_v1";
+    let _saveTimer = null;
+
+    function saveState() {
+        try {
+            const fileBar = document.getElementById("fileLoadedBar");
+            const state = {
+                testCaseInput: document.getElementById("testCaseInput").value,
+                fileLoaded: fileBar.style.display !== "none" ? {
+                    name: document.getElementById("fileLoadedName").textContent,
+                    info: document.getElementById("fileLoadedInfo").textContent.replace(/^·\s*/, "")
+                } : null,
+                platform: currentPlatform,
+                cfg: {
+                    appiumUrl:       document.getElementById("cfg-appium-url").value,
+                    platformVersion: document.getElementById("cfg-platform-version").value,
+                    deviceName:      document.getElementById("cfg-device-name").value,
+                    udid:            document.getElementById("cfg-udid").value,
+                    appPackage:      document.getElementById("cfg-app-package").value,
+                    appActivity:     document.getElementById("cfg-app-activity").value,
+                    bundleId:        document.getElementById("cfg-bundle-id").value,
+                    className:       document.getElementById("cfg-class-name").value,
+                    noReset:         document.getElementById("cfg-no-reset").checked,
+                    useAiFallback:   document.getElementById("cfg-use-ai-fallback").checked
+                },
+                className, generatedCode, lastReport, lastWarnings,
+                isBatchMode, batchResults, batchActiveIndex
+            };
+            localStorage.setItem(_STORAGE_KEY, JSON.stringify(state));
+        } catch (e) { /* localStorage dolu/erişilemez olabilir — sessizce vazgeç */ }
+    }
+
+    function saveStateDebounced() {
+        clearTimeout(_saveTimer);
+        _saveTimer = setTimeout(saveState, 400);
+    }
+
+    function restoreState() {
+        let state;
+        try {
+            const raw = localStorage.getItem(_STORAGE_KEY);
+            if (!raw) return;
+            state = JSON.parse(raw);
+        } catch (e) { return; }
+        if (!state) return;
+
+        if (state.testCaseInput) document.getElementById("testCaseInput").value = state.testCaseInput;
+        if (state.fileLoaded) {
+            document.getElementById("fileLoadedName").textContent = state.fileLoaded.name;
+            document.getElementById("fileLoadedInfo").textContent = `· ${state.fileLoaded.info}`;
+            document.getElementById("fileLoadedBar").style.display = "flex";
+        }
+        updateCounter();
+        updateGenerateBtn();
+
+        const c = state.cfg || {};
+        if (c.appiumUrl)       document.getElementById("cfg-appium-url").value = c.appiumUrl;
+        if (c.platformVersion) document.getElementById("cfg-platform-version").value = c.platformVersion;
+        if (c.deviceName)      document.getElementById("cfg-device-name").value = c.deviceName;
+        if (c.udid)            document.getElementById("cfg-udid").value = c.udid;
+        if (c.appPackage)      document.getElementById("cfg-app-package").value = c.appPackage;
+        if (c.appActivity)     document.getElementById("cfg-app-activity").value = c.appActivity;
+        if (c.bundleId)        document.getElementById("cfg-bundle-id").value = c.bundleId;
+        if (c.className)       document.getElementById("cfg-class-name").value = c.className;
+        if ("noReset" in c)       document.getElementById("cfg-no-reset").checked = !!c.noReset;
+        if ("useAiFallback" in c) document.getElementById("cfg-use-ai-fallback").checked = !!c.useAiFallback;
+
+        if (state.platform === "ios") {
+            currentPlatform = "ios";
+            document.getElementById("tabAndroid").classList.remove("active");
+            document.getElementById("tabIos").classList.add("active");
+            document.getElementById("android-cfg-fields").style.display = "none";
+            document.getElementById("ios-cfg-fields").style.display     = "block";
+            document.getElementById("outputPanelTitle").textContent = "🍎 Üretilen iOS Java Kodu";
+            document.getElementById("genBtnText").textContent       = "🍎 iOS Java Kodu Üret";
+        }
+
+        className    = state.className || "GeneratedTest";
+        lastReport   = state.lastReport   || [];
+        lastWarnings = state.lastWarnings || [];
+
+        if (state.isBatchMode && Array.isArray(state.batchResults) && state.batchResults.length) {
+            batchResults = state.batchResults;
+            renderBatchTabs();
+            switchBatchTab(Math.min(Math.max(state.batchActiveIndex || 0, 0), batchResults.length - 1));
+        } else if (state.generatedCode) {
+            generatedCode = state.generatedCode;
+            document.getElementById("javaFileName").textContent = className + ".java";
+            renderCode(generatedCode);
+            if (lastReport.length)   renderStepReport(lastReport);
+            if (lastWarnings.length) showWarnings(lastWarnings);
+        }
+    }
 
     // ── Ollama durum ─────────────────────────────────────────────────────
     async function checkOllamaStatus() {
@@ -522,6 +621,7 @@ Telefon alanına "05001234567" yaz
     document.getElementById("testCaseInput").addEventListener("input", () => {
         updateCounter();
         updateGenerateBtn();
+        saveStateDebounced();
     });
 
     // ── Dosya yükleme ─────────────────────────────────────────────────────
@@ -546,6 +646,7 @@ Telefon alanına "05001234567" yaz
         document.getElementById("testCaseInput").value = "";
         updateCounter();
         updateGenerateBtn();
+        saveState();
     };
 
     const _JAVA_API = `${window.location.protocol}//${window.location.host}/api`;
@@ -718,6 +819,7 @@ Telefon alanına "05001234567" yaz
         document.getElementById("fileLoadedBar").style.display = "flex";
         updateCounter();
         updateGenerateBtn();
+        saveState();
     }
 
     // ── Üret ─────────────────────────────────────────────────────────────
@@ -755,10 +857,13 @@ Telefon alanına "05001234567" yaz
         try {
             const data = await API.post("/java-gen/generate", payload);
             generatedCode = data.script || "";
+            lastReport    = data.report   || [];
+            lastWarnings  = data.warnings || [];
             renderCode(generatedCode);
             if (data.report)   renderStepReport(data.report);
             if (data.warnings && data.warnings.length) showWarnings(data.warnings);
             else hideWarnings();
+            saveState();
 
             data.warnings && data.warnings.length
                 ? Toast.error("Bazı adımlar anlaşılamadı. // TODO satırlarını kontrol edin.")
@@ -842,6 +947,7 @@ Telefon alanına "05001234567" yaz
         setGeneratingUI(false);
         renderBatchTabs();
         switchBatchTab(0);
+        saveState();
 
         failCount
             ? Toast.error(`${testCases.length} test case işlendi, ${failCount} tanesi hata verdi.`)
@@ -882,6 +988,7 @@ Telefon alanına "05001234567" yaz
         else hideWarnings();
 
         document.querySelectorAll(".batch-tab").forEach((el, idx) => el.classList.toggle("active", idx === i));
+        saveState();
     };
 
     window.downloadAllCode = function () {
@@ -961,6 +1068,7 @@ Telefon alanına "05001234567" yaz
             const lines = generatedCode.split("\n").length;
             document.getElementById("lineCountBadge").textContent = `${lines} satır`;
             if (isBatchMode && batchActiveIndex >= 0) batchResults[batchActiveIndex].script = generatedCode;
+            saveState();
         }
     };
 
@@ -1034,10 +1142,15 @@ Telefon alanına "05001234567" yaz
     document.getElementById("cfg-class-name").addEventListener("input", function () {
         document.getElementById("javaFileName").textContent = sanitizeClassName(this.value) + ".java";
     });
+    document.getElementById("cfgBody").addEventListener("input",  saveStateDebounced);
+    document.getElementById("cfgBody").addEventListener("change", saveStateDebounced);
+    document.getElementById("cfg-use-ai-fallback").addEventListener("change", saveStateDebounced);
 
     function _resetOutput() {
         generatedCode = "";
         editMode      = false;
+        lastReport    = [];
+        lastWarnings  = [];
         _exitBatchMode();
         const icon = currentPlatform === "ios" ? "🍎" : "☕";
         document.getElementById("javaCode").innerHTML =
@@ -1051,6 +1164,7 @@ Telefon alanına "05001234567" yaz
         document.getElementById("btnEdit").classList.remove("active");
         document.getElementById("stepReport").style.display = "none";
         hideWarnings();
+        saveState();
     }
 
     window.resetAll = function () {
@@ -1063,6 +1177,7 @@ Telefon alanına "05001234567" yaz
     };
 
     // ── Init ────────────────────────────────────────────────────────────────
+    restoreState();
     checkOllamaStatus();
     setInterval(checkOllamaStatus, 30000);
 })();
