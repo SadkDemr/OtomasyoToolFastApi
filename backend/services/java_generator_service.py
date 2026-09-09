@@ -13,7 +13,7 @@ import re
 from services.appium_codegen_service import action_to_java
 
 CLICK_WORDS     = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun|işaretle)'
-INPUT_WORDS     = r'(?:yaz\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
+INPUT_WORDS     = r'(?:yaz(?:[ıi]l[ıi]r)?\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
 ASSERT_WORDS    = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|g[oö]r\b|do[gğ]rula|kontrol|assert|verify|var m[iı]|bekleniyor|görünmeli)'
 CLEAR_WORDS     = r'(?:temizle|sil\b)'
 LONGPRESS_WORDS = r'(?:uzun\s*bas|bas[iı]l[iı]\s*tut|long\s*press)'
@@ -253,9 +253,10 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
         lines, _ = action_to_java("type", element, _VT.group(0), s, platform)
         return lines
 
-    # ── "bir X girilir" (değer belirtilmemiş, quotesuz — Azure export tipik) ─
-    if re.search(r'\bgirilir\b', sl) and not quoted:
-        _GM = re.search(r'^(.*?)\s*girilir\.?\s*$', s, re.IGNORECASE)
+    # ── "bir X girilir/yazılır" (değer belirtilmemiş, quotesuz — Azure export
+    #    tipik: "777 datası girilir.", "100 yazılır.") ─────────────────────────
+    if re.search(r'\b(?:girilir|yaz[ıi]l[ıi]r)\b', sl) and not quoted:
+        _GM = re.search(r'^(.*?)\s*(?:girilir|yaz[ıi]l[ıi]r)\.?\s*$', s, re.IGNORECASE)
         ctx = _GM.group(1) if _GM else s
         value, guessed = _girilir_value(ctx)
         lines, _ = action_to_java("type", None, value, s, platform)
