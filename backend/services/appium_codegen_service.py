@@ -64,6 +64,80 @@ def je(s: str) -> str:
     return s.replace('\\', '\\\\').replace('"', '\\"')
 
 
+# ── Değişken desteği: ${Ad} → vars.get("Ad") ─────────────────────────────────
+# Test adımlarında ${Ornek_Data} gibi yazılan yer tutucular sabit metin olarak
+# değil, JMeter JSR223 bağlamındaki `vars` sözlüğünden okunacak şekilde üretilir.
+_VAR_RE  = re.compile(r'\$\{\s*([A-Za-z0-9_\-.]+)\s*\}')
+_XP_SLOT = '\x01'  # XPath şablonunda değerin geçtiği yerleri işaretlemek için
+
+
+def has_vars(text: Optional[str]) -> bool:
+    return bool(text) and bool(_VAR_RE.search(text))
+
+
+def java_value_expr(text: Optional[str]) -> str:
+    """
+    Metni Java string ifadesine çevirir; ${X} → vars.get("X").
+
+    "${Ornek_Data}"   → vars.get("Ornek_Data")
+    "TR${Iban} nolu"  → "TR" + vars.get("Iban") + " nolu"
+    "düz metin"       → "düz metin"   (tırnaklar dahil)
+    """
+    if not text:
+        return '""'
+    parts: list[str] = []
+    last = 0
+    for m in _VAR_RE.finditer(text):
+        if m.start() > last:
+            parts.append(f'"{je(text[last:m.start()])}"')
+        parts.append(f'vars.get("{m.group(1)}")')
+        last = m.end()
+    if last < len(text):
+        parts.append(f'"{je(text[last:])}"')
+    return ' + '.join(parts) if parts else '""'
+
+
+def _xpath_java(
+    xpath_val:   Optional[str],
+    full_xpath:  Optional[str],
+    xpath_index: int,
+    is_ios:      bool,
+) -> tuple[list[str], str]:
+    """
+    XPath'i Java ifadesi olarak üretir.
+
+    Değişken yoksa düz string literal döner ("(//*[@text='X'])[1]").
+    ${X} varsa önce `String _xv = vars.get("X");` satırı üretilir ve XPath bu
+    değişkenle birleştirilir — aynı değer XPath içinde birden çok attribute
+    için tekrarlandığından tek değişkende toplamak hem kısa hem okunur.
+
+    Returns (prelude_lines, xpath_java_expression)
+    """
+    if xpath_val is None:
+        return [], f'"{je(full_xpath or "")}"'
+    if not has_vars(xpath_val):
+        uxp = build_ios_xpath(xpath_val, xpath_index) if is_ios else build_android_xpath(xpath_val, xpath_index)
+        return [], f'"{je(uxp)}"'
+
+    tmpl = build_ios_xpath(_XP_SLOT, xpath_index) if is_ios else build_android_xpath(_XP_SLOT, xpath_index)
+    segs = tmpl.split(_XP_SLOT)
+    parts: list[str] = []
+    for i, seg in enumerate(segs):
+        if seg:
+            parts.append(f'"{je(seg)}"')
+        if i < len(segs) - 1:
+            parts.append('_xv')
+    return [f'String _xv = {java_value_expr(xpath_val)};'], ' + '.join(parts)
+
+
+def _wrap(prelude: list[str], lines: list[str]) -> list[str]:
+    """Yerel değişken tanımı gereken adımları `{ }` bloğuna alır — aynı isimli
+    değişken (_xv) birden çok adımda tanımlandığında derleme hatası olmasın."""
+    if not prelude:
+        return lines
+    return ['{'] + [f'    {l}' for l in prelude + lines] + ['}']
+
+
 def _build_swipe_java(direction: str) -> str:
     """W3C Actions (Selenium 4 PointerInput/Sequence) tabanlı kaydırma.
     Appium 2'nin TouchAction/mobile-command yerine önerdiği standart yöntem —
@@ -164,12 +238,13 @@ def action_to_java(
     if action == "long_press":
         if xpath_val is None and full_xpath is None:
             return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
-        uxp = build_ios_xpath(xpath_val, xpath_index) if is_ios else build_android_xpath(xpath_val, xpath_index)
+        _pre, _xp = _xpath_java(xpath_val, full_xpath, xpath_index, is_ios)
         by_cls = "AppiumBy" if is_ios else "By"
         return ([
             f'// {raw_step}',
             '{',
-            f'    WebElement _el = driver.findElement({by_cls}.xpath("{uxp}"));',
+            *[f'    {l}' for l in _pre],
+            f'    WebElement _el = driver.findElement({by_cls}.xpath({_xp}));',
             '    PointerInput _finger = new PointerInput(PointerInput.Kind.TOUCH, "finger");',
             '    Sequence _press = new Sequence(_finger, 1);',
             '    _press.addAction(_finger.createPointerMove(Duration.ZERO, PointerInput.Origin.element(_el), 0, 0));',
@@ -194,26 +269,24 @@ def action_to_java(
     # condition) oluşmaz. Eleman bilinmiyorsa (örn. "sadece yaz" / "121212
     # girilir" gibi hedefsiz adımlar) aktif elemana yazma stratejisine düşer.
     if action == "type":
-        value = je(param or "")
+        value = java_value_expr(param)  # ${X} → vars.get("X"), yoksa tırnaklı literal
         if xpath_val is not None or full_xpath is not None:
-            if xpath_val is not None:
-                uxp = build_ios_xpath(xpath_val, xpath_index) if is_ios else build_android_xpath(xpath_val, xpath_index)
-            else:
-                uxp = je(full_xpath)
+            _pre, _xp = _xpath_java(xpath_val, full_xpath, xpath_index, is_ios)
             by_cls = "AppiumBy" if is_ios else "By"
             return ([
                 f'// {raw_step}',
                 '{',
-                f'    WebElement _el = driver.findElement({by_cls}.xpath("{uxp}"));',
+                *[f'    {l}' for l in _pre],
+                f'    WebElement _el = driver.findElement({by_cls}.xpath({_xp}));',
                 '    _el.click();',
-                f'    _el.sendKeys("{value}");',
+                f'    _el.sendKeys({value});',
                 '}',
                 'try { driver.hideKeyboard(); } catch (Exception ignored) {}',
             ], "mapped")
         if is_ios:
-            type_line = f'driver.switchTo().activeElement().sendKeys("{value}");'
+            type_line = f'driver.switchTo().activeElement().sendKeys({value});'
         else:
-            type_line = f'driver.executeScript("mobile: type", Map.of("text", "{value}"));'
+            type_line = f'driver.executeScript("mobile: type", Map.of("text", {value}));'
         return ([
             f'// {raw_step}',
             type_line,
@@ -224,45 +297,55 @@ def action_to_java(
     if action == "wait_for_element":
         if xpath_val is None and full_xpath is None:
             return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
-        if xpath_val is not None:
-            uxp = build_ios_xpath(xpath_val, xpath_index) if is_ios else build_android_xpath(xpath_val, xpath_index)
-        else:
-            uxp = je(full_xpath)
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).isDisplayed();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).isDisplayed();'
-        return ([f'// {raw_step}', line], "mapped")
+        pre, xp = _xpath_java(xpath_val, full_xpath, xpath_index, is_ios)
+        by_cls = "AppiumBy" if is_ios else "By"
+        return ([f'// {raw_step}'] + _wrap(pre, [
+            f'driver.findElement({by_cls}.xpath({xp})).isDisplayed();'
+        ]), "mapped")
 
     # ── Element gerektiren aksiyonlar ─────────────────────────────────────────
     if xpath_val is None and full_xpath is None:
         return ([f'// TODO (element bulunamadı): {raw_step}'], "todo")
 
-    if xpath_val is not None:
-        uxp = build_ios_xpath(xpath_val, xpath_index) if is_ios else build_android_xpath(xpath_val, xpath_index)
-    else:
-        uxp = je(full_xpath)
+    pre, xp = _xpath_java(xpath_val, full_xpath, xpath_index, is_ios)
+    by_cls  = "AppiumBy" if is_ios else "By"
 
     if action == "click":
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).click();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).click();'
-        return ([f'// {raw_step}', line], "mapped")
+        return ([f'// {raw_step}'] + _wrap(pre, [
+            f'driver.findElement({by_cls}.xpath({xp})).click();'
+        ]), "mapped")
 
     if action == "clear":
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).clear();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).clear();'
-        return ([f'// {raw_step}', line], "mapped")
+        return ([f'// {raw_step}'] + _wrap(pre, [
+            f'driver.findElement({by_cls}.xpath({xp})).clear();'
+        ]), "mapped")
 
     if action == "assert":
-        if is_ios:
-            line = f'driver.findElement(AppiumBy.xpath("{uxp}")).isDisplayed();'
-        else:
-            line = f'driver.findElement(By.xpath("{uxp}")).isDisplayed();'
-        return ([f'// {raw_step}', line], "mapped")
+        return ([f'// {raw_step}'] + _wrap(pre, [
+            f'driver.findElement({by_cls}.xpath({xp})).isDisplayed();'
+        ]), "mapped")
+
+    # ── Negatif doğrulama: elemanın EKRANDA OLMAMASI ─────────────────────────
+    # "'Cebe Havale' butonunun gelmediği görülür" gibi adımlar için.
+    # findElement yerine findElements kullanılır (eleman yoksa exception değil
+    # boş liste döner) ve implicit wait geçici olarak kısaltılır — aksi halde
+    # her negatif kontrol, elemanı boşuna 10 sn beklediği için testi yavaşlatır.
+    if action == "assert_not_visible":
+        restore = 5 if is_ios else 10
+        label   = je(xpath_val or full_xpath or "")
+        inner   = pre + [
+            'driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(2));',
+            f'java.util.List<WebElement> _absent = driver.findElements({by_cls}.xpath({xp}));',
+            f'driver.manage().timeouts().implicitlyWait(Duration.ofSeconds({restore}));',
+            'boolean _gorunuyor = false;',
+            'for (WebElement _e : _absent) {',
+            '    try { if (_e.isDisplayed()) { _gorunuyor = true; break; } } catch (Exception ignored) {}',
+            '}',
+            'if (_gorunuyor) {',
+            f'    throw new AssertionError("Görülmemesi gereken eleman ekranda: {label}");',
+            '}',
+        ]
+        return ([f'// {raw_step}', '{'] + [f'    {l}' for l in inner] + ['}'], "mapped")
 
     return ([f'// TODO: {raw_step}'], "todo")
 

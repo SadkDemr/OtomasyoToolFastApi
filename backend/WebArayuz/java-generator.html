@@ -214,6 +214,7 @@
         .step-badge.rule { background: rgba(16,185,129,0.12); color: #10b981; }
         .step-badge.llm  { background: rgba(59,130,246,0.12);  color: #3b82f6; }
         .step-badge.todo { background: rgba(245,158,11,0.12);   color: #f59e0b; }
+        .step-badge.custom { background: rgba(168,85,247,0.12); color: #a855f7; }
     </style>
 </head>
 <body>
@@ -267,7 +268,9 @@
 Telefon alanına "05001234567" yaz
 Şifre alanına "121212" gir
 "Devam" butonuna bas
-"Hesabım" yazısının göründüğünü doğrula'></textarea>
+"Hesabım" yazısının göründüğünü doğrula
+"Cebe Havale" butonunun gelmediği görülür
+Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
                         <div class="textarea-footer">
                             <span class="textarea-counter" id="tcCounter">0 satır · 0 karakter</span>
                         </div>
@@ -291,6 +294,15 @@ Telefon alanına "05001234567" yaz
                         <strong>Kural motoru + AI fallback</strong><br>
                         Tanınan adımlar anında çevrilir, tanınmayanlar <code>gemma3:4b</code>'ye gönderilir.<br>
                         Çıktı doğrudan IntelliJ / Maven projesine yapıştırılabilir.
+                    </div>
+
+                    <!-- Özel yazım kuralları -->
+                    <div class="tip-banner" style="background:rgba(139,92,246,0.05);border-left-color:#8b5cf6;">
+                        <strong style="color:#8b5cf6;">Özel yazım kuralları</strong><br>
+                        <code>${Degisken}</code> → <code>vars.get("Degisken")</code> olarak çevrilir (JMeter <code>vars</code>).<br>
+                        <code>… gelmediği / görülmez</code> → elemanın <b>ekranda olmadığı</b> doğrulanır.<br>
+                        <code>… gelmesi / görülmesi beklenir</code> → elemanın <b>ekranda olduğu</b> doğrulanır.<br>
+                        Adım sonuna <code>(Fonksiyon gerekli)</code> → kod üretilmez, <code>//Fonksiyon gerekli</code> yorumu düşülür.
                     </div>
 
                     <!-- Appium Konfigürasyonu (Accordion) -->
@@ -1106,20 +1118,21 @@ Telefon alanına "05001234567" yaz
     function renderStepReport(report) {
         const wrap   = document.getElementById("stepReport");
         const body   = document.getElementById("stepReportBody");
-        const counts = { rule: 0, llm: 0, todo: 0 };
+        const counts = { rule: 0, custom: 0, llm: 0, todo: 0 };
         report.forEach(r => { if (r.method in counts) counts[r.method]++; });
 
         const summary = `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <span class="step-badge rule">✓ Kural: ${counts.rule}</span>
             <span class="step-badge llm">🤖 AI: ${counts.llm}</span>
+            ${counts.custom ? `<span class="step-badge custom">ƒ Fonksiyon: ${counts.custom}</span>` : ""}
             ${counts.todo ? `<span class="step-badge todo">⚠ Manuel: ${counts.todo}</span>` : ""}
         </div>`;
 
         const rows = report.map(r => {
-            const cls   = r.method === "rule" ? "rule" : r.method === "llm" ? "llm" : "todo";
-            const icons = { rule: "✓", llm: "AI", todo: "⚠" };
+            const cls   = ["rule", "custom", "llm"].includes(r.method) ? r.method : "todo";
+            const icons = { rule: "✓", custom: "ƒ", llm: "AI", todo: "⚠" };
             return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;background:var(--bg-primary);font-size:0.74rem;">
-                <span class="step-badge ${cls}" style="flex-shrink:0;">${icons[r.method]}</span>
+                <span class="step-badge ${cls}" style="flex-shrink:0;">${icons[cls]}</span>
                 <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.step.replace(/"/g,'&quot;')}">${r.step}</span>
             </div>`;
         }).join("");

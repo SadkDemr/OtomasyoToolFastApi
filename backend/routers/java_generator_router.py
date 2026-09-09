@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from routers.auth import get_current_user
 from models.db_models import User
 from services.ai_service import get_ollama_config
-from services.java_generator_service import generate_step
+from services.java_generator_service import generate_step, is_custom_step
 from services.appium_codegen_service import build_android_template, build_ios_template
 
 router = APIRouter(prefix="/api/java-gen", tags=["java-generator"])
@@ -173,7 +173,10 @@ async def generate_java(req: JavaGenerateRequest, current_user: User = Depends(g
     for step in raw_steps:
         parsed = generate_step(step, platform)
         if parsed:
-            code_lines.append(("rule", step, "\n".join(parsed)))
+            # "(Fonksiyon gerekli)" ile işaretlenen adımlar raporda ayrı gösterilir —
+            # kod üretilmediği, kullanıcının elle fonksiyon yazacağı adımlardır.
+            kind = "custom" if is_custom_step(step) else "rule"
+            code_lines.append((kind, step, "\n".join(parsed)))
         else:
             code_lines.append(("llm", step, ""))
             unrecognized.append(step)
@@ -184,9 +187,9 @@ async def generate_java(req: JavaGenerateRequest, current_user: User = Depends(g
 
     final_lines: list[str] = []
     for kind, step, rule_code in code_lines:
-        if kind == "rule":
+        if kind in ("rule", "custom"):
             final_lines.append(rule_code)
-            report.append({"step": step, "method": "rule"})
+            report.append({"step": step, "method": kind})
         else:
             llm_code = llm_results.get(step, "")
             if not llm_code:
