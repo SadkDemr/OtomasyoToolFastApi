@@ -215,6 +215,7 @@
         .step-badge.llm  { background: rgba(59,130,246,0.12);  color: #3b82f6; }
         .step-badge.todo { background: rgba(245,158,11,0.12);   color: #f59e0b; }
         .step-badge.custom { background: rgba(168,85,247,0.12); color: #a855f7; }
+        .step-badge.override { background: rgba(236,72,153,0.12); color: #ec4899; }
     </style>
 </head>
 <body>
@@ -244,6 +245,11 @@
                        title="Kapatırsan bu dönüşümde tanınmayan adımlar LLM'e gönderilmez, direkt manuel işaretlenir. Ollama servisi kapanmaz, sadece bu istekte kullanılmaz.">
                     <input type="checkbox" id="cfg-use-ai-fallback" checked>
                     Bu dönüşümde AI fallback kullan
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--text-secondary); cursor:pointer; white-space:nowrap;"
+                       title="Platforma göre sabit login akışı (Ortam Seçimi / Bireysel / Müşteri No-Şifre / OTP) senaryo adımlarının başına otomatik eklenir.">
+                    <input type="checkbox" id="cfg-include-login" checked>
+                    Varsayılan login adımlarını ekle
                 </label>
             </div>
 
@@ -302,6 +308,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
                         <code>${Degisken}</code> → <code>vars.get("Degisken")</code> olarak çevrilir (JMeter <code>vars</code>).<br>
                         <code>… gelmediği / görülmez</code> → elemanın <b>ekranda olmadığı</b> doğrulanır.<br>
                         <code>… gelmesi / görülmesi beklenir</code> → elemanın <b>ekranda olduğu</b> doğrulanır.<br>
+                        <code>Adım.IOS(&lt;xpath&gt;) AND(&lt;xpath&gt;)</code> → dönüştürülen platforma göre parantez içindeki xpath doğrudan komuta gömülür.<br>
                         Adım sonuna <code>(Fonksiyon gerekli)</code> → kod üretilmez, <code>//Fonksiyon gerekli</code> yorumu düşülür.
                     </div>
 
@@ -482,7 +489,8 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
                     bundleId:        document.getElementById("cfg-bundle-id").value,
                     className:       document.getElementById("cfg-class-name").value,
                     noReset:         document.getElementById("cfg-no-reset").checked,
-                    useAiFallback:   document.getElementById("cfg-use-ai-fallback").checked
+                    useAiFallback:   document.getElementById("cfg-use-ai-fallback").checked,
+                    includeLogin:    document.getElementById("cfg-include-login").checked
                 },
                 className, generatedCode, lastReport, lastWarnings,
                 isBatchMode, batchResults, batchActiveIndex
@@ -525,6 +533,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
         if (c.className)       document.getElementById("cfg-class-name").value = c.className;
         if ("noReset" in c)       document.getElementById("cfg-no-reset").checked = !!c.noReset;
         if ("useAiFallback" in c) document.getElementById("cfg-use-ai-fallback").checked = !!c.useAiFallback;
+        if ("includeLogin" in c)  document.getElementById("cfg-include-login").checked = !!c.includeLogin;
 
         if (state.platform === "ios") {
             currentPlatform = "ios";
@@ -669,41 +678,27 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
         const isCsv   = fname.endsWith(".csv");
 
         if (isExcel) {
-            Toast.info("Excel parse ediliyor...");
+            // Önce dosyadaki sheet'leri listele — birden fazla sheet varsa kullanıcı
+            // seçsin, tek sheet varsa (önceki davranışla uyumlu) doğrudan devam et.
             try {
-                const fd = new FormData();
-                fd.append("file", file);
-                const adoResp = await fetch(`${_JAVA_API}/ai-gen/parse-excel-ado`, {
+                const fdS = new FormData();
+                fdS.append("file", file);
+                const sResp = await fetch(`${_JAVA_API}/ai-gen/excel-sheets`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${Auth.getToken()}` },
-                    body: fd
+                    body: fdS
                 });
-                if (adoResp.status === 401) { Auth.logout(); return; }
-                if (adoResp.ok) {
-                    const data = await adoResp.json();
-                    const tcs = data.test_cases || [];
-                    if (tcs.length === 1) {
-                        _javaImportAdoTC(tcs[0]);
-                    } else if (tcs.length > 1) {
-                        _javaOpenAdoModal(tcs);
-                    }
+                if (sResp.status === 401) { Auth.logout(); return; }
+                if (!sResp.ok) { const e = await sResp.json(); throw new Error(e.detail || "Excel okunamadı"); }
+                const sData  = await sResp.json();
+                const sheets = sData.sheets || [];
+                if (sheets.length > 1) {
+                    _javaOpenSheetModal(file, sheets, sData.active);
                     return;
                 }
-                // ADO değilse fallback
-                const fd2 = new FormData();
-                fd2.append("file", file);
-                const resp2 = await fetch(`${_JAVA_API}/ai-gen/parse-file`, {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${Auth.getToken()}` },
-                    body: fd2
-                });
-                if (resp2.status === 401) { Auth.logout(); return; }
-                if (!resp2.ok) { const e = await resp2.json(); throw new Error(e.detail || "Parse hatası"); }
-                const data2 = await resp2.json();
-                setTestCase(data2.text, file.name, `${data2.lines} satır`);
-                Toast.success(`"${file.name}" yüklendi (${data2.lines} satır)`);
+                await _javaProcessExcel(file, sheets[0] || null);
             } catch (err) {
-                Toast.error("Dosya okunamadı: " + err.message);
+                Toast.error("Excel okunamadı: " + err.message);
             }
         } else if (isCsv) {
             Toast.info("CSV parse ediliyor...");
@@ -753,6 +748,76 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
             reader.readAsText(file, "UTF-8");
         }
     }
+
+    // ── Excel: seçilen sheet ile parse (ADO formatı → düz metin fallback) ──
+    async function _javaProcessExcel(file, sheetName) {
+        Toast.info(sheetName ? `"${sheetName}" sheet'i parse ediliyor...` : "Excel parse ediliyor...");
+        try {
+            const fd = new FormData();
+            fd.append("file", file);
+            if (sheetName) fd.append("sheet_name", sheetName);
+            const adoResp = await fetch(`${_JAVA_API}/ai-gen/parse-excel-ado`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                body: fd
+            });
+            if (adoResp.status === 401) { Auth.logout(); return; }
+            if (adoResp.ok) {
+                const data = await adoResp.json();
+                const tcs = data.test_cases || [];
+                if (tcs.length === 1) {
+                    _javaImportAdoTC(tcs[0]);
+                } else if (tcs.length > 1) {
+                    _javaOpenAdoModal(tcs);
+                }
+                return;
+            }
+            // ADO değilse fallback — seçilen sheet'in düz metni
+            const fd2 = new FormData();
+            fd2.append("file", file);
+            if (sheetName) fd2.append("sheet_name", sheetName);
+            const resp2 = await fetch(`${_JAVA_API}/ai-gen/parse-file`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}` },
+                body: fd2
+            });
+            if (resp2.status === 401) { Auth.logout(); return; }
+            if (!resp2.ok) { const e = await resp2.json(); throw new Error(e.detail || "Parse hatası"); }
+            const data2 = await resp2.json();
+            const label = sheetName ? `${file.name} — ${sheetName}` : file.name;
+            setTestCase(data2.text, label, `${data2.lines} satır`);
+            Toast.success(`"${label}" yüklendi (${data2.lines} satır)`);
+        } catch (err) {
+            Toast.error("Dosya okunamadı: " + err.message);
+        }
+    }
+
+    function _javaOpenSheetModal(file, sheets, activeSheet) {
+        window._javaSheetFile = file;
+        const overlay = document.getElementById("javaSheetModal");
+        const body    = document.getElementById("javaSheetBody");
+        body.innerHTML = sheets.map(name => `
+            <button type="button" class="java-sheet-item" data-sheet="${name.replace(/"/g,"&quot;")}">
+                <span>${name.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</span>
+                ${name === activeSheet ? '<span class="java-sheet-badge">aktif</span>' : ''}
+            </button>`).join("");
+        body.querySelectorAll(".java-sheet-item").forEach(btn => {
+            btn.addEventListener("click", () => window._javaPickSheet(btn.dataset.sheet));
+        });
+        overlay.style.display = "flex";
+    }
+
+    window._javaPickSheet = async function (name) {
+        document.getElementById("javaSheetModal").style.display = "none";
+        const file = window._javaSheetFile;
+        window._javaSheetFile = null;
+        if (file) await _javaProcessExcel(file, name);
+    };
+
+    window._javaCloseSheetModal = function () {
+        document.getElementById("javaSheetModal").style.display = "none";
+        window._javaSheetFile = null;
+    };
 
     function _javaImportAdoTC(tc) {
         const text = tc.steps.join("\n");
@@ -857,7 +922,8 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
             udid:             document.getElementById("cfg-udid").value             || "",
             no_reset:         document.getElementById("cfg-no-reset").checked,
             class_name:       className,
-            use_ai_fallback:  document.getElementById("cfg-use-ai-fallback").checked
+            use_ai_fallback:  document.getElementById("cfg-use-ai-fallback").checked,
+            include_default_login: document.getElementById("cfg-include-login").checked
         };
         if (currentPlatform === "ios") {
             payload.bundle_id = document.getElementById("cfg-bundle-id").value || "";
@@ -912,6 +978,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
             udid:             document.getElementById("cfg-udid").value             || "",
             no_reset:         document.getElementById("cfg-no-reset").checked,
             use_ai_fallback:  document.getElementById("cfg-use-ai-fallback").checked,
+            include_default_login: document.getElementById("cfg-include-login").checked,
         };
         if (currentPlatform === "ios") {
             baseConfig.bundle_id = document.getElementById("cfg-bundle-id").value || "";
@@ -1118,19 +1185,20 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
     function renderStepReport(report) {
         const wrap   = document.getElementById("stepReport");
         const body   = document.getElementById("stepReportBody");
-        const counts = { rule: 0, custom: 0, llm: 0, todo: 0 };
+        const counts = { rule: 0, override: 0, custom: 0, llm: 0, todo: 0 };
         report.forEach(r => { if (r.method in counts) counts[r.method]++; });
 
         const summary = `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <span class="step-badge rule">✓ Kural: ${counts.rule}</span>
+            ${counts.override ? `<span class="step-badge override">★ Kalıp: ${counts.override}</span>` : ""}
             <span class="step-badge llm">🤖 AI: ${counts.llm}</span>
             ${counts.custom ? `<span class="step-badge custom">ƒ Fonksiyon: ${counts.custom}</span>` : ""}
             ${counts.todo ? `<span class="step-badge todo">⚠ Manuel: ${counts.todo}</span>` : ""}
         </div>`;
 
         const rows = report.map(r => {
-            const cls   = ["rule", "custom", "llm"].includes(r.method) ? r.method : "todo";
-            const icons = { rule: "✓", custom: "ƒ", llm: "AI", todo: "⚠" };
+            const cls   = ["rule", "override", "custom", "llm"].includes(r.method) ? r.method : "todo";
+            const icons = { rule: "✓", override: "★", custom: "ƒ", llm: "AI", todo: "⚠" };
             return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;background:var(--bg-primary);font-size:0.74rem;">
                 <span class="step-badge ${cls}" style="flex-shrink:0;">${icons[cls]}</span>
                 <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.step.replace(/"/g,'&quot;')}">${r.step}</span>
@@ -1158,6 +1226,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
     document.getElementById("cfgBody").addEventListener("input",  saveStateDebounced);
     document.getElementById("cfgBody").addEventListener("change", saveStateDebounced);
     document.getElementById("cfg-use-ai-fallback").addEventListener("change", saveStateDebounced);
+    document.getElementById("cfg-include-login").addEventListener("change", saveStateDebounced);
 
     function _resetOutput() {
         generatedCode = "";
@@ -1222,7 +1291,37 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
         </div>
     </div>
 </div>
+
+<!-- ── MODAL: Excel Sheet Seçimi ── -->
+<div id="javaSheetModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:14px; padding:24px; max-width:420px; width:90%; max-height:80vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+            <div style="font-weight:600; font-size:1rem; display:flex; align-items:center; gap:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+                Sheet Seç
+            </div>
+            <button onclick="window._javaCloseSheetModal()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;border-radius:6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">Bu Excel dosyasında birden fazla sheet var. Devam etmek için birini seç.</div>
+        <div id="javaSheetBody" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+</div>
 <style>
+.java-sheet-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 16px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--border-color); background: var(--bg-primary);
+    color: var(--text-primary); font-size: 0.88rem; font-weight: 500;
+    font-family: inherit; width: 100%; text-align: left;
+    transition: border-color 150ms, background 150ms;
+}
+.java-sheet-item:hover { border-color: var(--accent-primary); background: var(--bg-tertiary); }
+.java-sheet-badge {
+    font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    background: rgba(16,185,129,0.12); color: #10b981; flex-shrink: 0;
+}
 .java-ado-item {
     display: flex; align-items: center; gap: 10px;
     padding: 12px 16px; border-radius: 10px; cursor: pointer;

@@ -421,3 +421,24 @@ class KnowledgeDocumentVersion(Base):
     diff_summary = Column(Text, nullable=True)  # None ise ilk kayit
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class JavaStepTemplate(Base):
+    """Java Generator icin admin tanimli kalip step->komut eslesmeleri ve
+    platform bazli varsayilan login bloklari. generate_step kural motorunu
+    bypass eder: trigger_text (kind='step') tam eslesirse java_code oldugu
+    gibi convert ciktisina yazilir; kind='login' ise platform icin aktif
+    login bloğu olarak senaryo basina eklenir (JavaGenerateRequest.
+    include_default_login)."""
+    __tablename__ = "java_step_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    platform = Column(String, index=True)                # "android" | "ios"
+    kind = Column(String, default="step", index=True)     # "step" | "login"
+    trigger_text = Column(String, nullable=True, index=True)  # kind="step" icin zorunlu
+    java_code = Column(Text)
+    note = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

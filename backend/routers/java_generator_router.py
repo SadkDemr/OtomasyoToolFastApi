@@ -11,12 +11,15 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from database import get_db
 from routers.auth import get_current_user
 from models.db_models import User
 from services.ai_service import get_ollama_config
 from services.java_generator_service import generate_step, is_custom_step
 from services.appium_codegen_service import build_android_template, build_ios_template
+from services.java_step_template_service import find_step_override, get_active_login
 
 router = APIRouter(prefix="/api/java-gen", tags=["java-generator"])
 
@@ -36,6 +39,7 @@ class JavaGenerateRequest(BaseModel):
     no_reset:         Optional[bool] = True
     class_name:       Optional[str]  = "GeneratedTest"
     use_ai_fallback:  Optional[bool] = True
+    include_default_login: Optional[bool] = True
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -162,7 +166,11 @@ async def ollama_status():
 
 
 @router.post("/generate")
-async def generate_java(req: JavaGenerateRequest, current_user: User = Depends(get_current_user)):
+async def generate_java(
+    req: JavaGenerateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     raw_steps = [l.strip() for l in req.test_case.splitlines() if l.strip()]
     platform  = (req.platform or "android").lower()
 
@@ -171,6 +179,12 @@ async def generate_java(req: JavaGenerateRequest, current_user: User = Depends(g
     report:       list[dict]  = []
 
     for step in raw_steps:
+        # Admin'in tanımladığı kalıp step eşleşmesi kural motorundan ÖNCE
+        # kontrol edilir — tam eşleşirse kural motorunu/LLM'i tamamen bypass eder.
+        override = find_step_override(db, step, platform)
+        if override:
+            code_lines.append(("override", step, "\n".join(override)))
+            continue
         parsed = generate_step(step, platform)
         if parsed:
             # "(Fonksiyon gerekli)" ile işaretlenen adımlar raporda ayrı gösterilir —
@@ -187,7 +201,7 @@ async def generate_java(req: JavaGenerateRequest, current_user: User = Depends(g
 
     final_lines: list[str] = []
     for kind, step, rule_code in code_lines:
-        if kind in ("rule", "custom"):
+        if kind in ("rule", "custom", "override"):
             final_lines.append(rule_code)
             report.append({"step": step, "method": kind})
         else:
@@ -202,7 +216,11 @@ async def generate_java(req: JavaGenerateRequest, current_user: User = Depends(g
             report.append({"step": step, "method": method})
         final_lines.append("")
 
-    steps_code = "\n".join(final_lines)
+    login_block = ""
+    if req.include_default_login:
+        login_block = get_active_login(db, platform).rstrip() + "\n\n"
+
+    steps_code = login_block + "// ── SENARYO ADIMLARI ──────────────────────────────────────────────\n" + "\n".join(final_lines)
     if platform == "ios":
         final_java = build_ios_template(
             steps_code=steps_code,

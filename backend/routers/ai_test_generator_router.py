@@ -17,7 +17,7 @@ import uuid
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -3743,11 +3743,14 @@ Code (one block per step, separated by blank lines):"""
 @router.post("/parse-file")
 async def parse_file_upload(
     file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """
     Excel (.xlsx/.xls), CSV veya TXT dosyasını okur,
     test adımlarını düz metin olarak döndürür.
+    sheet_name verilirse ve workbook'ta varsa o sheet okunur, yoksa aktif sheet
+    (wb.active — önceki davranışla birebir uyumlu, sheet_name olmadan değişmez).
     """
     contents = await file.read()
     filename  = (file.filename or "").lower()
@@ -3757,7 +3760,7 @@ async def parse_file_upload(
             import io
             import openpyxl
             wb = openpyxl.load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
-            ws = wb.active
+            ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
             lines = []
             for row in ws.iter_rows(values_only=True):
                 parts = [str(c).strip() for c in row if c is not None and str(c).strip() not in ("", "None")]
@@ -3847,13 +3850,45 @@ def _ado_parse_expected(expected: str) -> list:
     return result
 
 
-@router.post("/parse-excel-ado")
-async def parse_excel_ado(
+@router.post("/excel-sheets")
+async def list_excel_sheets(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
     """
+    Excel dosyasındaki sheet adlarını döner — kullanıcı içe aktarmadan önce
+    hangi sheet'i kullanacağını seçebilsin diye (workbook aktif olmayan diğer
+    sheet'ler daha önce parse-file/parse-excel-ado tarafından sessizce
+    atlanıyordu; wb.active sadece son kaydedilen aktif sekmeyi okuyordu).
+    Döndürür: { sheets: [str], active: str }
+    """
+    contents = await file.read()
+    fname = (file.filename or "").lower()
+    if not (fname.endswith(".xlsx") or fname.endswith(".xls")):
+        raise HTTPException(400, "Sadece .xlsx / .xls dosyaları desteklenir.")
+
+    try:
+        import io as _io
+        import openpyxl as _xl
+
+        wb = _xl.load_workbook(_io.BytesIO(contents), read_only=True, data_only=True)
+        sheets = list(wb.sheetnames)
+        active = wb.active.title if wb.active is not None else (sheets[0] if sheets else "")
+        wb.close()
+        return {"sheets": sheets, "active": active}
+    except Exception as e:
+        raise HTTPException(400, f"Excel okunamadı: {str(e)}")
+
+
+@router.post("/parse-excel-ado")
+async def parse_excel_ado(
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """
     Azure DevOps Excel export (.xlsx) parse eder.
+    sheet_name verilirse ve workbook'ta varsa o sheet okunur, yoksa aktif sheet.
     Döndürür: { test_cases: [{ title, steps: [str] }] }
     """
     contents = await file.read()
@@ -3866,7 +3901,7 @@ async def parse_excel_ado(
         import openpyxl as _xl
 
         wb = _xl.load_workbook(_io.BytesIO(contents), data_only=True)
-        ws = wb.active
+        ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
         rows = list(ws.iter_rows(values_only=True))
 
         # Başlık satırını bul

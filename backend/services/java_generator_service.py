@@ -72,6 +72,96 @@ _NEG_HEAD_RE = re.compile(
 # Adım içindeki ${Degisken} yer tutucusu.
 VAR_TOKEN_RE = re.compile(r'\$\{\s*[A-Za-z0-9_\-.]+\s*\}')
 
+# ── Inline platform xpath: "Geri butonu tıklanır.IOS(<xp>) AND(<xp>)" ────────
+# Tester adımın sonuna kendi xpath'ini iki platform için ayrı ayrı yazabilir;
+# convert sırasında o an üretilen platforma göre ilgili xpath doğrudan
+# komuta gömülür (locator metin aramasına gerek kalmaz). "AND" burada
+# "Android" kısaltması — ki 'and' kelimesiyle karışmasın diye sadece hemen
+# ardından '(' gelen "AND(" / "IOS(" kalıpları aranır (bkz. _extract_inline_xpaths).
+_INLINE_IOS_RE = re.compile(r'\bIOS\s*\(', re.IGNORECASE)
+_INLINE_AND_RE = re.compile(r'\bAND\s*\(', re.IGNORECASE)
+
+
+def _extract_balanced(text: str, open_idx: int) -> tuple[str, int] | None:
+    """text[open_idx] == '(' varsayılır. Eşleşen kapanış parantezine kadar
+    olan içeriği döner (içerik, kapanış_index). Tırnak içindeki parantezler
+    (xpath attribute değerlerinde nadiren geçebilir) derinlik sayımına dahil
+    edilmez ki xpath'in kendi iç içe parantezleri (örn. "(//X)[1]") doğru
+    eşleşsin."""
+    depth = 0
+    in_quote = None
+    i = open_idx
+    start = open_idx + 1
+    while i < len(text):
+        ch = text[i]
+        if in_quote:
+            if ch == in_quote:
+                in_quote = None
+        elif ch in ('"', "'"):
+            in_quote = ch
+        elif ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+            if depth == 0:
+                return text[start:i], i
+        i += 1
+    return None
+
+
+def _extract_inline_xpaths(step: str) -> tuple[str, str | None, str | None]:
+    """Adımda '.IOS(<ios xpath>) AND(<android xpath>)' kalıbı varsa ayıklar.
+    İkisi de opsiyonel ve sırasız olabilir. Returns (clean_step, ios_xpath,
+    android_xpath) — clean_step bu bloklar çıkarılmış haliyle döner ki fiil/
+    aksiyon tespiti (tıkla/doğrula/yaz...) geri kalan doğal dil üzerinden
+    yapılabilsin."""
+    ios_xpath = None
+    android_xpath = None
+    spans: list[tuple[int, int]] = []
+
+    m = _INLINE_IOS_RE.search(step)
+    if m:
+        res = _extract_balanced(step, m.end() - 1)
+        if res:
+            content, close_idx = res
+            ios_xpath = content.strip()
+            spans.append((m.start(), close_idx + 1))
+
+    m2 = _INLINE_AND_RE.search(step)
+    if m2:
+        res = _extract_balanced(step, m2.end() - 1)
+        if res:
+            content, close_idx = res
+            android_xpath = content.strip()
+            spans.append((m2.start(), close_idx + 1))
+
+    if not spans:
+        return step, None, None
+
+    clean = step
+    for s0, e0 in sorted(spans, reverse=True):
+        clean = clean[:s0] + clean[e0:]
+    clean = re.sub(r'\s{2,}', ' ', clean).strip()
+    return clean, ios_xpath, android_xpath
+
+
+def _detect_inline_action(text: str) -> str:
+    """Inline xpath'li adımlarda fiil tespiti — locator xpath'ten geldiği için
+    sadece AKSİYON (click/assert/clear/type/long_press) belirlenir. Öncelik
+    sırası generate_step'in normal akışıyla aynı (assert/long_press, click'i
+    içerebilecek kelimelerden önce kontrol edilir). Hiçbiri eşleşmezse en
+    yaygın durum olan 'click' varsayılır."""
+    sl = _mask_quoted(text).lower()
+    if re.search(LONGPRESS_WORDS, sl):
+        return "long_press"
+    if re.search(ASSERT_WORDS, sl):
+        return "assert"
+    if re.search(CLEAR_WORDS, sl):
+        return "clear"
+    if re.search(INPUT_WORDS, sl):
+        return "type"
+    return "click"
+
 
 def _clean_step(raw: str) -> str:
     s = raw.strip()
@@ -173,6 +263,24 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
     if _CF:
         desc = s[:_CF.start()].strip().rstrip('-–—:,').strip()
         return [f'// {desc}' if desc else f'// {s}', '//Fonksiyon gerekli']
+
+    # ── Inline platform xpath: "X tıklanır.IOS(<xp>) AND(<xp>)" ──────────────
+    # En başta kontrol edilir — tester xpath'i elle verdiyse, aşağıdaki
+    # tırnaklı-metin tabanlı locator kalıplarının hiçbiri devreye girmesin.
+    _clean_for_xpath, _ios_xp, _and_xp = _extract_inline_xpaths(s)
+    if _ios_xp or _and_xp:
+        inline_xpath = _ios_xp if platform == "ios" else _and_xp
+        if inline_xpath:
+            action = _detect_inline_action(_clean_for_xpath)
+            value = None
+            if action == "type":
+                _iq = _extract_quoted(_clean_for_xpath)
+                value = _iq[0] if _iq else _auto_fill_value(_clean_for_xpath)
+            lines, _ = action_to_java(action, None, value, s, platform, full_xpath=inline_xpath)
+            return lines
+        # Bu platform için xpath verilmemiş — normal kural motoruna düş
+        # (temizlenmiş metin üzerinden devam: inline blok tekrar eşleşmesin).
+        s = _clean_for_xpath
 
     quoted = _extract_quoted(s)
     sl     = _mask_quoted(s).lower()  # fiil tespiti: tırnaklı değerler maskeli
@@ -330,3 +438,137 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
         return [f'// {s}  // assertion: eleman metni belirtilmemiş, manuel doğrula']
 
     return None  # Tanınmadı → LLM
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VARSAYILAN LOGIN ADIMLARI
+# ══════════════════════════════════════════════════════════════════════════════
+# Kullanıcı isteği: her Java Generator dönüşümünde senaryo adımlarından önce
+# platforma göre sabit bir login akışı otomatik eklensin (JavaGenerateRequest.
+# include_default_login — varsayılan True, router.generate_java içinde
+# steps_code'un başına eklenir). Uygulama başlatma (terminateApp/activateApp)
+# zaten template'te (build_ios_template/build_android_template) request'teki
+# bundle_id/app_package ile yapıldığından, bu bloklar UYGULAMA AÇIKKEN ilk
+# ekrandan (onboarding/login) başlar — paket adını burada tekrar sabitlemez.
+
+DEFAULT_LOGIN_IOS = """\
+// ── VARSAYILAN LOGIN (iOS) ──────────────────────────────────────────
+WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+
+driver.findElement(AppiumBy.xpath("(//XCUIElementTypeStaticText[@name='titleLabel'])[2]")).click();
+driver.findElement(AppiumBy.xpath("(//*[@name='Test' or @label='Test' or @value='Test'])[1]")).click();
+driver.findElement(AppiumBy.xpath("(//*[@name='Devam Et' or @label='Devam Et' or @value='Devam Et'])[1]")).click();
+Thread.sleep(2000);
+
+driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
+List<WebElement> sifremiUnuttumList = driver.findElements(AppiumBy.xpath(
+    "(//XCUIElementTypeStaticText[@name='Şifremi Unuttum'])[1]"));
+driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+
+if (sifremiUnuttumList.isEmpty()) {
+    // İlk kez giriş — kayıtlı kullanıcı listesi yok, doğrudan giriş formu geliyor
+    driver.findElement(AppiumBy.xpath(
+        "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]")).click();
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeStaticText[@name='Müşteri No/T.C. Kimlik No'])[1]")).click();
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeTextField)[1]")).sendKeys("777");
+    driver.findElement(AppiumBy.xpath(
+        "(//*[@name='Şifre' or @label='Şifre' or @value='Şifre'])[1]")).click();
+    Thread.sleep(1000);
+    driver.findElement(AppiumBy.xpath(
+        "//XCUIElementTypeCell[2]")).sendKeys("121212");
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeButton[@name='Done'])[1]")).click();
+    driver.findElement(AppiumBy.xpath(
+        "(//*[@name='Devam' or @label='Devam' or @value='Devam'])[1]")).click();
+    Thread.sleep(1000);
+    driver.findElement(AppiumBy.xpath("//XCUIElementTypeOther")).sendKeys("121212");
+} else {
+    // Kayıtlı kullanıcı(lar) var — önce mevcutları sil, sonra yeniden giriş yap
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeButton[@name='user switch'])[1]")).click();
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeStaticText[@name='Kayıtlı Kullanıcıları Düzenle'])[1]")).click();
+
+    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
+    List<WebElement> trashIcons = driver.findElements(AppiumBy.xpath(
+        "//XCUIElementTypeImage[@name='trash']"));
+    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+
+    int baslangic = Math.min(trashIcons.size(), 3);
+    for (int i = baslangic; i >= 1; i--) {
+        driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeImage[@name='trash'])[" + i + "]")).click();
+        driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeStaticText[@name='Evet'])[1]")).click();
+        Thread.sleep(1000);
+
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
+        List<WebElement> bireyselList = driver.findElements(AppiumBy.xpath(
+            "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]"));
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+
+        if (!bireyselList.isEmpty() && bireyselList.get(0).isDisplayed()) {
+            break;
+        }
+    }
+
+    driver.findElement(AppiumBy.xpath(
+        "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]")).click();
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeStaticText[@name='Müşteri No/T.C. Kimlik No'])[1]")).click();
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeTextField)[1]")).sendKeys("777");
+    driver.findElement(AppiumBy.xpath(
+        "(//*[@name='Şifre' or @label='Şifre' or @value='Şifre'])[1]")).click();
+    Thread.sleep(1000);
+    driver.findElement(AppiumBy.xpath(
+        "//XCUIElementTypeCell[2]")).sendKeys("121212");
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeButton[@name='Done'])[1]")).click();
+    driver.findElement(AppiumBy.xpath(
+        "(//*[@name='Devam' or @label='Devam' or @value='Devam'])[1]")).click();
+    Thread.sleep(1000);
+    driver.findElement(AppiumBy.xpath("//XCUIElementTypeOther")).sendKeys("121212");
+}
+
+// Login tamamlandı — "Hesaplarım" tabı seçili dashboard bekleniyor
+driver.findElement(AppiumBy.xpath(
+    "(//*[@name='Hesaplarım' or @label='Hesaplarım' or @value='Hesaplarım'])[1]")).isDisplayed();
+// ── VARSAYILAN LOGIN SONU ───────────────────────────────────────────
+"""
+
+DEFAULT_LOGIN_ANDROID = """\
+// ── VARSAYILAN LOGIN (Android) ──────────────────────────────────────
+driver.findElement(By.xpath("(//*[@text='Ortam Seçimi' or @content-desc='Ortam Seçimi'])[1]")).isDisplayed();
+driver.findElement(By.xpath("(//*[@text='Continue' or @content-desc='Continue'])[1]")).click();
+
+// "Bireysel" Tabına tıklanır.
+driver.findElement(By.xpath("(//*[@text='Bireysel' or @content-desc='Bireysel'])[1]")).click();
+
+driver.findElement(By.xpath("(//*[@text='Giriş Yap' or @content-desc='Giriş Yap'])[1]")).isDisplayed();
+
+driver.findElement(By.xpath("(//*[@text='Müşteri No/T.C. Kimlik No' or @content-desc='Müşteri No/T.C Kimlik No'])[1]")).isDisplayed();
+driver.findElement(By.xpath("(//*[@text='Müşteri No/T.C. Kimlik No' or @content-desc='Müşteri No/T.C Kimlik No'])[1]")).click();
+
+driver.switchTo().activeElement().sendKeys("777");
+try { driver.hideKeyboard(); } catch (Exception ignored) {}
+
+driver.findElement(By.xpath("(//*[@text='Müşteri No/T.C. Kimlik No' or @content-desc='Müşteri No/T.C. Kimlik No'])[1]")).isDisplayed();
+
+driver.findElement(By.xpath("(//*[@text='Şifre' or @content-desc='Şifre'])[1]")).click();
+
+driver.switchTo().activeElement().sendKeys("121212");
+try { driver.hideKeyboard(); } catch (Exception ignored) {}
+
+driver.findElement(By.xpath("(//*[@text='Devam' or @content-desc='Devam'])[1]")).isDisplayed();
+driver.findElement(By.xpath("(//*[@text='Devam' or @content-desc='Devam'])[1]")).click();
+
+driver.findElement(By.xpath("(//*[@text='SMS Doğrulama' or @content-desc='SMS Doğrulama'])[1]")).isDisplayed();
+driver.findElement(By.xpath("//android.view.View[@index='0']/android.view.View[@index='3']/android.view.View[@index='0']/android.view.View[@index='0']")).click();
+Thread.sleep(1000);
+driver.executeScript("mobile: type", Map.of("text", "121212"));
+// Login tamamlandı — Dashboard bekleniyor
+// ── VARSAYILAN LOGIN SONU ───────────────────────────────────────────
+"""

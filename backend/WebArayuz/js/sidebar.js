@@ -50,6 +50,7 @@
                 + item("admin-logs",     "&#128203;", "Koşum Logları")
                 + item("admin-knowledge","&#129504;", "Bilgi Tabanı")
                 + item("admin-knowledge-history","&#128336;", "Bilgi Tabanı Geçmişi")
+                + item("admin-java-templates","&#9749;", "Java Kalıp Komutlar")
             );
         }
 
@@ -63,6 +64,7 @@
                     + item("ai-jobs",       "&#128197;", "AI Job'lar")
                     + item("testcasegen",  "&#128221;", "Test Case Gen")
                     + item("java-generator","&#9749;",  "Java Generator")
+                    + item("java-templates","&#128218;", "Kalıp Komutlar")
                     + item("bdd-generator","&#129405;", "BDD Generator")
                     + item("chat",          "&#128172;", "AI Chat")
                     + item("test-history", "&#128203;", "Test Geçmişi")

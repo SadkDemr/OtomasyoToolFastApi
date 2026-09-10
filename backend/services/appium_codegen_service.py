@@ -471,9 +471,11 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.PointerInput;
 import org.openqa.selenium.interactions.Sequence;
 import org.openqa.selenium.remote.DesiredCapabilities;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import java.net.URL;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 
 // ── CONFIG ────────────────────────────────────────────────────────
 DesiredCapabilities capabilities = new DesiredCapabilities();
