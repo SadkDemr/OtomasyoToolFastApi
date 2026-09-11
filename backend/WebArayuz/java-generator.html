@@ -1217,7 +1217,10 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
 
     // ── Yardımcılar ────────────────────────────────────────────────────────
     function sanitizeClassName(name) {
-        return name.replace(/[^a-zA-Z0-9_]/g, "") || "GeneratedTest";
+        // Sadece dosya/sınıf adında geçersiz olan karakterler (boşluk, noktalama,
+        // sembol) silinir; harfler Unicode olarak korunur (ç/ğ/ı/ö/ş/ü dahil) —
+        // önceki [a-zA-Z0-9_] filtresi Türkçe karakterleri tamamen siliyordu.
+        return (name || "").replace(/[^\p{L}\p{N}_]/gu, "") || "GeneratedTest";
     }
 
     document.getElementById("cfg-class-name").addEventListener("input", function () {
