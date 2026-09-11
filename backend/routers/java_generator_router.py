@@ -17,7 +17,7 @@ from database import get_db
 from routers.auth import get_current_user
 from models.db_models import User
 from services.ai_service import get_ollama_config
-from services.java_generator_service import generate_step, is_custom_step
+from services.java_generator_service import generate_step, is_custom_step, expand_multi_target_step
 from services.appium_codegen_service import build_android_template, build_ios_template
 from services.java_step_template_service import find_step_override, get_active_login
 
@@ -171,7 +171,15 @@ async def generate_java(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    raw_steps = [l.strip() for l in req.test_case.splitlines() if l.strip()]
+    raw_steps: list[str] = []
+    for l in req.test_case.splitlines():
+        l = l.strip()
+        if not l:
+            continue
+        # Virgül/noktalı virgülle ayrılmış çoklu hedefli tek satır varsa
+        # (örn. "X","Y","Z" kartının olduğu görülür) her hedef ayrı adım
+        # olarak işlensin diye burada genişletilir.
+        raw_steps.extend(expand_multi_target_step(l))
     platform  = (req.platform or "android").lower()
 
     code_lines:   list[tuple] = []

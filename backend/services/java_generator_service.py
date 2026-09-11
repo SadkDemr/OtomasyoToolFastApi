@@ -18,6 +18,12 @@ ASSERT_WORDS    = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[u�
 CLEAR_WORDS     = r'(?:temizle|sil\b)'
 LONGPRESS_WORDS = r'(?:uzun\s*bas|bas[iı]l[iı]\s*tut|long\s*press)'
 
+# "X alanına Y yazılır" gibi eleman+değer (iki AYRI tırnaklı değer) kalıbını
+# tırnak İÇİNDE tırnak geçen TEK bir değerden (örn. "Merhaba "Dünya" mesajı"
+# yazılır) ayırt etmek için — sadece bu bağlaç varsa iki ayrı değer olduğu
+# kabul edilir, yoksa tırnaklar tek bir (nested) değere ait sayılır.
+FIELD_CONNECTOR_WORDS = r'(?:alan[ıi]na|kutusuna|kutucu[gğ]una|input(?:una)?|field(?:ine)?|k[ıi]sm[ıi]na)'
+
 # ── Custom step işareti ───────────────────────────────────────────────────────
 # Kullanıcı, elle yazılacak bir fonksiyon gereken adımın sonuna
 # "(Fonksiyon gerekli)" yazar; bu adım için kod üretilmez, sadece yorum düşülür.
@@ -182,14 +188,45 @@ _QUOTE_SPAN_RE = re.compile(r'["“”‘’][^"“”‘’]*["“”‘’]')
 
 def _mask_quoted(text: str) -> str:
     """Tırnak içindeki element/metin değerlerini boşlukla değiştirir.
-    Örn. "Seçimi" içindeki "seç" fiil regex'ini yanıltmasın diye fiil tespiti bu maskeli metin üzerinde yapılır."""
-    return _QUOTE_SPAN_RE.sub(lambda m: ' ' * len(m.group(0)), text)
+    Örn. "Seçimi" içindeki "seç" fiil regex'ini yanıltmasın diye fiil tespiti bu maskeli metin üzerinde yapılır.
+
+    Metinde tırnak İÇİNDE tırnak varsa (örn. "Ödeme "Onayla" ekranı") ilk ve
+    son tırnak arasındaki HER ŞEY tek blok olarak maskelenir — aksi halde
+    _QUOTE_SPAN_RE ilk iç tırnakta durur, ortadaki metin (örn. "Onayla")
+    maskesiz kalıp fiil regex'ini yanıltabilir (örn. içinde "aç" geçen bir
+    kelime yanlışlıkla tıklama/açılma fiili sanılabilir)."""
+    idxs = [i for i, ch in enumerate(text) if ch in '"“”‘’']
+    if len(idxs) < 2:
+        return text
+    chars = list(text)
+    for i in range(idxs[0], idxs[-1] + 1):
+        chars[i] = ' '
+    return ''.join(chars)
+
+
+def _single_quoted_value(text: str) -> str | None:
+    """Metindeki TEK bir tırnaklı hedefi döner (assert/click/clear/long_press/
+    pasif tıklama/açılır gibi tek hedef bekleyen aksiyonlar için).
+
+    Değerin İÇİNDE tırnak geçiyorsa ("X "Y" Z" gibi) ilk tırnaktan SON
+    tırnağa kadar olan TÜM içerik tek parça olarak alınır — _extract_quoted
+    (ya da quoted[0]) ilk iç tırnakta durup değeri yarıda keserdi.
+    NOT: type aksiyonunun iki AYRI değeri (eleman + yazılacak metin) için
+    kullanılmaz, orada _extract_quoted'in ayrı ayrı döndürdüğü liste kullanılır."""
+    idxs = [i for i, ch in enumerate(text) if ch in '"“”‘’']
+    if len(idxs) < 2:
+        return None
+    return text[idxs[0] + 1: idxs[-1]]
 
 
 def _quoted_target(raw_group: str, quoted: list[str]) -> str:
     """Pasif kalıplarda (X butonuna tıklanır / X açılır) hedef metni belirler.
-    Tırnaklı değer varsa onu kullanır (tırnak karakterleri metne karışmasın diye),
-    yoksa yakalanan ham metinden olası tırnak karakterlerini temizler."""
+    Tırnaklı değer varsa onu kullanır (tırnak karakterleri metne karışmasın diye,
+    ve tırnak içinde tırnak varsa yarıda kesilmeden), yoksa yakalanan ham
+    metinden olası tırnak karakterlerini temizler."""
+    sq = _single_quoted_value(raw_group)
+    if sq is not None:
+        return sq
     if quoted:
         return quoted[-1]
     return raw_group.strip('"“”‘’\'')
@@ -219,6 +256,9 @@ def _assert_target(s: str, quoted: list[str], verb_start: int) -> str | None:
     "Ekranda hata mesajının görülmediği kontrol edilir" → hata
     "Devam butonunun gelmesi beklenir"              → Devam
     """
+    sq = _single_quoted_value(s)
+    if sq is not None:
+        return sq
     if quoted:
         return quoted[0]
     head = s[:verb_start].strip()
@@ -245,6 +285,157 @@ def _girilir_value(ctx: str) -> tuple[str, bool]:
     if num_m:
         return num_m.group(1), False
     return _auto_fill_value(ctx), True
+
+
+# ── Tırnaklı hedef xpath mi, düz etiket metni mi? ─────────────────────────────
+# Tester bazı adımlarda hedefi hazır xpath olarak yazabiliyor (locator'ı
+# elle biliyorsa). Bu durumda metin arama xpath'ine ('//*[@text='X']')
+# sarmak yanlış/çalışmayan locator üretir — "//" ile başlıyorsa ya da
+# XCUIElementType/android.widget/android.view içeriyorsa doğrudan xpath
+# olarak (full_xpath) kullanılır.
+_XPATH_LIKE_RE = re.compile(r'^\(?\s*//|XCUIElementType|android\.widget\.|android\.view\.')
+
+
+def _looks_like_xpath(val: str) -> bool:
+    return bool(val) and bool(_XPATH_LIKE_RE.search(val.strip()))
+
+
+def _resolve_target(target: str | None) -> tuple[str | None, str | None]:
+    """(xpath_val, full_xpath) döner — hedef xpath'e benziyorsa full_xpath'e,
+    aksi halde düz etiket metni olarak xpath_val'e konur."""
+    if target and _looks_like_xpath(target):
+        return None, target
+    return target, None
+
+
+def _action_java(action: str, target: str | None, param: str | None, s: str, platform: str):
+    xv, fx = _resolve_target(target)
+    return action_to_java(action, xv, param, s, platform, full_xpath=fx)
+
+
+# ── Çoklu hedefli tek cümle: "X","Y","Z" ... kartının listelendiği görülür ───
+# Tester bir doğrulama cümlesinde birden fazla hedefi virgül/noktalı virgülle
+# art arda sıralayıp sona TEK bir ortak fiil (görülür/beklenir) koyabiliyor.
+# Bu durumda her hedef AYRI bir adım/assert olarak üretilmeli — aksi halde
+# ilk hedef dışındakiler tamamen kaybolurdu (generate_step tek cümlede sadece
+# quoted[0]'ı kullanır).
+def _split_list_items(s: str) -> list[str]:
+    """Metni üst seviye ',' ve ';' karakterlerinden ayırır. Tırnak içi
+    (xpath'lerde iç içe geçen tırnaklar dahil, kabaca) ve parantez içi
+    ayraçlar (xpath fonksiyonları: contains(@text, "x") gibi) korunur,
+    bölünmez — bu sayede xpath'in kendi virgülleri parçalanmaz."""
+    parts: list[str] = []
+    depth = 0
+    in_quote = False
+    buf: list[str] = []
+    for ch in s:
+        if ch in '"“”‘’':
+            in_quote = not in_quote
+            buf.append(ch)
+            continue
+        if not in_quote:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth = max(0, depth - 1)
+            elif ch in (',', ';') and depth == 0:
+                parts.append(''.join(buf))
+                buf = []
+                continue
+        buf.append(ch)
+    parts.append(''.join(buf))
+    return parts
+
+
+def _list_verb_mode(step: str) -> str | None:
+    """Cümledeki ortak fiili tespit eder — negatif/olumlu 'beklenir'/düz
+    'görülür' tarzı. NEG/POS_ASSERT_RE cümlenin GENELİNDE arandığından
+    (tek bir parçada değil) her zaman doğru sırayla (neg > pos > assert)
+    kontrol edilir; aksi halde "gelmemesi beklenir" yanlışlıkla pos sayılır."""
+    masked = _mask_quoted(step)
+    if NEG_ASSERT_RE.search(masked):
+        return "neg"
+    if POS_ASSERT_RE.search(masked):
+        return "pos_beklenir"
+    if re.search(ASSERT_WORDS, masked.lower()):
+        return "assert"
+    return None
+
+
+_LIST_VERB_SUFFIX = {
+    "neg":           " görülmez.",
+    "pos_beklenir":  " görülmesi beklenir.",
+    "assert":        " görülür.",
+}
+
+
+def _fragment_has_own_verb(fragment: str) -> bool:
+    """Bu parça zaten kendi fiilini içeriyor mu (tıklanır/açılır/girilir/
+    görülür ...)? İçeriyorsa ortak fiil eklenmez — olduğu gibi ayrı bir
+    adım olarak bırakılır."""
+    masked = _mask_quoted(fragment)
+    ml = masked.lower()
+    if NEG_ASSERT_RE.search(masked) or POS_ASSERT_RE.search(masked):
+        return True
+    if re.search(ASSERT_WORDS, ml):
+        return True
+    if re.search(CLICK_WORDS, ml) or re.search(INPUT_WORDS, ml) or re.search(CLEAR_WORDS, ml) or re.search(LONGPRESS_WORDS, ml):
+        return True
+    if re.search(r't[ıi]klan[ıi]r|a[çc][ıi]l[ıi]r|girilir|yaz[ıi]l[ıi]r', ml):
+        return True
+    return False
+
+
+def _normalize_nested_quotes(text: str) -> str:
+    """Bir liste-parçasında (tek hedef temsil eder) 2'den fazla tırnak
+    karakteri varsa, bu genelde xpath attribute değerlerinin de çift
+    tırnakla yazılmasından kaynaklanır (@name="X", @content-desc="Y" gibi,
+    dıştaki tırnağın İÇİNDE). _extract_quoted/_mask_quoted ilk kapanan
+    tırnakta durduğundan bu durumda hedef metni yarıda kesilir/karışır.
+    İlk ve son tırnak DIŞINDAKİ tüm tırnaklar tek tırnağa çevrilir — xpath
+    söz diziminde attribute değerini tek tırnakla sarmak da geçerlidir,
+    böylece dış çift tırnak tek, doğru sınır olarak kalır."""
+    idxs = [i for i, ch in enumerate(text) if ch in '"“”‘’']
+    if len(idxs) <= 2:
+        return text
+    chars = list(text)
+    for i in idxs[1:-1]:
+        chars[i] = "'"
+    return ''.join(chars)
+
+
+def expand_multi_target_step(step: str) -> list[str]:
+    """Virgül/noktalı virgülle ayrılmış çoklu hedefli TEK bir cümleyi, her
+    hedef için ayrı bir adım cümlesine böler.
+
+    Ortak fiil (görülür/görülmez/beklenir) genelde sadece SON parçada geçer;
+    kendi fiili olmayan önceki parçalara bu fiil otomatik eklenir ki her biri
+    generate_step tarafından bağımsız, doğru assert olarak işlenebilsin.
+    Tek parça varsa (ayraç yoksa) adım değişmeden döner."""
+    raw_parts = _split_list_items(step)
+    parts = [p.strip(' ,;') for p in raw_parts]
+    parts = [p for p in parts if p]
+    if len(parts) <= 1:
+        return [step]
+
+    # Her parça TEK bir hedef temsil eder (liste öğesi) — iç içe tırnaklı
+    # xpath'ler _extract_quoted'ı yanıltmasın diye burada normalize edilir.
+    parts = [_normalize_nested_quotes(p) for p in parts]
+
+    mode = _list_verb_mode(step)
+    if not mode:
+        # Ortak fiil belirlenemedi — yine de ayrı adımlara böl, her biri
+        # kendi başına tanınabiliyorsa (kendi fiili varsa) doğru işlenir.
+        return parts
+
+    suffix = _LIST_VERB_SUFFIX[mode]
+    out = []
+    for p in parts:
+        if _fragment_has_own_verb(p):
+            out.append(p)
+        else:
+            out.append(p.rstrip('.').rstrip() + suffix)
+    return out
 
 
 def generate_step(step: str, platform: str = "android") -> list[str] | None:
@@ -304,7 +495,7 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
         target = _assert_target(s, quoted, _NEG.start())
         if not target:
             return [f'// {s}  // negatif assertion: eleman metni belirtilmemiş, manuel doğrula']
-        lines, _ = action_to_java("assert_not_visible", target, None, s, platform)
+        lines, _ = _action_java("assert_not_visible", target, None, s, platform)
         return lines
 
     # ── Olumlu "beklenir" doğrulaması: "X butonunun gelmesi beklenir" ────────
@@ -317,7 +508,7 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
         target = _assert_target(s, quoted, _POS.start())
         if not target:
             return [f'// {s}  // assertion: eleman metni belirtilmemiş, manuel doğrula']
-        lines, _ = action_to_java("assert", target, None, s, platform)
+        lines, _ = _action_java("assert", target, None, s, platform)
         return lines
 
     # ── Pasif Türkçe: "X butonuna tıklanır" ──────────────────────────────────
@@ -329,7 +520,7 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
     )
     if _PC:
         text = _quoted_target(_PC.group(1).strip(), quoted)
-        lines, _ = action_to_java("click", text, None, s, platform)
+        lines, _ = _action_java("click", text, None, s, platform)
         return lines
 
     # ── "Uygulama açılır" — uygulama zaten başlatıldı, sadece yorum ─────────
@@ -340,7 +531,7 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
     _AC = re.search(r'^(.+?)\s+a[çc][ıi]l[ıi]r\.?\s*$', s, re.IGNORECASE)
     if _AC:
         text = _quoted_target(_AC.group(1).strip(), quoted)
-        lines, _ = action_to_java("click", text, None, s, platform)
+        lines, _ = _action_java("click", text, None, s, platform)
         return lines + ['Thread.sleep(1000);']
 
     # ── Değişkenli değer: "Telefon alanına ${Musteri_Tel} yazılır" ──────────
@@ -358,7 +549,7 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
                 s[:_VT.start()], re.IGNORECASE
             )
             element = fm.group(1).strip(' "“”‘’\'') if fm and fm.group(1).strip() else None
-        lines, _ = action_to_java("type", element, _VT.group(0), s, platform)
+        lines, _ = _action_java("type", element, _VT.group(0), s, platform)
         return lines
 
     # ── "bir X girilir/yazılır" (değer belirtilmemiş, quotesuz — Azure export
@@ -375,33 +566,42 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
     # ── Doğrulama (Tıklama'dan önce kontrol edilir: "görülür/doğrula/kontrol"
     #   gibi daha spesifik fiiller, tıklama kelimeleriyle çakıştığında öncelikli) ─
     if re.search(ASSERT_WORDS, sl) and quoted:
-        lines, _ = action_to_java("assert", quoted[0], None, s, platform)
+        lines, _ = _action_java("assert", _single_quoted_value(s) or quoted[0], None, s, platform)
         return lines
 
     # ── Uzun bas / basılı tut (Tıklama'dan önce: "bas" CLICK_WORDS'te de var,
     #   "uzun bas" düz tıklamaya düşmesin diye burada öncelikli kontrol) ──────
     if re.search(LONGPRESS_WORDS, sl) and quoted:
-        lines, _ = action_to_java("long_press", quoted[0], None, s, platform)
+        lines, _ = _action_java("long_press", _single_quoted_value(s) or quoted[0], None, s, platform)
         return lines
 
     # ── Tıklama ───────────────────────────────────────────────────────────────
     if re.search(CLICK_WORDS, sl) and quoted:
-        lines, _ = action_to_java("click", quoted[0], None, s, platform)
+        lines, _ = _action_java("click", _single_quoted_value(s) or quoted[0], None, s, platform)
         return lines
 
     # ── Temizle ───────────────────────────────────────────────────────────────
     if re.search(CLEAR_WORDS, sl) and quoted:
-        lines, _ = action_to_java("clear", quoted[0], None, s, platform)
+        lines, _ = _action_java("clear", _single_quoted_value(s) or quoted[0], None, s, platform)
         return lines
 
     # ── Metin girişi: alan + değer (iki tırnak) → bul, tıkla, yaz (tek eleman) ─
-    if re.search(INPUT_WORDS, sl) and len(quoted) >= 2:
-        lines, _ = action_to_java("type", quoted[0], quoted[-1], s, platform)
+    # NOT: burada quoted[0]/quoted[-1] BİLEREK korunuyor — bu tek dalda iki
+    # AYRI değer (eleman + yazılacak metin) bekleniyor, _single_quoted_value
+    # ile birleştirmek ikisini yanlışlıkla tek değere karıştırırdı. "alanına"
+    # gibi bir bağlaç YOKSA bu iki tırnak aslında tek (nested) bir değere
+    # ait olabilir (örn. "Merhaba "Dünya" mesajı" yazılır) — bu yüzden iki-
+    # değer yorumu sadece bağlaç varken uygulanır.
+    # FIELD_CONNECTOR_WORDS RAW `s` üzerinde aranır — "alanına" iki tırnak
+    # ARASINDA yer aldığından yeni _mask_quoted (ilk-son tırnak arası tek
+    # blok maskeler) bunu `sl` içinde de maskeleyip kaybederdi.
+    if re.search(INPUT_WORDS, sl) and len(quoted) >= 2 and re.search(FIELD_CONNECTOR_WORDS, s, re.IGNORECASE):
+        lines, _ = _action_java("type", quoted[0], quoted[-1], s, platform)
         return lines
 
-    # ── Sadece yaz (tek tırnak) ───────────────────────────────────────────────
-    if re.search(INPUT_WORDS, sl) and len(quoted) == 1:
-        lines, _ = action_to_java("type", None, quoted[0], s, platform)
+    # ── Sadece yaz (tek tırnak — nested tırnaklı tek değer dahil) ────────────
+    if re.search(INPUT_WORDS, sl) and quoted:
+        lines, _ = action_to_java("type", None, _single_quoted_value(s) or quoted[-1], s, platform)
         return lines
 
     # ── Scroll ────────────────────────────────────────────────────────────────
