@@ -641,134 +641,367 @@ def generate_step(step: str, platform: str = "android") -> list[str] | None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# VARSAYILAN LOGIN ADIMLARI
+# VARSAYILAN LOGIN BETIKLERI
 # ══════════════════════════════════════════════════════════════════════════════
-# Kullanıcı isteği: her Java Generator dönüşümünde senaryo adımlarından önce
-# platforma göre sabit bir login akışı otomatik eklensin (JavaGenerateRequest.
-# include_default_login — varsayılan True, router.generate_java içinde
-# steps_code'un başına eklenir). Uygulama başlatma (terminateApp/activateApp)
-# zaten template'te (build_ios_template/build_android_template) request'teki
-# bundle_id/app_package ile yapıldığından, bu bloklar UYGULAMA AÇIKKEN ilk
-# ekrandan (onboarding/login) başlar — paket adını burada tekrar sabitlemez.
+# Kullanıcı isteği (2026-10-01): dönüşüm çıktısının başı, ekibin JMeter'da
+# kullandığı login betiğiyle BİREBİR aynı olsun (import, config, driver,
+# login adımları dahil — hiçbir değişiklik yapılmadan). Senaryo adımları bu
+# betiğin altına eklenir; betikte açık kalan blokları (try { ...) dönüşüm
+# build_from_login_script() ile kapatır. Admin sayfasından tam betik olarak
+# düzenlenebilir (is_full_login_script). Eski tip — sadece adım içeren — login
+# kaydı varsa router eski şablon yoluna (build_*_template) düşer.
 
-DEFAULT_LOGIN_IOS = """\
-// ── VARSAYILAN LOGIN (iOS) ──────────────────────────────────────────
-WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+DEFAULT_LOGIN_IOS = r"""import io.appium.java_client.AppiumBy;
+import io.appium.java_client.ios.IOSDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.remote.DesiredCapabilities;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import java.net.URL;
+import java.time.Duration;
+import java.util.Map;
+import java.util.HashMap;
 
-driver.findElement(AppiumBy.xpath("(//XCUIElementTypeStaticText[@name='titleLabel'])[2]")).click();
+// ── CONFIG ────────────────────────────────────────────────────────
+DesiredCapabilities capabilities = new DesiredCapabilities();
+capabilities.setCapability("platformName", "iOS");
+capabilities.setCapability("platformVersion", vars.get("PLATFORM_VERSION"));
+capabilities.setCapability("deviceName", vars.get("DEVICE_NAME"));
+capabilities.setCapability("udid", vars.get("UDID"));
+capabilities.setCapability("gads:clientSecret", vars.get("CLIENT_SECRET"));
+capabilities.setCapability("gads:queueTimeout", 60);
+capabilities.setCapability("automationName", "XCUITest");
+capabilities.setCapability("noReset", true);
+capabilities.setCapability("bundleId", "com.vakifkatilim.mobile.enterprise");
+capabilities.setCapability("wdaLaunchTimeout",120000);
+capabilities.setCapability("newCommandTimeout",300);
+// ── CONFIG END ────────────────────────────────────────────────────
+
+IOSDriver driver = null;
+try {
+    driver = new IOSDriver(new URL(vars.get("APPIUM_URL")), capabilities);
+    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+
+// ── TEST ADIMLARI ─────────────────────────────────────────────────
+//driver.terminateApp('com.vakifkatilim.mobile.enterprise')
+driver.activateApp('com.vakifkatilim.mobile.enterprise')
+
+
+driver.findElement(AppiumBy.xpath("(//XCUIElementTypeStaticText[@name='titleLabel'])[1]")).click();
+
+
 driver.findElement(AppiumBy.xpath("(//*[@name='Test' or @label='Test' or @value='Test'])[1]")).click();
+
 driver.findElement(AppiumBy.xpath("(//*[@name='Devam Et' or @label='Devam Et' or @value='Devam Et'])[1]")).click();
+Thread.sleep(1000);
 Thread.sleep(2000);
-
-driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
-List<WebElement> sifremiUnuttumList = driver.findElements(AppiumBy.xpath(
-    "(//XCUIElementTypeStaticText[@name='Şifremi Unuttum'])[1]"));
-driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
-
-if (sifremiUnuttumList.isEmpty()) {
-    // İlk kez giriş — kayıtlı kullanıcı listesi yok, doğrudan giriş formu geliyor
-    driver.findElement(AppiumBy.xpath(
-        "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]")).click();
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeStaticText[@name='Müşteri No/T.C. Kimlik No'])[1]")).click();
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeTextField)[1]")).sendKeys("777");
-    driver.findElement(AppiumBy.xpath(
-        "(//*[@name='Şifre' or @label='Şifre' or @value='Şifre'])[1]")).click();
-    Thread.sleep(1000);
-    driver.findElement(AppiumBy.xpath(
-        "//XCUIElementTypeCell[2]")).sendKeys("121212");
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeButton[@name='Done'])[1]")).click();
-    driver.findElement(AppiumBy.xpath(
-        "(//*[@name='Devam' or @label='Devam' or @value='Devam'])[1]")).click();
-    Thread.sleep(1000);
-    driver.findElement(AppiumBy.xpath("//XCUIElementTypeOther")).sendKeys("121212");
-} else {
-    // Kayıtlı kullanıcı(lar) var — önce mevcutları sil, sonra yeniden giriş yap
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeButton[@name='user switch'])[1]")).click();
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeStaticText[@name='Kayıtlı Kullanıcıları Düzenle'])[1]")).click();
-
+    // ── "Şifremi Unuttum" kontrolü ────────────────────────────────
+    // implicitlyWait'i 0'a çek - yoksa findElements 10sn bekler
     driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
-    List<WebElement> trashIcons = driver.findElements(AppiumBy.xpath(
-        "//XCUIElementTypeImage[@name='trash']"));
+    List<WebElement> sifremiUnuttumList = driver.findElements(AppiumBy.xpath(
+        "(//XCUIElementTypeStaticText[@name='Şifremi Unuttum'])[1]"));
+    // implicitlyWait'i geri aç
     driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
 
-    int baslangic = Math.min(trashIcons.size(), 3);
-    for (int i = baslangic; i >= 1; i--) {
+    if (sifremiUnuttumList.isEmpty())
+    {
         driver.findElement(AppiumBy.xpath(
-            "(//XCUIElementTypeImage[@name='trash'])[" + i + "]")).click();
+            "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]")).click();
+             driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeStaticText[@name='Müşteri No/T.C. Kimlik No'])[1]")).click();
+
+        // 6. Müşteri numarasını gir
         driver.findElement(AppiumBy.xpath(
-            "(//XCUIElementTypeStaticText[@name='Evet'])[1]")).click();
+            "(//XCUIElementTypeTextField)[1]")).sendKeys("777");
+
+        // 7. Şifre alanına tıkla
+        driver.findElement(AppiumBy.xpath(
+            "(//*[@name='Şifre' or @label='Şifre' or @value='Şifre'])[1]")).click();
+
         Thread.sleep(1000);
 
-        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
-        List<WebElement> bireyselList = driver.findElements(AppiumBy.xpath(
-            "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]"));
-        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+        // 8. Şifreyi gir
+        driver.findElement(AppiumBy.xpath(
+            "//XCUIElementTypeCell[2]")).sendKeys("121212");
 
-        if (!bireyselList.isEmpty() && bireyselList.get(0).isDisplayed()) {
-            break;
-        }
+        // 9. Done butonuna bas (klavyeyi kapat)
+        driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeButton[@name='Done'])[1]")).click();
+
+        // 10. Devam butonuna bas
+        driver.findElement(AppiumBy.xpath(
+            "(//*[@name='Devam' or @label='Devam' or @value='Devam'])[1]")).click();
+
+        // 11. OTP sayfası bekleniyor
+        Thread.sleep(3000);
+
+        // 12. OTP kodunu gir
+      driver.findElement(AppiumBy.xpath("//XCUIElementTypeOther")).sendKeys("121212");
+    }
+    else
+    {
+
+        // 1. Kullanıcı switch butonuna tıkla
+        driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeButton[@name='user switch'])[1]")).click();
+
+        // 2. Kayıtlı kullanıcıları düzenleme ekranına git
+        driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeStaticText[@name='Kayıtlı Kullanıcıları Düzenle'])[1]")).click();
+
+
+
+
+driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
+List<WebElement> trashIcons = driver.findElements(AppiumBy.xpath(
+    "//XCUIElementTypeImage[@name='trash']"));
+driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+
+int baslangic = Math.min(trashIcons.size(), 3);
+
+for (int i = baslangic; i >= 1; i--)
+{
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeImage[@name='trash'])[" + i + "]")).click();
+
+    driver.findElement(AppiumBy.xpath(
+        "(//XCUIElementTypeStaticText[@name='Evet'])[1]")).click();
+
+    Thread.sleep(1000);
+    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
+    List<WebElement> bireyselList = driver.findElements(AppiumBy.xpath(
+        "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]"));
+    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+
+    if (!bireyselList.isEmpty() && bireyselList.get(0).isDisplayed())
+    {
+        break;
     }
 
-    driver.findElement(AppiumBy.xpath(
-        "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]")).click();
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeStaticText[@name='Müşteri No/T.C. Kimlik No'])[1]")).click();
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeTextField)[1]")).sendKeys("777");
-    driver.findElement(AppiumBy.xpath(
-        "(//*[@name='Şifre' or @label='Şifre' or @value='Şifre'])[1]")).click();
-    Thread.sleep(1000);
-    driver.findElement(AppiumBy.xpath(
-        "//XCUIElementTypeCell[2]")).sendKeys("121212");
-    driver.findElement(AppiumBy.xpath(
-        "(//XCUIElementTypeButton[@name='Done'])[1]")).click();
-    driver.findElement(AppiumBy.xpath(
-        "(//*[@name='Devam' or @label='Devam' or @value='Devam'])[1]")).click();
-    Thread.sleep(1000);
-    driver.findElement(AppiumBy.xpath("//XCUIElementTypeOther")).sendKeys("121212");
+
+
 }
 
-// Login tamamlandı — "Hesaplarım" tabı seçili dashboard bekleniyor
 driver.findElement(AppiumBy.xpath(
-    "(//*[@name='Hesaplarım' or @label='Hesaplarım' or @value='Hesaplarım'])[1]")).isDisplayed();
-// ── VARSAYILAN LOGIN SONU ───────────────────────────────────────────
+            "(//*[@name='Bireysel' or @label='Bireysel' or @value='Bireysel'])[1]")).click();
+             driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeStaticText[@name='Müşteri No/T.C. Kimlik No'])[1]")).click();
+
+        // 6. Müşteri numarasını gir
+        driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeTextField)[1]")).sendKeys("777");
+
+        // 7. Şifre alanına tıkla
+        driver.findElement(AppiumBy.xpath(
+            "(//*[@name='Şifre' or @label='Şifre' or @value='Şifre'])[1]")).click();
+
+        Thread.sleep(1000);
+
+        // 8. Şifreyi gir
+        driver.findElement(AppiumBy.xpath(
+            "//XCUIElementTypeCell[2]")).sendKeys("121212");
+
+        // 9. Done butonuna bas (klavyeyi kapat)
+        driver.findElement(AppiumBy.xpath(
+            "(//XCUIElementTypeButton[@name='Done'])[1]")).click();
+
+        // 10. Devam butonuna bas
+        driver.findElement(AppiumBy.xpath(
+            "(//*[@name='Devam' or @label='Devam' or @value='Devam'])[1]")).click();
+
+        // 11. OTP sayfası bekleniyor
+        Thread.sleep(3000);
+
+        // 12. OTP kodunu gir
+      driver.findElement(AppiumBy.xpath("//XCUIElementTypeOther")).sendKeys("121212");
+
+
+    }
 """
 
-DEFAULT_LOGIN_ANDROID = """\
-// ── VARSAYILAN LOGIN (Android) ──────────────────────────────────────
+DEFAULT_LOGIN_ANDROID = r"""import io.appium.java_client.android.AndroidDriver;
+import io.appium.java_client.android.nativekey.AndroidKey;
+import io.appium.java_client.android.nativekey.KeyEvent;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.remote.DesiredCapabilities;
+import org.junit.Assert.*;
+import java.net.URL;
+import java.time.Duration;
+import java.util.Map;
+import io.appium.java_client.AppiumBy
+import java.util.List;
+import com.google.common.collect.ImmutableMap;
+import org.openqa.selenium.WebElement
+import org.openqa.selenium.Dimension;
+
+// ── CONFIG ────────────────────────────────────────────────────────
+DesiredCapabilities capabilities = new DesiredCapabilities();
+capabilities.setCapability("platformName", "Android");
+capabilities.setCapability("platformVersion", vars.get("PLATFORM_VERSION"));
+capabilities.setCapability("deviceName", vars.get("DEVICE_NAME"));
+capabilities.setCapability("udid", vars.get("UDID"));
+if (vars.get("CLIENT_SECRET")) { capabilities.setCapability("gads:clientSecret", vars.get("CLIENT_SECRET")); }
+capabilities.setCapability("gads:queueTimeout", 60);
+capabilities.setCapability("automationName", "UiAutomator2");
+capabilities.setCapability("appPackage", vars.get("APP_PACKAGE"));
+capabilities.setCapability("appActivity", vars.get("APP_ACTIVITY"));
+capabilities.setCapability("noReset", false);
+capabilities.setCapability("systemPort", Integer.parseInt(vars.get("SYSTEM_PORT")));
+capabilities.setCapability("ignoreHiddenApiPolicyError", true);
+capabilities.setCapability("skipDeviceInitialization", true);
+capabilities.setCapability("disableWindowAnimation", true);
+// ── CONFIG END ────────────────────────────────────────────────────
+
+AndroidDriver driver = new AndroidDriver(new URL(vars.get("APPIUM_URL")), capabilities);
+driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(20));
+try {
+  //driver.terminateApp("com.vakifkatilim.mobil.test");
+       driver.activateApp("com.vakifkatilim.mobil.test");
+
+try {
+// "Ortam Seçimi" başlığı görülür.
 driver.findElement(By.xpath("(//*[@text='Ortam Seçimi' or @content-desc='Ortam Seçimi'])[1]")).isDisplayed();
+
+// "Continue" butonuna tıklanır.
 driver.findElement(By.xpath("(//*[@text='Continue' or @content-desc='Continue'])[1]")).click();
+
 
 // "Bireysel" Tabına tıklanır.
 driver.findElement(By.xpath("(//*[@text='Bireysel' or @content-desc='Bireysel'])[1]")).click();
 
+// "Giriş Yap" Başlığı görülür.
 driver.findElement(By.xpath("(//*[@text='Giriş Yap' or @content-desc='Giriş Yap'])[1]")).isDisplayed();
 
+// "Müşteri No/T.C Kimlik No" input alanının görülür.
 driver.findElement(By.xpath("(//*[@text='Müşteri No/T.C. Kimlik No' or @content-desc='Müşteri No/T.C Kimlik No'])[1]")).isDisplayed();
+
+// "Müşteri No/T.C Kimlik No" input alanına tıklanır.
 driver.findElement(By.xpath("(//*[@text='Müşteri No/T.C. Kimlik No' or @content-desc='Müşteri No/T.C Kimlik No'])[1]")).click();
 
+// Klavye açılır ve değer girilebildiği görülür.  // assertion: eleman metni belirtilmemiş, manuel doğrula
+
+// "777" datası girilir.
+//driver.executeScript("mobile: type", Map.of("text", "7777"));
 driver.switchTo().activeElement().sendKeys("777");
 try { driver.hideKeyboard(); } catch (Exception ignored) {}
 
+// "Müşteri No/T.C Kimlik No" alanının dolduğu görülür.
 driver.findElement(By.xpath("(//*[@text='Müşteri No/T.C. Kimlik No' or @content-desc='Müşteri No/T.C. Kimlik No'])[1]")).isDisplayed();
 
+// "Şifre alanına" tıklanır.
 driver.findElement(By.xpath("(//*[@text='Şifre' or @content-desc='Şifre'])[1]")).click();
+
+// Klavye açılır ve değer girilebildiği görülür.  // assertion: eleman metni belirtilmemiş, manuel doğrula
 
 driver.switchTo().activeElement().sendKeys("121212");
 try { driver.hideKeyboard(); } catch (Exception ignored) {}
 
+// "Devam" butonu aktif olduğu görülür.
 driver.findElement(By.xpath("(//*[@text='Devam' or @content-desc='Devam'])[1]")).isDisplayed();
+
+// "Devam" butonuna tıklanır.
 driver.findElement(By.xpath("(//*[@text='Devam' or @content-desc='Devam'])[1]")).click();
 
+// "SMS Doğrulama" başlıklı OTP sayfası görülür.
 driver.findElement(By.xpath("(//*[@text='SMS Doğrulama' or @content-desc='SMS Doğrulama'])[1]")).isDisplayed();
-driver.findElement(By.xpath("//android.view.View[@index='0']/android.view.View[@index='3']/android.view.View[@index='0']/android.view.View[@index='0']")).click();
-Thread.sleep(1000);
-driver.executeScript("mobile: type", Map.of("text", "121212"));
-// Login tamamlandı — Dashboard bekleniyor
-// ── VARSAYILAN LOGIN SONU ───────────────────────────────────────────
+Thread.sleep(3000);
+String otp = "121212";
+for (int i = 0; i < otp.length(); i++) {
+    if (i == 0) driver.findElement(By.xpath("//android.view.View[@index='0']/android.view.View[@index='3']/android.view.View[@index='0']/android.view.View[@index='" + i + "']")).click();
+    driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.valueOf("DIGIT_" + otp.charAt(i))));
+    Thread.sleep(300);
+}
 """
+
+
+# Senaryo adımlarının ihtiyaç duyabildiği sınıflar; login betiği import etmiyorsa
+# betiğin ÜSTÜNE eklenir (betiğin kendisi değiştirilmez). java.util.* Groovy'de
+# otomatik import edildiği için (List, Map, Arrays) listede yok.
+_ADIM_IMPORTLARI = {
+    "AppiumBy": "io.appium.java_client.AppiumBy",
+    "By": "org.openqa.selenium.By",
+    "WebElement": "org.openqa.selenium.WebElement",
+    "Dimension": "org.openqa.selenium.Dimension",
+    "PointerInput": "org.openqa.selenium.interactions.PointerInput",
+    "Sequence": "org.openqa.selenium.interactions.Sequence",
+    "KeyEvent": "io.appium.java_client.android.nativekey.KeyEvent",
+    "AndroidKey": "io.appium.java_client.android.nativekey.AndroidKey",
+    "WebDriverWait": "org.openqa.selenium.support.ui.WebDriverWait",
+    "ExpectedConditions": "org.openqa.selenium.support.ui.ExpectedConditions",
+}
+
+
+def is_full_login_script(code: str) -> bool:
+    """Login kaydı driver'ı kendisi oluşturan tam bir betik mi (yoksa sadece adım mı)?"""
+    return "DesiredCapabilities" in (code or "")
+
+
+def _acik_bloklar(code: str) -> list[bool]:
+    """Kodda kapanmamış '{' bloklarını dıştan içe döner; True = try bloğu.
+    Yorumlar ve string literal'ler ('...' / "...") atlanır."""
+    stack: list[bool] = []
+    i, n = 0, len(code)
+    while i < n:
+        if code.startswith("//", i):
+            j = code.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if code.startswith("/*", i):
+            j = code.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        c = code[i]
+        if c in "\"'":
+            i += 1
+            while i < n and code[i] != c and code[i] != "\n":
+                i += 2 if code[i] == "\\" else 1
+            i += 1
+            continue
+        if c == "{":
+            stack.append(bool(re.search(r"\btry\s*$", code[:i])))
+        elif c == "}" and stack:
+            stack.pop()
+        i += 1
+    return stack
+
+
+def build_from_login_script(login_script: str, steps_code: str) -> str:
+    """Login betiği (birebir) + senaryo adımları + açık blokların kapanışı.
+    En dıştaki try'a finally { driver.quit() } eklenir."""
+    login = login_script.rstrip() + "\n"
+    steps = steps_code.rstrip()
+
+    eksik = [
+        imp for ad, imp in _ADIM_IMPORTLARI.items()
+        if re.search(rf"\b{ad}\b", steps) and not re.search(rf"import\s+[\w.]*\b{ad}\b", login)
+    ]
+    ust = ""
+    if eksik:
+        ust = "// Senaryo adımları için ek importlar\n" + "".join(f"import {imp};\n" for imp in eksik) + "\n"
+
+    acik = _acik_bloklar(login)
+    ilk_try = acik.index(True) if True in acik else -1
+    kapanis = []
+    for idx in range(len(acik) - 1, -1, -1):
+        if not acik[idx]:
+            kapanis.append("}")
+        elif idx == ilk_try:
+            kapanis.append(
+                "} catch (Exception e) {\n"
+                "    throw e;\n"
+                "} finally {\n"
+                "    if (driver != null) { driver.quit(); }\n"
+                "}"
+            )
+        else:
+            kapanis.append("} catch (Exception e) {\n    throw e;\n}")
+    if ilk_try < 0:
+        kapanis.append("driver.quit();")
+
+    return (
+        ust + login + "\n" + steps + "\n\n"
+        "// ── TEST SONU ─────────────────────────────────────────────────────\n"
+        + "\n".join(kapanis) + "\n"
+    )

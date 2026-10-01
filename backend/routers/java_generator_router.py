@@ -17,7 +17,10 @@ from database import get_db
 from routers.auth import get_current_user
 from models.db_models import User
 from services.ai_service import get_ollama_config
-from services.java_generator_service import generate_step, is_custom_step, expand_multi_target_step
+from services.java_generator_service import (
+    generate_step, is_custom_step, expand_multi_target_step,
+    is_full_login_script, build_from_login_script,
+)
 from services.appium_codegen_service import build_android_template, build_ios_template
 from services.java_step_template_service import find_step_override, get_active_login
 
@@ -224,12 +227,16 @@ async def generate_java(
             report.append({"step": step, "method": method})
         final_lines.append("")
 
-    login_block = ""
-    if req.include_default_login:
-        login_block = get_active_login(db, platform).rstrip() + "\n\n"
+    login_code = get_active_login(db, platform) if req.include_default_login else ""
+    scenario_code = "// ── SENARYO ADIMLARI ──────────────────────────────────────────────\n" + "\n".join(final_lines)
+    steps_code = (login_code.rstrip() + "\n\n" if login_code else "") + scenario_code
 
-    steps_code = login_block + "// ── SENARYO ADIMLARI ──────────────────────────────────────────────\n" + "\n".join(final_lines)
-    if platform == "ios":
+    if login_code and is_full_login_script(login_code):
+        # Login betiği config + driver dahil tam betik: çıktının başı birebir o
+        # betik olur, senaryo adımları altına eklenir (request'teki cihaz/appium
+        # alanları kullanılmaz — betik bunları vars.get(...) ile alıyor).
+        final_java = build_from_login_script(login_code, scenario_code)
+    elif platform == "ios":
         final_java = build_ios_template(
             steps_code=steps_code,
             bundle_id=req.bundle_id,

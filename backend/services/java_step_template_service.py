@@ -19,15 +19,55 @@ LOWER() fonksiyonu Türkçe büyük/küçük İ-I dönüşümünü doğru yapmad
 DB seviyesinde case-insensitive filtre YANLIŞ eşleşme üretebilir.
 """
 
+import hashlib
+
 from sqlalchemy.orm import Session
 
 from models.db_models import JavaStepTemplate
 from services.java_generator_service import DEFAULT_LOGIN_IOS, DEFAULT_LOGIN_ANDROID
 from services.appium_codegen_service import action_to_java
 
+# Kodda daha once varsayilan olan login bloklarinin sha256'si (strip edilmis).
+# DB'deki login kaydi bunlardan biriyle birebir ayniysa admin elle duzenlememis
+# demektir -> guncel varsayilana yukseltilir. Admin'in duzenledigi kayda dokunulmaz.
+# Varsayilan login degistiginde, eski metnin hash'ini buraya eklemeyi unutma.
+_ESKI_VARSAYILAN_LOGIN_HASHLERI = {
+    "ios": {
+        "474445d745ad2ad7bd784097105ecf544dd069465d1911a8d40251e19f37f7a7",  # 2026-09-10
+        "f881ab66a46598026ee60f7260caad224923b9ea13b223a8772c0546a8f2ef75",  # 2026-10-01 ara surum (sadece adim)
+    },
+    "android": {
+        "8084053b54dcea7cb38291ddc7d0c18bbd71741af072d9eacd36e83f5221bb30",  # 2026-09-10
+        "3a6a374e32ed1b22f3874fc8ff93c543163f4e3ac4b1e6e2d1a37cdfe16d07fb",  # 2026-10-01 ara surum (sadece adim)
+    },
+}
+
 
 def _norm(text: str | None) -> str:
     return (text or "").strip().lower().rstrip(".").strip()
+
+
+def _default_login(platform: str) -> str:
+    return DEFAULT_LOGIN_IOS if platform == "ios" else DEFAULT_LOGIN_ANDROID
+
+
+def _eski_varsayilan_mi(platform: str, java_code: str | None) -> bool:
+    digest = hashlib.sha256((java_code or "").strip().encode("utf-8")).hexdigest()
+    return digest in _ESKI_VARSAYILAN_LOGIN_HASHLERI.get(platform, set())
+
+
+def upgrade_stale_default_logins(db: Session) -> int:
+    """Admin'in hic dokunmadigi (eski varsayilanla birebir ayni) login kayitlarini
+    guncel varsayilana yukseltir. Guncellenen kayit sayisini doner."""
+    rows = db.query(JavaStepTemplate).filter(JavaStepTemplate.kind == "login").all()
+    guncellenen = 0
+    for r in rows:
+        if _eski_varsayilan_mi(r.platform, r.java_code):
+            r.java_code = _default_login(r.platform)
+            guncellenen += 1
+    if guncellenen:
+        db.commit()
+    return guncellenen
 
 
 def find_step_override(db: Session, step_text: str, platform: str) -> list[str] | None:
@@ -51,6 +91,7 @@ def find_step_override(db: Session, step_text: str, platform: str) -> list[str] 
 def get_active_login(db: Session, platform: str) -> str:
     """Platform için aktif login bloğunu döner; DB'de yoksa kod içindeki
     varsayılana düşer (ilk kurulumda/DB boşken davranış bozulmasın diye)."""
+    upgrade_stale_default_logins(db)
     row = (
         db.query(JavaStepTemplate)
         .filter(JavaStepTemplate.platform == platform)
@@ -61,7 +102,7 @@ def get_active_login(db: Session, platform: str) -> str:
     )
     if row and row.java_code and row.java_code.strip():
         return row.java_code
-    return DEFAULT_LOGIN_IOS if platform == "ios" else DEFAULT_LOGIN_ANDROID
+    return _default_login(platform)
 
 
 def ensure_login_seeds(db: Session) -> None:
@@ -76,6 +117,7 @@ def ensure_login_seeds(db: Session) -> None:
             .first()
         )
         if exists:
+            upgrade_stale_default_logins(db)
             continue
         db.add(JavaStepTemplate(
             platform=platform,
