@@ -1,0 +1,32 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.otomasyo</groupId>
+    <artifactId>custom-steps</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- provided: derleme icin gerekli ama jar'a GOMULMUYOR. JMeter'in
+             kendi lib/ext klasorunde zaten selenium-api var (4.13.0);
+             tekrar gomersek iki farkli versiyon classpath'te cakisip
+             SessionNotCreatedException'a yol aciyor (yasandi). Versiyonu
+             JMeter'daki gercek jar ile ayni tut. -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-api</artifactId>
+            <version>4.13.0</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>custom-steps</finalName>
+    </build>
+</project>

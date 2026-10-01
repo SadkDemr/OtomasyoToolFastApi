@@ -231,6 +231,7 @@
                 </p>
             </div>
             <div class="header-right">
+                <button class="cs-help-btn" onclick="window._csOpenGuide()" title="JMeter custom-steps.jar metodları">📘 Custom Step Rehberi</button>
                 <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
             </div>
         </header>
@@ -1356,5 +1357,258 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
 .batch-tab:hover { color: #cdd6f4; }
 .batch-tab.active { background: #1e1e2e; color: #f59e0b; border-color: #f59e0b; }
 </style>
+
+<!-- ── MODAL: Custom Step Rehberi (JMeter custom-steps.jar) ── -->
+<div id="csGuideModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; align-items:center; justify-content:center;" onclick="if(event.target===this) window._csCloseGuide()">
+    <div class="cs-panel">
+        <div class="cs-head">
+            <div>
+                <div style="font-weight:600; font-size:1.05rem;">📘 Custom Step Rehberi</div>
+                <div style="font-size:0.78rem; color:var(--text-muted); margin-top:4px;">custom-steps.jar — JMeter JSR223 (Groovy) içinden çağrılan hazır adımlar</div>
+            </div>
+            <button onclick="window._csCloseGuide()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;border-radius:6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <details class="cs-setup">
+            <summary>⚙️ Kurulum ve ortak kurallar</summary>
+            <ol>
+                <li><code>custom-steps.jar</code> dosyasını JMeter'ın <code>lib/ext/</code> klasörüne kopyala, JMeter'ı yeniden başlat.</li>
+                <li>JSR223 Sampler'da dili <b>groovy</b> seç ve en üste ilgili import'u yaz:
+<pre class="cs-code">import customsteps.CustomStepAND
+import customsteps.CustomStepANDKartlar
+import customsteps.CustomStepIOS</pre></li>
+                <li>Driver'ı oluşturduğun sampler'ın sonunda paylaş, diğer sampler'larda geri al:
+<pre class="cs-code">vars.putObject("driver", driver)        // driver'ı oluşturan sampler
+def driver = vars.getObject("driver")   // sonraki sampler'lar</pre></li>
+                <li>Tüm metodlarda <b>ilk parametre <code>driver</code></b>, xpath parametreleri <b>tam xpath</b>'tir. Liste metodlarında xpath <b>indexsiz</b> verilir, index'i metod ekler.</li>
+                <li>Değer döndüren metodların sonucunu <code>vars.put("Ad", ...)</code> ile sakla, sonra <code>vars.get("Ad")</code> veya <code>${Ad}</code> ile kullan.</li>
+                <li>Metod <code>AssertionError</code> fırlatırsa sampler <b>FAIL</b> olur.</li>
+            </ol>
+        </details>
+
+        <div class="cs-toolbar">
+            <div class="cs-tabs" id="csTabs"></div>
+            <input type="search" id="csSearch" class="cs-search" placeholder="Metod ara…" oninput="window._csRender()">
+        </div>
+        <div id="csList" class="cs-list"></div>
+    </div>
+</div>
+<style>
+.header-right { display: flex; align-items: center; gap: 10px; }
+.cs-help-btn {
+    padding: 8px 14px; border-radius: var(--radius-sm, 8px); cursor: pointer;
+    border: 1px solid var(--border-color); background: var(--bg-secondary);
+    color: var(--text-primary); font-size: 0.82rem; font-weight: 500; font-family: inherit;
+    transition: border-color 150ms;
+}
+.cs-help-btn:hover { border-color: var(--accent-primary); }
+.cs-panel {
+    background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 14px;
+    padding: 22px; max-width: 860px; width: 94%; max-height: 86vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.cs-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.cs-setup {
+    border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 14px;
+    background: var(--bg-primary); font-size: 0.83rem; color: var(--text-primary); margin-bottom: 14px;
+}
+.cs-setup summary { cursor: pointer; font-weight: 600; }
+.cs-setup ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; line-height: 1.5; }
+.cs-setup code, .cs-card code { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px; }
+.cs-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.cs-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.cs-tab {
+    padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 0.78rem; font-family: inherit;
+    border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-muted);
+}
+.cs-tab.active { border-color: var(--accent-primary); color: var(--accent-primary); font-weight: 600; }
+.cs-search {
+    flex: 1; min-width: 160px; max-width: 260px; padding: 7px 10px; border-radius: 8px; font-family: inherit;
+    border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 0.82rem;
+}
+.cs-list { display: flex; flex-direction: column; gap: 10px; }
+.cs-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px 16px; background: var(--bg-primary); }
+.cs-card-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cs-name { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.9rem; color: var(--accent-primary); }
+.cs-old { font-size: 0.7rem; color: var(--text-muted); border: 1px solid var(--border-color); border-radius: 999px; padding: 1px 8px; }
+.cs-desc { font-size: 0.84rem; color: var(--text-primary); margin: 8px 0; line-height: 1.5; }
+.cs-meta { font-size: 0.78rem; color: var(--text-muted); line-height: 1.6; }
+.cs-meta b { color: var(--text-primary); font-weight: 500; }
+.cs-code-wrap { position: relative; margin-top: 10px; }
+.cs-code {
+    margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; overflow-x: auto;
+    background: #1e1e2e; color: #cdd6f4; font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; line-height: 1.5;
+    white-space: pre;
+}
+.cs-copy {
+    position: absolute; top: 6px; right: 6px; padding: 3px 8px; font-size: 0.7rem; border-radius: 6px; cursor: pointer;
+    border: 1px solid #3d3d5a; background: #2a2a40; color: #a6adc8; font-family: inherit;
+}
+.cs-copy:hover { color: #cdd6f4; }
+.cs-empty { text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 24px; }
+</style>
+<script>
+(function () {
+    const AND_X = "com.vakifkatilim.mobil.test:id/";
+    // Her kayit: name, old (eski Cucumber adimi), desc, params, ret, example
+    const GROUPS = [
+        {
+            id: "and", label: "🤖 CustomStepAND", cls: "CustomStepAND",
+            methods: [
+                { name: "andAlanTemizle", old: "I am sil with X",
+                  desc: "Verilen input alanının içeriğini tamamen siler (element.clear()).",
+                  params: "driver, xpath", ret: "—",
+                  example: `CustomStepAND.andAlanTemizle(driver, "//*[@resource-id='${AND_X}etAmount']")` },
+                { name: "andMaxKarakterDogrula", old: "I verifyInputMaxLength X N",
+                  desc: "Alana 100 adet '1' yazar, ekranda varsa İleri/Tamam/Onay butonuna basar, sonra alanda kalan karakter sayısının beklenen değere eşit olduğunu doğrular. Eşit değilse adım FAIL olur.",
+                  params: "driver, xpath, beklenenUzunluk (int)", ret: "— (eşit değilse AssertionError)",
+                  example: `CustomStepAND.andMaxKarakterDogrula(driver, "//*[@resource-id='${AND_X}etTckn']", 11)` },
+                { name: "andDegerTut", old: "keep variable X",
+                  desc: "Elementin text değerini okur ve döndürür. Sonucu vars ile saklayıp sonraki adımlarda kullanırsın (ör. andIslemYonlendirmeDogrula).",
+                  params: "driver, xpath", ret: "String — elementin text attribute'u",
+                  example: `vars.put("KeepResult", CustomStepAND.andDegerTut(driver, "//*[@resource-id='${AND_X}tvTitle']"))` },
+                { name: "andMetinKaydet", old: "I save X text as Y",
+                  desc: "Elementin görünen metnini (getText) okur ve döndürür. Karşılaştırma için andMetinKarsilastir ile birlikte kullanılır.",
+                  params: "driver, xpath", ret: "String — elementin metni",
+                  example: `vars.put("Tutar", CustomStepAND.andMetinKaydet(driver, "//*[@resource-id='${AND_X}tvAmount']"))` },
+                { name: "andMetinKarsilastir", old: "I compare X to Y",
+                  desc: "Elementin şu anki metnini daha önce saklanan değerle karşılaştırır. Farklıysa adım FAIL olur.",
+                  params: "driver, xpath, saklananDeger", ret: "— (eşleşmezse AssertionError)",
+                  example: `CustomStepAND.andMetinKarsilastir(driver, "//*[@resource-id='${AND_X}tvSummaryAmount']", vars.get("Tutar"))` },
+                { name: "andListeDegerleriniAl", old: "arraylistesi X",
+                  desc: "Indexsiz xpath'e sırayla index ekleyerek listedeki değerleri toplar. '0,00' ve '11.111,00' içeren değerleri listeye almaz. İlk bulunamayan elemanda durur.",
+                  params: "driver, indexsizXpath", ret: "List<String> — toplanan değerler",
+                  example: `def liste = CustomStepAND.andListeDegerleriniAl(driver, "(//*[@resource-id='${AND_X}tvAccount'])")\nvars.put("HesapListesi", liste.join(";"))` },
+                { name: "andHesapSec", old: "I hesapbul X Y / I hesapbul2 X Y",
+                  desc: "Hesap listesinde (index 1,3,5,7,9) aranan hesap türünü içeren ve bakiyesi '0,00' / '11.111,00' olmayan ilk hesaba tıklar.",
+                  params: "driver, indexsizXpath, hesapTuru", ret: "String — seçilen hesabın metni, bulunamazsa null",
+                  example: `def secilen = CustomStepAND.andHesapSec(driver, "(//*[@resource-id='${AND_X}tvAccount'])", "Cari")\nif (secilen == null) throw new AssertionError("Uygun hesap bulunamadı")` },
+                { name: "andLimitSec", old: "I checkavailablelimit X Y",
+                  desc: "Listede (index 1..10) aranan metni içeren ilk elemana tıklar. Bakiye filtresi yoktur; bulunamayan index atlanıp aramaya devam edilir.",
+                  params: "driver, indexsizXpath, arananMetin", ret: "String — seçilen elemanın metni, bulunamazsa null",
+                  example: `def limit = CustomStepAND.andLimitSec(driver, "(//*[@resource-id='${AND_X}tvLimit'])", "Kredi Kartı")\nif (limit == null) throw new AssertionError("Limit bulunamadı")` },
+                { name: "andSon10TransferListele", old: "I son10transfer",
+                  desc: "Son 10 Transfer ekranındaki işlem başlıklarını (index 2..10) okur. Xpath metodun içinde sabittir.",
+                  params: "driver", ret: "List<String> — başlıklar (boş olabilir)",
+                  example: `def transferler = CustomStepAND.andSon10TransferListele(driver)\nlog.info("Transfer sayısı: " + transferler.size())` },
+                { name: "andSon10TransferTarihKontrol", old: "son10transfer tarih kontrol X and Y",
+                  desc: "Listedeki kısa ay adını (Oca, Şub, Mar…) popup'taki gg.aa.yyyy tarihinin ay kısmıyla karşılaştırır. Kendisi FAIL etmez, sonucu sen kontrol edersin.",
+                  params: "driver, listeAyXpath, popupTarihXpath", ret: "boolean — aylar aynıysa true",
+                  example: `boolean ayni = CustomStepAND.andSon10TransferTarihKontrol(driver,\n        "//*[@resource-id='${AND_X}tvMonth']",\n        "//*[@resource-id='${AND_X}tvPopupDate']")\nif (!ayni) throw new AssertionError("Liste ayı ile popup tarihi uyuşmuyor")` },
+                { name: "andIslemYonlendirmeDogrula", old: "islem dogrula",
+                  desc: "Saklanan işlem adına göre doğru ekrana gidildiğini doğrular: 'Hesaplarım Arası Havale' ve 'Kendi VK Hesabıma' → Hesaplarım Arası Havale ekranı, 'HESABA HAVALE' → EFT/Havale/FAST ekranı. Yanlış ekransa FAIL; tanımsız işlem adında kontrol atlanır.",
+                  params: "driver, islemAdi (andDegerTut ile saklanan)", ret: "— (yanlış ekransa AssertionError)",
+                  example: `vars.put("KeepResult", CustomStepAND.andDegerTut(driver, "//*[@resource-id='${AND_X}tvTitle']"))\n// ... işleme tıkla ...\nCustomStepAND.andIslemYonlendirmeDogrula(driver, vars.get("KeepResult"))` },
+                { name: "andPopupKapat", old: "popupkontrolleri",
+                  desc: "Bilinen popup butonlarından (Anladım, Daha Sonra Hatırlat, İlgilenmiyorum, Tamam, İleri, kapat X …) ekranda görünen ilkine tıklar. Hiçbiri yoksa sessizce geçer.",
+                  params: "driver", ret: "boolean — bir butona tıklandıysa true",
+                  example: `CustomStepAND.andPopupKapat(driver)` },
+                { name: "andBannerKapat", old: "I bannerkapat",
+                  desc: "Kampanya banner'larının kapat (X) butonuna en fazla 4 kez basar. Banner yoksa sessizce geçer.",
+                  params: "driver", ret: "—",
+                  example: `CustomStepAND.andBannerKapat(driver)` },
+                { name: "andIzinVer", old: "I izinVerKontrol",
+                  desc: "Android sistem izin penceresinde 'İzin ver' butonuna basar. Pencere yoksa sessizce geçer.",
+                  params: "driver", ret: "—",
+                  example: `CustomStepAND.andIzinVer(driver)` },
+                { name: "andSozlesmeGec", old: "I sozlesmekontrol",
+                  desc: "Sözleşme popup'ı çıkarsa 'Daha Sonra Hatırlat'a basar. Popup yoksa sessizce geçer.",
+                  params: "driver", ret: "—",
+                  example: `CustomStepAND.andSozlesmeGec(driver)` },
+                { name: "andKendiIbanYaz", old: "I musteriKendiIbanKontrol",
+                  desc: "Hesap detayından müşterinin kendi IBAN'ını okur, geri dönüp havale ekranında alıcı IBAN alanına yazar ve alıcı adı alanına tıklar. Sabit (absolute) xpath'ler kullanır.",
+                  params: "driver", ret: "String — okunan IBAN",
+                  example: `vars.put("KendiIban", CustomStepAND.andKendiIbanYaz(driver))` }
+            ]
+        },
+        {
+            id: "andkart", label: "💳 CustomStepANDKartlar", cls: "CustomStepANDKartlar",
+            methods: []
+        },
+        {
+            id: "ios", label: "🍎 CustomStepIOS", cls: "CustomStepIOS",
+            methods: [
+                { name: "temizle", old: "I temizle N / I temizle333 N",
+                  desc: "Input'un xpath'i olmadığı durumlarda iOS klavyesindeki silme tuşuna N kez basar. Klavye dili Türkçe ('Sil') veya İngilizce ('delete') olabilir; tuş bir kez tespit edilir.",
+                  params: "driver, adet (int)", ret: "—",
+                  example: `CustomStepIOS.temizle(driver, 4)` }
+            ]
+        }
+    ];
+
+    let activeGroup = "and";
+
+    function esc(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function renderTabs() {
+        document.getElementById("csTabs").innerHTML = GROUPS.map(g =>
+            `<button type="button" class="cs-tab${g.id === activeGroup ? " active" : ""}" data-g="${g.id}">${esc(g.label)} (${g.methods.length})</button>`
+        ).join("");
+        document.querySelectorAll("#csTabs .cs-tab").forEach(btn => {
+            btn.onclick = () => { activeGroup = btn.dataset.g; renderTabs(); window._csRender(); };
+        });
+    }
+
+    window._csRender = function () {
+        const q = document.getElementById("csSearch").value.trim().toLocaleLowerCase("tr");
+        const group = GROUPS.find(g => g.id === activeGroup);
+        const list = document.getElementById("csList");
+        const items = group.methods.filter(m => !q ||
+            [m.name, m.old, m.desc].join(" ").toLocaleLowerCase("tr").includes(q));
+
+        if (!group.methods.length) {
+            list.innerHTML = `<div class="cs-empty">${esc(group.cls)} sınıfında henüz metod yok.</div>`;
+            return;
+        }
+        if (!items.length) {
+            list.innerHTML = `<div class="cs-empty">"${esc(q)}" ile eşleşen metod yok.</div>`;
+            return;
+        }
+        list.innerHTML = items.map((m, i) => `
+            <div class="cs-card">
+                <div class="cs-card-title">
+                    <span class="cs-name">${esc(group.cls)}.${esc(m.name)}</span>
+                    <span class="cs-old" title="Eski Cucumber adımı">eski: ${esc(m.old)}</span>
+                </div>
+                <div class="cs-desc">${esc(m.desc)}</div>
+                <div class="cs-meta"><b>Parametreler:</b> ${esc(m.params)}<br><b>Döner:</b> ${esc(m.ret)}</div>
+                <div class="cs-code-wrap">
+                    <button type="button" class="cs-copy" data-i="${i}">📋 Kopyala</button>
+                    <pre class="cs-code">${esc(m.example)}</pre>
+                </div>
+            </div>`).join("");
+        list.querySelectorAll(".cs-copy").forEach(btn => {
+            btn.onclick = () => {
+                const code = `import customsteps.${group.cls}\n` + items[+btn.dataset.i].example;
+                navigator.clipboard.writeText(code).then(() => {
+                    btn.textContent = "✓ Kopyalandı";
+                    setTimeout(() => { btn.textContent = "📋 Kopyala"; }, 1200);
+                });
+            };
+        });
+    };
+
+    window._csOpenGuide = function () {
+        renderTabs();
+        window._csRender();
+        document.getElementById("csGuideModal").style.display = "flex";
+        document.getElementById("csSearch").focus();
+    };
+
+    window._csCloseGuide = function () {
+        document.getElementById("csGuideModal").style.display = "none";
+    };
+
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape" && document.getElementById("csGuideModal").style.display === "flex") {
+            window._csCloseGuide();
+        }
+    });
+})();
+</script>
 </body>
 </html>
