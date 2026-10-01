@@ -241,6 +241,31 @@ public final class CustomStepAND {
         return basliklar;
     }
 
+    /**
+     * "son hareketler X" — Son Hareketler listesinin ilk `adet` satirini okur
+     * (gun, ay, aciklama, detay, tutar). iOS MySteps'te duruyordu ama Android
+     * resource-id'leri kullandigi icin buraya tasindi. Eski koddaki ic dongu
+     * kosulu (say yerine say2) sonsuz donguydu, duzeltildi.
+     *
+     * @return "gun ay | aciklama | detay | tutar" formatinda satirlar
+     */
+    public static List<String> andSonHareketleriListele(WebDriver driver, int adet) {
+        List<String> satirlar = new ArrayList<>();
+        try {
+            for (int i = 1; i <= adet; i++) {
+                String satir = idText(driver, "tvDay", i) + " " + idText(driver, "tvMonth", i)
+                        + " | " + idText(driver, "tvTransactionTitle", i)
+                        + " | " + idText(driver, "tvTransactionDetail", i)
+                        + " | " + idText(driver, "tvAmount", i);
+                System.out.println(satir);
+                satirlar.add(satir);
+            }
+        } catch (NoSuchElementException e) {
+            System.out.println("Son Hareketler bitti / bulunamadı.");
+        }
+        return satirlar;
+    }
+
     // ------------------------------------------------------------------
     // Dogrulamalar
     // ------------------------------------------------------------------
@@ -359,6 +384,10 @@ public final class CustomStepAND {
     // ------------------------------------------------------------------
     // Yardimcilar
     // ------------------------------------------------------------------
+
+    private static String idText(WebDriver driver, String resourceId, int index) {
+        return driver.findElement(By.xpath("(//*[@resource-id='" + PKG + resourceId + "'])[" + index + "]")).getAttribute("text");
+    }
 
     private static void click(WebDriver driver, String xpath) {
         driver.findElement(By.xpath(xpath)).click();
