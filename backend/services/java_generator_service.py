@@ -177,10 +177,11 @@ def _clean_step(raw: str) -> str:
 
 
 def _extract_quoted(text: str) -> list[str]:
-    return re.findall(
+    # Tırnak içi baş/son boşluklar ("Başka Hesaba Transfer ") xpath'i eşleşmez yapar
+    return [q.strip() for q in re.findall(
         r'["“”‘’]([^"“”‘’]+)["“”‘’]',
         text
-    )
+    ) if q.strip()]
 
 
 _QUOTE_SPAN_RE = re.compile(r'["“”‘’][^"“”‘’]*["“”‘’]')
@@ -216,7 +217,7 @@ def _single_quoted_value(text: str) -> str | None:
     idxs = [i for i, ch in enumerate(text) if ch in '"“”‘’']
     if len(idxs) < 2:
         return None
-    return text[idxs[0] + 1: idxs[-1]]
+    return text[idxs[0] + 1: idxs[-1]].strip()
 
 
 def _quoted_target(raw_group: str, quoted: list[str]) -> str:
@@ -281,7 +282,8 @@ def _girilir_value(ctx: str) -> tuple[str, bool]:
     like_m = re.search(r'(\S+)\s+gibi\b', ctx, re.IGNORECASE)
     if like_m:
         return like_m.group(1), False
-    num_m = re.search(r'\b(\d{2,})\b', ctx)
+    # Binlik/ondalık ayraçlı sayılar bütün alınır: "1.000 TL" → 1.000 (000 değil)
+    num_m = re.search(r'(?<![\d.,])(\d{1,3}(?:[.,]\d{3})+(?:,\d+)?|\d{2,}(?:,\d+)?)(?!\d)', ctx)
     if num_m:
         return num_m.group(1), False
     return _auto_fill_value(ctx), True
@@ -404,7 +406,91 @@ def _normalize_nested_quotes(text: str) -> str:
     return ''.join(chars)
 
 
+# ── Tek satırda birden fazla cümle: "X" butonuna tıklanır.  "Y" başlığı görülür.
+# Azure/Excel export'larında adımlar bazen tek satırda nokta ile art arda
+# geliyor. Bölünmezse _single_quoted_value ilk-son tırnak arasını tek değer
+# sanıp "X\" butonuna tıklanır. \"Y" gibi bozuk xpath üretir.
+_SENT_END_CHARS = '.!?'
+
+
+def _split_sentences(line: str) -> list[str]:
+    """Satırı cümle sonlarından (. ! ?) böler. Tırnak ve parantez içi
+    (inline IOS(...)/AND(...) xpath'leri, "T.C. Kimlik No" gibi değerler)
+    korunur. Nokta sadece ardından boşluk + tırnak/büyük harf geliyorsa
+    (ya da doğrudan tırnak) cümle sonu sayılır — "1.000 TL" bölünmez."""
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    in_quote = False
+    n = len(line)
+    i = 0
+    while i < n:
+        ch = line[i]
+        buf.append(ch)
+        if ch in '"“”‘’':
+            in_quote = not in_quote
+        elif not in_quote:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth = max(0, depth - 1)
+            elif ch in _SENT_END_CHARS and depth == 0:
+                j = i + 1
+                while j < n and line[j].isspace():
+                    j += 1
+                # "tıklanır.IOS(" gibi boşluksuz devamlar cümle sonu değil;
+                # boşluksuz bölme sadece hemen ardından tırnak geliyorsa
+                if j < n and (line[j] in '"“”‘’' or (j > i + 1 and line[j].isalpha() and line[j].isupper())):
+                    parts.append(''.join(buf))
+                    buf = []
+                    i = j
+                    continue
+        i += 1
+    parts.append(''.join(buf))
+    parts = [p.strip() for p in parts if p.strip()]
+    return _split_ve_clauses(parts)
+
+
+_VE_RE = re.compile(r'\s+ve\s+', re.IGNORECASE)
+
+
+def _split_ve_clauses(parts: list[str]) -> list[str]:
+    """"X" butonuna tıklanır ve "Y" başlığı görülür → iki ayrı adım.
+    Sadece 've'nin İKİ tarafı da kendi fiilini içeriyorsa bölünür
+    ("Ad ve Soyad" alanı görülür gibi tek hedefli cümleler korunur)."""
+    out: list[str] = []
+    for p in parts:
+        # Her tırnak çifti AYRI maskelenir — _mask_quoted ilk-son tırnak
+        # arasını tek blok maskelediğinden aradaki 've'yi de gizlerdi.
+        # (boşluk değil 'x' ile — \s+ maskeyi yutup hedef metni kesmesin)
+        masked = _QUOTE_SPAN_RE.sub(lambda m: 'x' * len(m.group(0)), p)
+        cut = None
+        for m in _VE_RE.finditer(masked):
+            left, right = p[:m.start()], p[m.end():]
+            if _fragment_has_own_verb(left) and _fragment_has_own_verb(right):
+                cut = m
+                break
+        if cut:
+            out.append(p[:cut.start()].strip())
+            out.extend(_split_ve_clauses([p[cut.end():].strip()]))
+        else:
+            out.append(p)
+    return out
+
+
 def expand_multi_target_step(step: str) -> list[str]:
+    """Satırı önce cümlelere böler (_split_sentences), sonra her cümleyi
+    çoklu hedef listesi olarak genişletir (_expand_list_step)."""
+    sentences = _split_sentences(step)
+    if len(sentences) <= 1:
+        return _expand_list_step(step)
+    out: list[str] = []
+    for sent in sentences:
+        out.extend(_expand_list_step(sent))
+    return out
+
+
+def _expand_list_step(step: str) -> list[str]:
     """Virgül/noktalı virgülle ayrılmış çoklu hedefli TEK bir cümleyi, her
     hedef için ayrı bir adım cümlesine böler.
 

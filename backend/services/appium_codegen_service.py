@@ -46,14 +46,24 @@ def extract_xpath_index(xpath: str) -> int:
     return int(m.group(1)) if m else 1
 
 
+def _xp_literal(value: str) -> str:
+    """XPath 1.0 string literal'i. XPath'te \\' kaçışı yoktur — değerde tek
+    tırnak varsa (Ali'nin Hesabı) çift tırnakla sarılır, ikisi de varsa concat()."""
+    if "'" not in value:
+        return f"'{value}'"
+    if '"' not in value:
+        return f'"{value}"'
+    return "concat(" + ", \"'\", ".join(f"'{p}'" for p in value.split("'")) + ")"
+
+
 def build_ios_xpath(value: str, index: int = 1) -> str:
-    v = value.replace("'", "\\'")
-    return f"(//*[@name='{v}' or @label='{v}' or @value='{v}'])[{index}]"
+    v = _xp_literal(value)
+    return f"(//*[@name={v} or @label={v} or @value={v}])[{index}]"
 
 
 def build_android_xpath(value: str, index: int = 1) -> str:
-    v = value.replace("'", "\\'")
-    return f"(//*[@text='{v}' or @content-desc='{v}'])[{index}]"
+    v = _xp_literal(value)
+    return f"(//*[@text={v} or @content-desc={v}])[{index}]"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
