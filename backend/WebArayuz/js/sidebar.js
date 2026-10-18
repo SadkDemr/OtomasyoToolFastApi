@@ -58,10 +58,12 @@
                 section("Genel",
                     item("index",     "&#128202;", "Dashboard")
                     + item("workspace","&#128188;", "Workspace")
+                    + item("device-pool","&#128241;", "Cihaz Havuzu")
                   )
                 + section("AI Araçlar",
                     item("ai-generator",   "&#129302;", "AI Test Generator")
                     + item("ai-jobs",       "&#128197;", "AI Job'lar")
+                    + item("app-map",       "&#128506;", "Uygulama Haritası")
                     + item("testcasegen",  "&#128221;", "Test Case Gen")
                     + item("java-generator","&#9749;",  "Java Generator")
                     + item("java-templates","&#128218;", "Kalıp Komutlar")

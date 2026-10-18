@@ -350,6 +350,13 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
                                     <label class="form-label">App Activity <span style="opacity:0.6; font-weight:400;">(opsiyonel)</span></label>
                                     <input type="text" class="form-input" id="cfg-app-activity" placeholder=".MainActivity">
                                 </div>
+                                <div class="form-group full">
+                                    <label class="form-label">Locator Dosyası <span style="opacity:0.6; font-weight:400;">(opsiyonel — AI Generator kayıt modunda oluşturulan XPath'ler)</span></label>
+                                    <div style="display:flex; gap:6px;">
+                                        <select class="form-input" id="cfg-locator-file" style="flex:1;"><option value="">Kullanma (metinle ara)</option></select>
+                                        <button type="button" class="btn btn-secondary" onclick="window.loadLocatorFiles()" title="Listeyi yenile" style="padding:4px 10px;">⟳</button>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- iOS-specific -->
@@ -491,7 +498,8 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
                     className:       document.getElementById("cfg-class-name").value,
                     noReset:         document.getElementById("cfg-no-reset").checked,
                     useAiFallback:   document.getElementById("cfg-use-ai-fallback").checked,
-                    includeLogin:    document.getElementById("cfg-include-login").checked
+                    includeLogin:    document.getElementById("cfg-include-login").checked,
+                    locatorFile:     document.getElementById("cfg-locator-file").value
                 },
                 className, generatedCode, lastReport, lastWarnings,
                 isBatchMode, batchResults, batchActiveIndex
@@ -535,6 +543,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
         if ("noReset" in c)       document.getElementById("cfg-no-reset").checked = !!c.noReset;
         if ("useAiFallback" in c) document.getElementById("cfg-use-ai-fallback").checked = !!c.useAiFallback;
         if ("includeLogin" in c)  document.getElementById("cfg-include-login").checked = !!c.includeLogin;
+        _pendingLocatorFile = c.locatorFile || "";
 
         if (state.platform === "ios") {
             currentPlatform = "ios";
@@ -930,6 +939,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
             payload.bundle_id = document.getElementById("cfg-bundle-id").value || "";
         } else {
             payload.app_package  = document.getElementById("cfg-app-package").value  || "";
+            payload.locator_file = document.getElementById("cfg-locator-file").value || "";
             payload.app_activity = document.getElementById("cfg-app-activity").value || "";
         }
 
@@ -985,6 +995,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
             baseConfig.bundle_id = document.getElementById("cfg-bundle-id").value || "";
         } else {
             baseConfig.app_package  = document.getElementById("cfg-app-package").value  || "";
+            baseConfig.locator_file = document.getElementById("cfg-locator-file").value || "";
             baseConfig.app_activity = document.getElementById("cfg-app-activity").value || "";
         }
 
@@ -1188,6 +1199,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
         const body   = document.getElementById("stepReportBody");
         const counts = { rule: 0, override: 0, custom: 0, llm: 0, todo: 0 };
         report.forEach(r => { if (r.method in counts) counts[r.method]++; });
+        const locCount = report.filter(r => r.locator).length;
 
         const summary = `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
             <span class="step-badge rule">✓ Kural: ${counts.rule}</span>
@@ -1195,6 +1207,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
             <span class="step-badge llm">🤖 AI: ${counts.llm}</span>
             ${counts.custom ? `<span class="step-badge custom">ƒ Fonksiyon: ${counts.custom}</span>` : ""}
             ${counts.todo ? `<span class="step-badge todo">⚠ Manuel: ${counts.todo}</span>` : ""}
+            ${locCount ? `<span class="step-badge override" title="Locator dosyasındaki kayıtlı XPath kullanıldı">🎯 XPath: ${locCount}</span>` : ""}
         </div>`;
 
         const rows = report.map(r => {
@@ -1202,6 +1215,7 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
             const icons = { rule: "✓", override: "★", custom: "ƒ", llm: "AI", todo: "⚠" };
             return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;background:var(--bg-primary);font-size:0.74rem;">
                 <span class="step-badge ${cls}" style="flex-shrink:0;">${icons[cls]}</span>
+                ${r.locator ? `<span title="Locator dosyasındaki kayıtlı XPath kullanıldı" style="flex-shrink:0;">🎯</span>` : ""}
                 <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.step.replace(/"/g,'&quot;')}">${r.step}</span>
             </div>`;
         }).join("");
@@ -1263,7 +1277,26 @@ Bakiye sorgulaması yapılır (Fonksiyon gerekli)'></textarea>
     };
 
     // ── Init ────────────────────────────────────────────────────────────────
+    // ── Locator dosyaları (workspace/locators/*.json — AI Generator kayıt modu) ──
+    let _pendingLocatorFile = "";
+    window.loadLocatorFiles = async function() {
+        const sel = document.getElementById("cfg-locator-file");
+        const want = sel.value || _pendingLocatorFile;
+        const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+        try {
+            const d = await API.get("/app-map/locators");
+            const files = d.files || [];
+            sel.innerHTML = `<option value="">Kullanma (metinle ara)</option>` +
+                files.map(f => `<option value="${esc(f.name)}">📄 ${esc(f.name)} — ${f.count} eleman${f.app ? " · " + esc(f.app) : ""}</option>`).join("");
+            if (want && files.some(f => f.name === want)) sel.value = want;
+        } catch (e) {
+            sel.innerHTML = `<option value="">Locator listesi alınamadı: ${esc(e.message)}</option>`;
+        }
+        _pendingLocatorFile = "";
+    };
+
     restoreState();
+    loadLocatorFiles();
     checkOllamaStatus();
     setInterval(checkOllamaStatus, 30000);
 })();

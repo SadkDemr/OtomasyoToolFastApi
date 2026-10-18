@@ -36,6 +36,67 @@ def save_ai_config(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# ──────────────────────────────────────────────────────
+# Evren (SSYZ) — mobil ekran görüntüleriyle eğitilmiş özel model
+# ──────────────────────────────────────────────────────
+# API key SADECE ai_config.json'da tutulur (.gitignore'da) — koda/commit'e girmez.
+EVREN_DEFAULT_URL = "https://api.ssyz.org.tr/api/v1/inference/predict"
+
+
+def get_evren_config() -> dict:
+    cfg = get_ai_config()
+    return {
+        "url":              cfg.get("evren_api_url") or EVREN_DEFAULT_URL,
+        "api_key":          cfg.get("evren_api_key", ""),
+        "model_version_id": cfg.get("evren_model_version_id", ""),
+    }
+
+
+def evren_enabled() -> bool:
+    c = get_evren_config()
+    return bool(c["api_key"] and c["model_version_id"])
+
+
+def evren_predict(image: bytes | str, filename: str = "screen.png", timeout: float = 60) -> dict:
+    """Görseli Evren predict endpoint'ine multipart olarak gönderir, ham JSON döner.
+    image: ham bytes ya da base64 string (Appium/pyautogui screenshot'ları base64 gelir)."""
+    import requests
+    c = get_evren_config()
+    if not (c["api_key"] and c["model_version_id"]):
+        raise RuntimeError("Evren modeli yapılandırılmamış (admin → AI Yapılandırması)")
+    import uuid
+    try:
+        uuid.UUID(c["model_version_id"].strip())
+    except ValueError:
+        raise RuntimeError("Model Version ID bir UUID olmalı (örn. 3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f) "
+                           "— versiyon adı (v1 gibi) değil; SSYZ panelinde versiyonun kimliğini kopyalayın")
+    if isinstance(image, str):
+        image = base64.b64decode(image)
+    mime = "image/jpeg" if filename.lower().endswith((".jpg", ".jpeg")) else "image/png"
+    key = c["api_key"].strip()
+    # Dokümandaki standart: Authorization: Bearer. Örnek curl X-API-Key kullanıyor —
+    # Bearer 401 dönerse onunla da denenir.
+    for headers in ({"Authorization": f"Bearer {key}"}, {"X-API-Key": key}):
+        resp = requests.post(
+            c["url"],
+            headers=headers,
+            files={"file": (filename, image, mime)},
+            data={"model_version_id": c["model_version_id"].strip()},
+            timeout=timeout,
+        )
+        if resp.status_code != 401:
+            break
+    if not resp.ok:
+        # Sunucunun kendi mesajını göster ("Geçersiz API anahtari" gibi) — raise_for_status sadece kodu verir
+        try:
+            err = resp.json().get("error") or {}
+            detail = err.get("message") or resp.text[:200]
+        except Exception:
+            detail = resp.text[:200]
+        raise RuntimeError(f"HTTP {resp.status_code}: {detail}")
+    return resp.json()
+
+
 def get_gemini_key() -> Optional[str]:
     """Aktif Gemini API key (config > env)"""
     cfg = get_ai_config()

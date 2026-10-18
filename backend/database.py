@@ -56,6 +56,8 @@ def _run_migrations():
         "ALTER TABLE users ADD COLUMN tcg_area_path TEXT",
         "ALTER TABLE users ADD COLUMN tcg_assigned_to TEXT",
         "ALTER TABLE users ADD COLUMN tcg_state TEXT",
+        "ALTER TABLE device_nodes ADD COLUMN agent_port INTEGER DEFAULT 4724",
+        "ALTER TABLE device_nodes ADD COLUMN agent_token TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

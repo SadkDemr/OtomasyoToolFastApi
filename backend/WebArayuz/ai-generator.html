@@ -1173,7 +1173,8 @@
                         <button class="btn-add-step" onclick="endSession()" id="btnSessionEnd" style="display:none;">⏹ Oturumu Bitir</button>
                     </div>
 
-                    <!-- Step Listesi -->
+                    <!-- Step Listesi + Telefon Paneli -->
+                    <div class="step-work">
                     <div class="step-list" id="stepList"
                          ondragover="stepListDragOver(event)"
                          ondrop="stepListDrop(event)">
@@ -1182,6 +1183,40 @@
                             Henüz adım yok.<br>
                             Yukarıdaki butonlarla <strong>Metin</strong>, <strong>Görsel</strong>, <strong>SQL</strong> veya <strong>API</strong> adım ekleyin.
                         </div>
+                    </div>
+                    <div id="phonePanel" class="phone-panel" style="display:none;">
+                        <div class="phone-head">
+                            <span id="recDot" class="rec-dot" style="display:none;"></span>
+                            <span id="phoneTitle">📱 Telefon</span>
+                            <span id="recScreenName" class="muted"></span>
+                            <span id="recScreenBadge" style="display:none; font-size:0.68rem; background:rgba(34,197,94,0.15); color:#16a34a; padding:1px 7px; border-radius:10px;">yeni ekran</span>
+                            <label style="margin-left:auto; font-weight:400; font-size:0.72rem; display:flex; align-items:center; gap:3px; cursor:pointer;" title="Telefon ekranını sürekli yenile (koşumu izlemek için)">
+                                <input type="checkbox" id="phoneLive" checked onchange="phoneLiveToggle()"> Canlı
+                            </label>
+                        </div>
+                        <div class="phone-dev">
+                            <select id="phoneDevice" onchange="phoneDeviceChange()" title="Bağlı telefonlar — canlı ekran, oturum ve kayıt bu cihazda çalışır"><option value="">Cihaz seçin...</option></select>
+                            <button class="btn-add-step" onclick="phoneLoadDevices()" title="Cihaz listesini yenile" style="padding:3px 8px;">⟳</button>
+                        </div>
+                        <div class="phone-dev">
+                            <select id="locFile" onchange="locSelect()" title="Kayıtta dokunulan elemanların XPath'leri bu dosyaya yazılır (workspace/locators/)"><option value="">XPath kaydetme</option></select>
+                            <button class="btn-add-step" onclick="locNew()" title="Yeni locator dosyası oluştur" style="padding:3px 8px;">＋</button>
+                            <button class="btn-add-step" onclick="locView()" title="Seçili dosyanın elemanlarını görüntüle / düzenle / sil" style="padding:3px 8px;">👁</button>
+                        </div>
+                        <div id="recImgWrap"><img id="recImg" alt="Telefon ekranı" onclick="recImgClick(event)" onwheel="recImgWheel(event)" oncontextmenu="recImgContext(event)" title="Sol tık: dokun · Sağ tık: doğrulama (görülür) ekle · Tekerlek: kaydır"></div>
+                        <div class="phone-tools">
+                            <button class="btn-add-step" id="btnRecToggle" onclick="openRecordMode()" title="Telefon ekranına tıklayarak adımları doğrudan senaryoya kaydet">⏺ Kayıt</button>
+                            <button class="btn-add-step" onclick="exportAdoExcel()" title="Adımları Java Generator'ın içe aktardığı ADO Excel formatında indir (Step Action / Step Expected)">📥 Excel</button>
+                            <span id="recTools" style="display:none; gap:4px; flex-wrap:wrap;">
+                                <button class="btn-add-step" onclick="recBack()" title="Geri">◀</button>
+                                <button class="btn-add-step" onclick="recSwipe('up')" title="Yukarı kaydır (fare tekerleği de çalışır)">▲</button>
+                                <button class="btn-add-step" onclick="recSwipe('down')" title="Aşağı kaydır (fare tekerleği de çalışır)">▼</button>
+                                <button class="btn-add-step" id="btnRecType" onclick="recToggleType()" title="Basın, sonra görüntüde yazı alanına tıklayın">✎ Yazı</button>
+                                <button class="btn-add-step" onclick="recRefresh()" title="Ekranı yenile">⟳</button>
+                            </span>
+                        </div>
+                        <div id="recStatus"></div>
+                    </div>
                     </div>
 
                     <!-- Platform Seçimi -->
@@ -1239,7 +1274,7 @@
                             <div id="adb-device-list" style="display:none; margin-top:6px; flex-wrap:wrap; gap:6px;"></div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">App Package</label>
+                            <label class="form-label">App Package <span style="opacity:0.6; font-weight:400;">/ iPhone'da Bundle ID</span></label>
                             <input type="text" class="form-input" id="mob-package" placeholder="com.example.myapp">
                         </div>
                         <div class="form-group">
@@ -1571,6 +1606,21 @@
     </div>
 </div>
 
+<!-- ── MODAL: Locator Dosyası (görüntüle / düzenle / sil) ── -->
+<div id="locModal" class="ai-modal-overlay" style="display:none;" onclick="if(event.target===this) locClose()">
+    <div class="modal-box" style="max-width:860px; width:100%; max-height:88vh; gap:12px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="font-weight:600; font-size:1rem;">📄 <span id="locModalName"></span></div>
+            <span id="locModalMeta" style="font-size:0.75rem; color:var(--text-muted);"></span>
+            <input type="text" class="form-input" id="locFilter" placeholder="Ara (ad / XPath)..." oninput="locRender()" style="margin-left:auto; max-width:220px; padding:5px 9px; font-size:0.8rem;">
+            <button class="btn-add-step" id="locRawBtn" onclick="locToggleRaw()" title="Dosyanın ham JSON içeriği">{ } JSON</button>
+            <button class="btn-reset" onclick="locClose()">Kapat</button>
+        </div>
+        <div id="locList" style="overflow:auto; display:flex; flex-direction:column; gap:8px; min-height:80px;"></div>
+        <pre id="locRaw" style="display:none; overflow:auto; margin:0; padding:12px; font-size:0.74rem; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:8px; white-space:pre-wrap; word-break:break-all;"></pre>
+    </div>
+</div>
+
 <!-- ── MODAL: Senaryo Kaydet ── -->
 <div id="saveModal" class="ai-modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:420px; width:100%;">
@@ -1616,6 +1666,32 @@
 </div>
 
 <!-- ── MODAL: ADO Test Case Seçimi ── -->
+<!-- Telefon paneli: canlı ekran + kayıt modu (senaryo adımlarının yanında) -->
+<style>
+    .step-work { display: flex; gap: 14px; align-items: flex-start; }
+    .step-work > .step-list { flex: 1 1 auto; min-width: 0; }
+    .phone-panel { flex: 0 0 300px; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+                   border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-primary); }
+    .phone-panel.recording { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.18); }
+    .phone-head { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; flex-wrap: wrap; }
+    .phone-head .muted { font-weight: 400; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+    .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse-ring 1.4s infinite; }
+    #recImgWrap { transition: opacity .15s; min-height: 120px; display: flex; justify-content: center; position: relative; }
+    .tap-dot { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%;
+               background: rgba(239,68,68,0.45); border: 2px solid #ef4444; pointer-events: none;
+               animation: tapdot .7s ease-out forwards; }
+    @keyframes tapdot { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+    .phone-dev { display: flex; gap: 4px; align-items: center; }
+    .phone-dev select { flex: 1; min-width: 0; font-size: 0.74rem; padding: 3px 6px; border-radius: 6px;
+                        border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); }
+    #recImg { max-width: 100%; max-height: calc(100vh - 330px); border-radius: 10px; border: 1px solid var(--border-color); display: block; }
+    .phone-panel.recording #recImg { cursor: crosshair; }
+    .phone-tools { display: flex; gap: 4px; flex-wrap: wrap; }
+    .phone-tools .btn-add-step { padding: 4px 8px; font-size: 0.74rem; }
+    #recStatus { font-size: 0.76rem; min-height: 1.2em; color: var(--text-muted); }
+    @media (max-width: 900px) { .step-work { flex-direction: column; } .phone-panel { flex-basis: auto; width: 100%; } }
+</style>
+
 <div id="adoSelectModal" class="ai-modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:560px; width:100%;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
@@ -1725,6 +1801,7 @@
         // Görsel adım butonu mobilde gizlenir
         document.getElementById("btnAddImage").style.display = platform === "mobile" ? "none" : "inline-flex";
         updateGenerateBtn();
+        _phoneSync();
         syncSessionStatus();
     };
 
@@ -1758,7 +1835,506 @@
         document.getElementById("sessionStatusText").textContent = "Oturum: " + (_sessionActive ? "aktif" : "kapalı");
         document.getElementById("btnSessionStart").style.display = _sessionActive ? "none" : "inline-flex";
         document.getElementById("btnSessionEnd").style.display   = _sessionActive ? "inline-flex" : "none";
+        _phoneSync();
     }
+
+    // ── Telefon Paneli: canlı ekran (koşumu izle) + Kayıt Modu (dokun → adım doğrudan senaryoya) ──
+    let _recOn = false;          // kayıt modu açık mı
+    let _recBusy = false;
+    let _recVersion = "";
+    let _recPollSeq = 0;
+    let _recTapMsg = "";
+    let _recKnownSeq = 0, _recLastAct = 0;
+    let _liveTimer = null, _liveUrl = null, _liveRunning = false;
+
+    const _recEsc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    // ── Cihaz seçimi: birden fazla telefon bağlıysa hangisinin kullanılacağı (mob-device ile senkron) ──
+    let _devLoaded = false;
+    // Telefon durumları başkaları oturum açıp kapattıkça değişir → panel açıkken düzenli yenile
+    setInterval(() => {
+        if (selectedPlatform === "mobile" && !document.hidden && !_recOn
+            && document.activeElement !== document.getElementById("phoneDevice")) phoneLoadDevices();
+    }, 15000);
+    window.phoneLoadDevices = async function() {
+        const sel = document.getElementById("phoneDevice");
+        const cur = document.getElementById("mob-device").value.trim();
+        try {
+            const d = await API.get("/app-map/devices");
+            const devs = d.devices || [];
+            sel.innerHTML = `<option value="">${devs.length ? "Cihaz seçin..." : "Bağlı cihaz yok"}</option>` +
+                devs.map(x => {
+                    const other = x.busy && !x.mine;
+                    const tag = other ? ` — 🔴 ${x.holder} (${x.purposes})` : x.mine ? " — 🔵 sizde" : " — 🟢 boş";
+                    const where = (x.node ? ` · ${x.node}` : "") + (x.platform === "ios" ? " 🍎" : "");
+                    return `<option value="${_recEsc(x.id)}"${other ? " disabled" : ""}>${_recEsc(x.model || x.id)}${_recEsc(where)} — ${_recEsc(x.id)}${_recEsc(tag)}</option>`;
+                }).join("");
+            const stale = cur && !devs.some(x => x.id === cur);   // formda eski/yanlış cihaz ID'si kalmış
+            if ((!cur || stale) && devs.length === 1) {
+                document.getElementById("mob-device").value = devs[0].id;
+                if (stale) Toast.info(`"${cur}" bağlı değil — bağlı telefon seçildi: ${devs[0].model || devs[0].id}`);
+            } else if (stale) {
+                sel.insertAdjacentHTML("beforeend", `<option value="${_recEsc(cur)}">${_recEsc(cur)} (bağlı değil)</option>`);
+                if (devs.length > 1) Toast.error(`"${cur}" bağlı değil — Telefon panelinden cihaz seçin`);
+            }
+            sel.value = document.getElementById("mob-device").value.trim();
+            _devLoaded = true;
+            _liveSchedule(0);
+        } catch (e) {
+            // Liste alınamasa da canlı ekran formdaki cihazla denenir (panel boş kalmasın)
+            document.getElementById("recStatus").textContent = "Cihaz listesi alınamadı: " + e.message;
+            _devLoaded = true;
+            _liveSchedule(0);
+        }
+    };
+    window.phoneDeviceChange = function() {
+        const id = document.getElementById("phoneDevice").value;
+        document.getElementById("mob-device").value = id;
+        if (_recOn) closeRecordMode();
+        if (_sessionActive) Toast.info("Oturum önceki cihazda açık — bu cihazda kayıt/adım koşmak için oturumu bitirip yeniden başlatın.");
+        if (_liveUrl) { URL.revokeObjectURL(_liveUrl); _liveUrl = null; }
+        document.getElementById("recImg").removeAttribute("src");
+        _liveSchedule(0);
+    };
+
+    // ── Locator dosyası: kayıtta dokunulan elemanların XPath'leri workspace/locators/<isim>.json'a ──
+    let _locLoaded = false;
+    window.locLoad = async function() {
+        const sel = document.getElementById("locFile");
+        try {
+            const d = await API.get("/app-map/locators");
+            const files = d.files || [];
+            sel.innerHTML = `<option value="">XPath kaydetme</option>` +
+                files.map(f => `<option value="${_recEsc(f.name)}">📄 ${_recEsc(f.name)} (${f.count})</option>`).join("");
+            sel.value = d.selected || "";
+            sel.disabled = false;
+        } catch (e) {
+            sel.innerHTML = `<option value="">Locator: ${_recEsc(e.message)}</option>`;
+            sel.disabled = true;
+        }
+        _locLoaded = true;
+    };
+    window.locSelect = async function() {
+        const sel = document.getElementById("locFile");
+        try {
+            const d = await API.post("/app-map/locators/select", { name: sel.value });
+            if (d.selected) Toast.info(`XPath'ler "${d.selected}" dosyasına yazılacak`);
+        } catch (e) { Toast.error(e.message); sel.value = ""; }
+    };
+    window.locNew = async function() {
+        const name = (prompt("Locator dosyasının adı (örn: banka_giris):", "") || "").trim();
+        if (!name) return;
+        try {
+            const d = await API.post("/app-map/locators", { name });
+            await locLoad();
+            document.getElementById("locFile").value = d.selected;
+            Toast.success(`"${d.name}.json" oluşturuldu — kayıtta XPath'ler buraya yazılacak`);
+        } catch (e) { Toast.error(e.message); }
+    };
+    // ── Locator dosyası görüntüleme / düzenleme / silme ──
+    let _locData = null, _locName = "";
+    window.locView = async function() {
+        const name = document.getElementById("locFile").value;
+        if (!name) { Toast.error("Önce bir locator dosyası seçin"); return; }
+        try { _locData = await API.get(`/app-map/locators/${encodeURIComponent(name)}`); }
+        catch (e) { Toast.error(e.message); return; }
+        _locName = name;
+        document.getElementById("locFilter").value = "";
+        document.getElementById("locRaw").style.display = "none";
+        document.getElementById("locList").style.display = "flex";
+        document.getElementById("locRawBtn").textContent = "{ } JSON";
+        locRender();
+        document.getElementById("locModal").style.display = "flex";
+    };
+    window.locClose = () => { document.getElementById("locModal").style.display = "none"; };
+    window.locToggleRaw = function() {
+        const raw = document.getElementById("locRaw"), list = document.getElementById("locList");
+        const show = raw.style.display === "none";
+        raw.textContent = JSON.stringify(_locData, null, 2);
+        raw.style.display = show ? "block" : "none";
+        list.style.display = show ? "none" : "flex";
+        document.getElementById("locRawBtn").textContent = show ? "☰ Liste" : "{ } JSON";
+    };
+    window.locRender = function() {
+        const d = _locData || {}, els = d.elements || {};
+        const q = document.getElementById("locFilter").value.trim().toLocaleLowerCase("tr");
+        const keys = Object.keys(els).filter(k => !q || k.toLocaleLowerCase("tr").includes(q)
+            || [els[k].xpath, ...(els[k].alternatives || [])].join(" ").toLocaleLowerCase("tr").includes(q));
+        document.getElementById("locModalName").textContent = (d.name || _locName) + ".json";
+        document.getElementById("locModalMeta").textContent =
+            `${Object.keys(els).length} eleman${d.app ? " · " + d.app : ""}${d.created_by ? " · oluşturan: " + d.created_by : ""}${d.updated_at ? " · " + d.updated_at.replace("T", " ") : ""}`;
+        const ACT = { tap: "tıklama", input: "yazı", verify: "doğrulama" };
+        const inp = "width:100%; box-sizing:border-box; font-size:0.78rem; padding:5px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-primary); color:var(--text-primary);";
+        document.getElementById("locList").innerHTML = keys.length ? keys.map(k => {
+            const e = els[k], id = encodeURIComponent(k);
+            return `<div class="loc-item" style="border:1px solid var(--border-color); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; background:var(--bg-primary);">
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:0.7rem; color:var(--text-muted);">
+                    <input class="loc-key" value="${_recEsc(k)}" style="${inp} width:auto; flex:1; min-width:160px; font-weight:600;" title="Eleman adı — adımdaki tırnaklı hedefle eşleşir">
+                    <span>${ACT[e.action] || _recEsc(e.action || "")}</span>
+                    ${e.fragile ? `<span style="color:#f59e0b;" title="Sayfadaki sıraya bağlı — ekran değişirse kırılabilir">⚠ kırılgan</span>` : `<span style="color:#16a34a;">✓ sağlam</span>`}
+                    <span title="Kayıtta kaç kez görüldü">×${e.seen || 1}</span>
+                    ${(e.screens || []).length ? `<span title="Görüldüğü ekranlar">🖼 ${_recEsc(e.screens.join(", "))}</span>` : ""}
+                    ${e.edited_by ? `<span title="Elle düzenleyen">✎ ${_recEsc(e.edited_by)}</span>` : ""}
+                </div>
+                <input class="loc-xpath" value="${_recEsc(e.xpath || "")}" style="${inp} font-family:monospace;" title="Ana XPath">
+                <textarea class="loc-alts" rows="${Math.max(1, Math.min(4, (e.alternatives || []).length))}" placeholder="Alternatif XPath'ler (her satıra bir tane)" style="${inp} font-family:monospace; resize:vertical;">${_recEsc((e.alternatives || []).join("\n"))}</textarea>
+                <div style="display:flex; gap:6px; justify-content:flex-end;">
+                    <button class="btn-add-step" data-id="${id}" onclick="locSaveEl(this)">💾 Kaydet</button>
+                    <button class="btn-add-step" data-id="${id}" onclick="locDeleteEl(this)" style="color:#ef4444;">🗑 Sil</button>
+                </div>
+            </div>`;
+        }).join("") : `<div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:24px;">${q ? "Eşleşen eleman yok" : "Dosyada henüz eleman yok — kayıt modunda dokundukça eklenir"}</div>`;
+    };
+    window.locSaveEl = async function(btn) {
+        const key = decodeURIComponent(btn.dataset.id);
+        const box = btn.closest(".loc-item");
+        const body = {
+            key,
+            new_key: box.querySelector(".loc-key").value.trim(),
+            xpath: box.querySelector(".loc-xpath").value.trim(),
+            alternatives: box.querySelector(".loc-alts").value.split("\n").map(s => s.trim()).filter(Boolean),
+        };
+        btn.disabled = true;
+        try {
+            const r = await API.post(`/app-map/locators/${encodeURIComponent(_locName)}/element/update`, body);
+            const el = r.element, nk = el.key;
+            delete el.key;
+            _locData.elements = Object.fromEntries(Object.entries(_locData.elements).map(([k, v]) => k === key ? [nk, el] : [k, v]));
+            locRender();
+            Toast.success(`"${nk}" kaydedildi` + (r.pushed ? " ve gönderildi" : r.committed ? " (push yapılamadı)" : ""));
+        } catch (e) { Toast.error(e.message); }
+        finally { btn.disabled = false; }
+    };
+    window.locDeleteEl = async function(btn) {
+        const key = decodeURIComponent(btn.dataset.id);
+        if (!confirm(`"${key}" elemanı locator dosyasından silinsin mi?`)) return;
+        try {
+            const r = await API.post(`/app-map/locators/${encodeURIComponent(_locName)}/element/delete`, { key });
+            delete _locData.elements[key];
+            locRender();
+            locLoad();
+            Toast.success(`"${key}" silindi` + (r.pushed ? " ve gönderildi" : ""));
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    function _locText(l) {
+        if (!l) return "";
+        const frag = l.fragile ? " ⚠ kırılgan (sıraya bağlı)" : "";
+        if (!l.ok) return l.xpath ? ` · ${l.reason}${frag}` : ` · XPath yazılamadı (${l.reason})`;
+        return (l.icon ? ` · yazısız ikon "${l.icon}" olarak kaydedildi` : "") + ` · XPath: ${l.xpath}` + frag;
+    }
+
+    // ── Adımlar → ADO Excel (Java Generator "Dosyadan" içe aktarma formatı) ──
+    window.exportAdoExcel = async function() {
+        const list = steps.filter(s => s.type === "text" && !s.disabled && s._recSlot === undefined
+                                       && (s.content || "").trim()).map(s => s.content.trim());
+        if (!list.length) { Toast.error("Excel'e aktarılacak metin adımı yok"); return; }
+        const def = (document.getElementById("saveScenarioName").value || "").trim();
+        const title = (prompt("Test case başlığı (Title):", def) || "").trim();
+        if (!title) return;
+        try {
+            const r = await fetch(`${API_BASE}/app-map/export/ado`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${Auth.getToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ title, steps: list }),
+            });
+            if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Excel oluşturulamadı");
+            const url = URL.createObjectURL(await r.blob());
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = title.replace(/[\\/:*?"<>|]+/g, "_") + ".xlsx";
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    function _phoneSync() {
+        const show = selectedPlatform === "mobile";
+        document.getElementById("phonePanel").style.display = show ? "flex" : "none";
+        if (show && !_devLoaded) phoneLoadDevices();
+        if (show && !_locLoaded) locLoad();
+        if (!show && _recOn) closeRecordMode();
+        _liveSchedule(0);
+    }
+
+    function _liveWanted() {
+        return selectedPlatform === "mobile" && !document.hidden && _devLoaded
+            && document.getElementById("phoneLive").checked;
+    }
+
+    function _liveSchedule(ms) {
+        clearTimeout(_liveTimer);
+        if (_liveWanted()) _liveTimer = setTimeout(_liveTick, ms);
+    }
+
+    // Kareler sırayla çekilir (bir istek bitmeden yenisi gitmez) → sunucu/cihaz boğulmaz
+    async function _liveTick() {
+        if (_liveRunning || !_liveWanted()) return;
+        _liveRunning = true;
+        let wait = 700;
+        const tickStart = Date.now();
+        try {
+            const dev = (document.getElementById("mob-device") || {}).value || "";
+            const r = await fetch(`${API_BASE}/app-map/live?device_id=${encodeURIComponent(dev)}`,
+                                  { headers: { "Authorization": `Bearer ${Auth.getToken()}` } });
+            if (!r.ok) {
+                const det = (await r.json().catch(() => ({}))).detail;
+                if (r.status === 423) document.getElementById("recImg").removeAttribute("src");
+                throw new Error((det && det.message) || det || "Ekran alınamadı");
+            }
+            const blob = await r.blob();
+            // Akış (oturumun MJPEG yayını) varsa ~10 kare/sn, yoksa adb ile ~1-2 kare/sn
+            if (r.headers.get("X-Live-Src") === "stream") wait = 80;
+            // Dokunuş sürerken gelen kare dokunuş öncesine ait olabilir → gösterme
+            if (_recOn && (_recBusy || tickStart < _recLastAct)) return;
+            if (_recOn) {
+                const seq = parseInt(r.headers.get("X-Rec-Seq") || "0", 10);
+                if (seq > _recKnownSeq) {          // ekran telefonda ELLE değişti → sunucu yeni ekran kaydetti
+                    _recKnownSeq = seq;
+                    document.getElementById("recScreenName").textContent = "ekran tanınıyor...";
+                    _recTapMsg = "Telefonda elle değişiklik algılandı (adım eklenmedi)";
+                    _recPoll(seq);
+                }
+            }
+            const url = URL.createObjectURL(blob);
+            document.getElementById("recImg").src = url;
+            if (_liveUrl) URL.revokeObjectURL(_liveUrl);
+            _liveUrl = url;
+            if (!_recOn) document.getElementById("recStatus").textContent = "";
+        } catch (e) {
+            document.getElementById("recStatus").textContent = "Canlı ekran: " + e.message;
+            wait = 3000;
+        } finally {
+            _liveRunning = false;
+            _liveSchedule(wait);
+        }
+    }
+    document.addEventListener("visibilitychange", () => _liveSchedule(0));
+    window.phoneLiveToggle = () => _liveSchedule(0);
+
+    function _recTapText(t) {
+        if (t.pending) return `Dokunuldu (${t.x}, ${t.y}) — hedef tanınıyor...`;
+        let m = t.step ? `Eklendi: ${t.step}` : `Dokunuldu (${t.x}, ${t.y}) — metin/ikon tanınamadı, adım eklenmedi`;
+        if (t.dynamic) m += " ⚠ kişiye özel veri (isim/alıcı/kart) — başka kullanıcıda çalışmayabilir";
+        return m + _locText(t.locator);
+    }
+
+    const REC_PENDING = "⏳ tanınıyor...";
+
+    function _recPushStep(content, slot) {
+        const st = { type: "text", content, b64: "", action: "click", status: null };
+        if (slot !== undefined && slot !== null) st._recSlot = slot;
+        steps.push(st);
+        renderStepList();
+        updateGenerateBtn();
+        const list = document.getElementById("stepList");
+        list.scrollTop = list.scrollHeight;
+    }
+
+    // Sunucuda arka planda çözülen dokunuşları senaryodaki yer tutuculara yaz
+    function _recResolveSlots(slots) {
+        if (!slots) return;
+        let changed = false;
+        for (let i = steps.length - 1; i >= 0; i--) {
+            const s = steps[i];
+            if (s._recSlot === undefined) continue;
+            const v = slots[s._recSlot];
+            if (v === null || v === undefined) continue;
+            if (v === "") steps.splice(i, 1);
+            else { s.content = v; delete s._recSlot; }
+            changed = true;
+        }
+        if (changed) { renderStepList(); updateGenerateBtn(); }
+    }
+
+    // Görüntü hemen gelir; ekran adı/"yeni ekran" ve dokunulan hedef arka plan analizi bitince güncellenir
+    function _recRender(d, added) {
+        document.getElementById("recImg").src = d.image;
+        if (d.seq) _recKnownSeq = Math.max(_recKnownSeq, d.seq);
+        _recVersion = d.version || "";
+        document.getElementById("recScreenName").textContent = "ekran tanınıyor...";
+        document.getElementById("recScreenBadge").style.display = "none";
+        if (d.slot !== undefined) _recPushStep(REC_PENDING, d.slot);
+        else if (added) _recPushStep(added);
+        _recTapMsg = d.tapped ? _recTapText(d.tapped) : (added ? `Eklendi: ${added}` : "");
+        document.getElementById("recStatus").textContent = _recTapMsg;
+        if (d.pending) _recPoll(d.seq);
+    }
+
+    async function _recPoll(seq) {
+        _recPollSeq = seq;
+        for (let i = 0; i < 60 && _recPollSeq === seq; i++) {
+            await new Promise(r => setTimeout(r, i < 8 ? 250 : 800));
+            if (_recPollSeq !== seq) return;          // daha yeni bir ekran geldi
+            let s;
+            try { s = await API.get("/app-map/record/status"); } catch { continue; }
+            if (s.seq !== seq || !s.ready) continue;
+            if (s.error) { document.getElementById("recStatus").textContent = "Analiz hatası: " + s.error; return; }
+            _recResolveSlots(s.slots);
+            if (s.tapped) _recTapMsg = _recTapText(s.tapped);
+            document.getElementById("recScreenName").textContent = (s.screen.name || "Ekran") + (_recVersion ? ` (v${_recVersion})` : "");
+            document.getElementById("recScreenBadge").style.display = s.screen.is_new ? "inline-block" : "none";
+            document.getElementById("recStatus").textContent = _recTapMsg + (s.navigated ? " → yeni ekran kaydedildi" : "");
+            return;
+        }
+    }
+
+    async function _recCall(path, body, added) {
+        if (_recBusy || !_recOn) return;
+        _recBusy = true;
+        _recLastAct = Date.now();
+        const st = document.getElementById("recStatus");
+        st.textContent = "Dokunuluyor...";
+        document.getElementById("recImgWrap").style.opacity = "0.5";
+        try {
+            const d = await API.post(path, body || {});
+            if (!_recOn) return;
+            _recRender(d, typeof added === "function" ? added(d) : added);
+        } catch (e) {
+            st.textContent = "Hata: " + e.message;
+            if (/UiAutomator2 çöktü/.test(e.message)) { Toast.error(e.message); closeRecordMode(); }
+        } finally {
+            _recBusy = false;
+            document.getElementById("recImgWrap").style.opacity = "1";
+        }
+    }
+
+    function _recUI() {
+        const panel = document.getElementById("phonePanel");
+        panel.classList.toggle("recording", _recOn);
+        document.getElementById("recDot").style.display = _recOn ? "inline-block" : "none";
+        document.getElementById("recTools").style.display = _recOn ? "inline-flex" : "none";
+        document.getElementById("phoneTitle").textContent = _recOn ? "Kayıt —" : "📱 Telefon";
+        document.getElementById("recScreenName").textContent = "";
+        document.getElementById("recScreenBadge").style.display = "none";
+        const b = document.getElementById("btnRecToggle");
+        b.textContent = _recOn ? "⏹ Bitir" : "⏺ Kayıt";
+        b.title = _recOn ? "Kayıt modunu bitir" : "Telefon ekranına tıklayarak adımları doğrudan senaryoya kaydet";
+    }
+
+    window.openRecordMode = async function() {
+        if (_recOn) { closeRecordMode(); return; }
+        if (!_sessionActive) { Toast.error("Kayıt için önce ▶ Oturumu Başlat"); return; }
+        _recOn = true;
+        _recUI();
+        document.getElementById("recStatus").textContent = "Telefonda dokunmak istediğiniz yere tıklayın — adımlar senaryoya eklenir.";
+        try { await API.post("/app-map/record/reset", {}); } catch {}
+        _recKnownSeq = 0;
+        _recCall("/app-map/record/snapshot");
+        _liveSchedule(1500);
+    };
+    window.closeRecordMode = function() {
+        if (!_recOn) return;
+        _recOn = false;
+        _recPollSeq = -1;
+        if (_recTypeMode) recToggleType();
+        _recUI();
+        _recCloseMenu();
+        document.getElementById("recStatus").textContent = "";
+        API.post("/app-map/record/stop", {}).catch(() => {});
+        if (document.getElementById("locFile").value) {   // kayıt bitti → XPath dosyası workspace'e commit + push
+            API.post("/app-map/locators/commit", {}).then(g => {
+                if (g.pushed) Toast.success(`XPath'ler "${g.name}" dosyasına kaydedildi ve gönderildi`);
+                else if (g.committed) Toast.info(`XPath'ler "${g.name}" dosyasına kaydedildi (push yapılamadı)`);
+                locLoad();
+            }).catch(e => Toast.error("Locator commit: " + e.message));
+        }
+        _liveSchedule(300);
+    };
+    window.recRefresh = () => _recCall("/app-map/record/snapshot");
+    window.recBack    = () => _recCall("/app-map/record/back", {}, "Geri dön");
+    window.recSwipe   = dir => _recCall("/app-map/record/swipe", { direction: dir }, d => d.tapped && d.tapped.step);
+    // Fare tekerleği: aşağı çevir = aşağı kaydır (meşgulken gelen olaylar yok sayılır)
+    window.recImgWheel = function(ev) {
+        if (!_recOn) return;
+        ev.preventDefault();
+        if (_recBusy || Math.abs(ev.deltaY) < 10) return;
+        recSwipe(ev.deltaY > 0 ? "down" : "up");
+    };
+    // ── Sağ tık: dokunmadan "görülür" doğrulama adımı ekle ──
+    function _recCloseMenu() {
+        const m = document.getElementById("recCtxMenu");
+        if (m) m.remove();
+    }
+    document.addEventListener("click", _recCloseMenu);
+    document.addEventListener("keydown", e => { if (e.key === "Escape") _recCloseMenu(); });
+    window.recImgContext = async function(ev) {
+        ev.preventDefault();
+        _recCloseMenu();
+        if (!_recOn) { document.getElementById("recStatus").textContent = "Doğrulama eklemek için ⏺ Kayıt'ı başlatın."; return; }
+        const img = ev.currentTarget, r = img.getBoundingClientRect();
+        const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+        const cx = ev.clientX, cy = ev.clientY;
+        document.getElementById("recStatus").textContent = "Eleman okunuyor...";
+        let d;
+        try { d = await API.post("/app-map/record/inspect", { x, y }); }
+        catch (e) { document.getElementById("recStatus").textContent = "Hata: " + e.message; return; }
+        document.getElementById("recStatus").textContent = "";
+        if (!d.target) { Toast.error("Bu noktada okunabilir yazı ya da eleman bulunamadı"); return; }
+        const t = String(d.target).replace(/"/g, "'");
+        const opts = d.kind === "icon" ? [
+            [`"${t}" ikonunun olduğu görülür`, d.textless ? `İkon görülür (${t} olarak kaydedilir)` : "İkon görülür"],
+        ] : [
+            [`"${t}" metninin olduğu görülür`, "Metin görülür"],
+            [`"${t}" butonunun olduğu görülür`, "Buton görülür"],
+        ];
+        if (d.kind === "button") opts.reverse();
+        const m = document.createElement("div");
+        m.id = "recCtxMenu";
+        m.style.cssText = `position:fixed; left:${cx}px; top:${cy}px; z-index:9999; min-width:220px; padding:4px;
+            background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.25);`;
+        m.innerHTML = `<div style="font-size:0.72rem; color:var(--text-muted); padding:4px 8px;">"${_recEsc(d.target)}" — doğrulama ekle</div>` +
+            opts.map((o, i) => `<div class="rec-ctx-item" data-i="${i}" style="padding:6px 8px; font-size:0.8rem; cursor:pointer; border-radius:6px;">✓ ${o[1]}<div style="font-size:0.7rem; color:var(--text-muted);">${_recEsc(o[0])}</div></div>`).join("");
+        m.addEventListener("click", e => {
+            e.stopPropagation();
+            const it = e.target.closest(".rec-ctx-item");
+            if (!it) return;
+            const step = opts[+it.dataset.i][0];
+            _recPushStep(step);
+            document.getElementById("recStatus").textContent = "Eklendi: " + step;
+            _recCloseMenu();
+            if (document.getElementById("locFile").value && !d.xpath_only) {
+                API.post("/app-map/record/verify", { x, y, target: d.target, textless: !!d.textless })
+                    .then(v => { if (v.locator) document.getElementById("recStatus").textContent = "Eklendi: " + step + _locText(v.locator); })
+                    .catch(() => {});
+            }
+        });
+        m.addEventListener("mouseover", e => {
+            const it = e.target.closest(".rec-ctx-item");
+            m.querySelectorAll(".rec-ctx-item").forEach(x => x.style.background = x === it ? "var(--bg-tertiary)" : "");
+        });
+        document.body.appendChild(m);
+        const mr = m.getBoundingClientRect();   // ekrandan taşmasın
+        if (mr.right > innerWidth) m.style.left = (innerWidth - mr.width - 8) + "px";
+        if (mr.bottom > innerHeight) m.style.top = (innerHeight - mr.height - 8) + "px";
+    };
+
+    let _recTypeMode = false;
+    window.recToggleType = function() {
+        _recTypeMode = !_recTypeMode;
+        const b = document.getElementById("btnRecType");
+        b.style.outline = _recTypeMode ? "2px solid var(--accent-primary)" : "";
+        b.textContent = _recTypeMode ? "✎ Alana tıklayın..." : "✎ Yazı";
+    };
+    window.recImgClick = function(ev) {
+        if (!_recOn) { document.getElementById("recStatus").textContent = "Dokunmak için ⏺ Kayıt'ı başlatın."; return; }
+        const img = ev.currentTarget, r = img.getBoundingClientRect();
+        const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+        if (_recBusy) return;
+        const wrap = document.getElementById("recImgWrap"), wr = wrap.getBoundingClientRect();
+        const dot = document.createElement("div");
+        dot.className = "tap-dot";
+        dot.style.left = (ev.clientX - wr.left) + "px"; dot.style.top = (ev.clientY - wr.top) + "px";
+        wrap.appendChild(dot); setTimeout(() => dot.remove(), 800);
+        if (_recTypeMode) {
+            recToggleType();
+            const value = prompt("Alana yazılacak değer (değişken için örn. ${IBAN}):", "");
+            if (value === null || value === "") return;
+            _recCall("/app-map/record/type", { x, y, value }, d => d.tapped && d.tapped.step);
+            return;
+        }
+        _recCall("/app-map/record/tap", { x, y });
+    };
 
     async function syncSessionStatus() {
         if (selectedPlatform !== "web" && selectedPlatform !== "mobile") {
@@ -1869,6 +2445,7 @@
                 platform:   selectedPlatform,
                 step:       _stepToApiItem(step),
                 step_label: step.content || step.type || "Adım",
+                locator_file: selectedPlatform === "mobile" ? (document.getElementById("locFile").value || "") : "",
             });
             setStepStatus(idx, data.success ? "done" : "fail");
             if (!data.success) appendLog("error", data.output || "Adım başarısız");
@@ -2918,6 +3495,7 @@
             base.app_package  = document.getElementById("mob-package").value;
             base.app_activity = document.getElementById("mob-activity").value;
             base.appium_url   = document.getElementById("mob-appium").value;
+            base.locator_file = document.getElementById("locFile").value || "";
         } else if (selectedPlatform === "desktop") {
             base.app_path       = document.getElementById("desk-app").value;
             base.window_title   = document.getElementById("desk-window").value;
@@ -3255,6 +3833,7 @@
             const badgeStyle = r.method === "image" ? 'style="background:rgba(16,185,129,0.12);color:#10b981;"' : "";
             return `<div style="display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:4px; background:var(--bg-primary); font-size:0.75rem;">
                 <span class="step-badge ${cls}" ${badgeStyle} style="flex-shrink:0;">${icons[r.method] || "?"}</span>
+                ${r.locator ? `<span title="Locator dosyasındaki kayıtlı XPath önce denenir" style="flex-shrink:0;">🎯</span>` : ""}
                 <span style="color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.step}">${r.step}</span>
             </div>`;
         }).join("");

@@ -20,7 +20,9 @@ from services.ai_service import get_ollama_config
 from services.java_generator_service import (
     generate_step, is_custom_step, expand_multi_target_step,
     is_full_login_script, build_from_login_script,
+    use_locators, track_locator_hits,
 )
+from services import locator_service
 from services.appium_codegen_service import build_android_template, build_ios_template
 from services.java_step_template_service import find_step_override, get_active_login
 
@@ -43,6 +45,7 @@ class JavaGenerateRequest(BaseModel):
     class_name:       Optional[str]  = "GeneratedTest"
     use_ai_fallback:  Optional[bool] = True
     include_default_login: Optional[bool] = True
+    locator_file:     Optional[str]  = ""   # workspace/locators/<isim>.json (kayıt modu XPath'leri)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -188,23 +191,43 @@ async def generate_java(
     code_lines:   list[tuple] = []
     unrecognized: list[str]   = []
     report:       list[dict]  = []
+    loc_warnings: list[str]   = []
 
-    for step in raw_steps:
-        # Admin'in tanımladığı kalıp step eşleşmesi kural motorundan ÖNCE
-        # kontrol edilir — tam eşleşirse kural motorunu/LLM'i tamamen bypass eder.
-        override = find_step_override(db, step, platform)
-        if override:
-            code_lines.append(("override", step, "\n".join(override)))
-            continue
-        parsed = generate_step(step, platform)
-        if parsed:
-            # "(Fonksiyon gerekli)" ile işaretlenen adımlar raporda ayrı gösterilir —
-            # kod üretilmediği, kullanıcının elle fonksiyon yazacağı adımlardır.
-            kind = "custom" if is_custom_step(step) else "rule"
-            code_lines.append((kind, step, "\n".join(parsed)))
+    lookup = None
+    if (req.locator_file or "").strip():
+        if platform != "android":
+            loc_warnings.append("Locator dosyası Android kaydından üretilir — iOS'ta kullanılmadı.")
         else:
-            code_lines.append(("llm", step, ""))
-            unrecognized.append(step)
+            from routers.ai_test_generator_router import _get_user_workspace
+            ws = _get_user_workspace(current_user.id, db)
+            try:
+                if not ws:
+                    raise FileNotFoundError("Git workspace bulunamadı")
+                lookup = locator_service.load_lookup(ws.local_path, req.locator_file.strip())
+            except (FileNotFoundError, ValueError) as e:
+                loc_warnings.append(f"Locator dosyası kullanılamadı: {e}")
+
+    locator_steps: dict[str, list] = {}
+    with use_locators(lookup):
+        for step in raw_steps:
+            # Admin'in tanımladığı kalıp step eşleşmesi kural motorundan ÖNCE
+            # kontrol edilir — tam eşleşirse kural motorunu/LLM'i tamamen bypass eder.
+            override = find_step_override(db, step, platform)
+            if override:
+                code_lines.append(("override", step, "\n".join(override)))
+                continue
+            with track_locator_hits() as hits:
+                parsed = generate_step(step, platform)
+            if hits:
+                locator_steps[step] = hits
+            if parsed:
+                # "(Fonksiyon gerekli)" ile işaretlenen adımlar raporda ayrı gösterilir —
+                # kod üretilmediği, kullanıcının elle fonksiyon yazacağı adımlardır.
+                kind = "custom" if is_custom_step(step) else "rule"
+                code_lines.append((kind, step, "\n".join(parsed)))
+            else:
+                code_lines.append(("llm", step, ""))
+                unrecognized.append(step)
 
     llm_results: dict[str, str] = {}
     if unrecognized and req.use_ai_fallback:
@@ -214,7 +237,10 @@ async def generate_java(
     for kind, step, rule_code in code_lines:
         if kind in ("rule", "custom", "override"):
             final_lines.append(rule_code)
-            report.append({"step": step, "method": kind})
+            entry = {"step": step, "method": kind}
+            if step in locator_steps:
+                entry["locator"] = True
+            report.append(entry)
         else:
             llm_code = llm_results.get(step, "")
             if not llm_code:
@@ -258,7 +284,7 @@ async def generate_java(
             no_reset=req.no_reset,
         )
 
-    warnings = [f"Anlaşılamayan adım: {r['step']}" for r in report if r["method"] == "todo"]
+    warnings = loc_warnings + [f"Anlaşılamayan adım: {r['step']}" for r in report if r["method"] == "todo"]
 
     return {
         "success":  True,

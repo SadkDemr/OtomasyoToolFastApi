@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uygulama Haritası - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .page-content { padding: 24px; max-width: 1400px; }
+        .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+        .toolbar select, .toolbar input, .path-box select, .detail-name {
+            padding: 8px 12px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border-color);
+            background: var(--bg-secondary); color: var(--text-primary); font-size: 0.88rem;
+        }
+        .toolbar .stats { font-size: 0.85rem; color: var(--text-muted); margin-left: auto; }
+        .btn {
+            padding: 8px 14px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border-color);
+            background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font-size: 0.85rem; font-weight: 600;
+        }
+        .btn.primary { background: var(--accent-primary); color: #fff; border-color: transparent; }
+        .btn.danger  { color: #ef4444; }
+        .btn:disabled { opacity: 0.5; cursor: default; }
+
+        .layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; align-items: start; }
+        @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+        .screen-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px;
+            overflow: hidden; cursor: pointer; transition: border-color .15s, transform .15s;
+        }
+        .screen-card:hover { transform: translateY(-2px); }
+        .screen-card.active { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(99,102,241,0.25); }
+        .screen-card .thumb { width: 100%; aspect-ratio: 9 / 18; object-fit: cover; object-position: top; background: var(--bg-tertiary); display: block; }
+        .screen-card .meta { padding: 8px 10px; }
+        .screen-card .name { font-weight: 600; font-size: 0.84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .screen-card .sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+
+        .panel { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; }
+        .panel + .panel { margin-top: 14px; }
+        .panel h3 { margin: 0 0 12px; font-size: 0.95rem; }
+        .detail-thumb { width: 100%; max-height: 420px; object-fit: contain; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-tertiary); }
+        .detail-name { width: 100%; box-sizing: border-box; font-weight: 600; margin: 10px 0 6px; }
+        .kv { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px; }
+        .tr-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+        .tr-item {
+            display: flex; align-items: center; gap: 8px; font-size: 0.82rem; padding: 7px 9px;
+            border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary);
+        }
+        .tr-item .go { color: var(--accent-primary); cursor: pointer; font-weight: 600; }
+        .tr-item .cnt { margin-left: auto; color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; }
+        .tr-item .del { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; }
+        .tr-item .del:hover { color: #ef4444; }
+        .badge { font-size: 0.68rem; padding: 1px 7px; border-radius: 10px; background: var(--bg-tertiary); color: var(--text-muted); }
+        .badge.record { background: rgba(236,72,153,0.12); color: #ec4899; }
+        .badge.run    { background: rgba(59,130,246,0.12); color: #3b82f6; }
+        .badge.dyn    { background: rgba(245,158,11,0.15); color: #d97706; }
+        .path-warn { font-size: 0.78rem; color: #d97706; }
+        .section-label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); margin: 6px 0; text-transform: uppercase; letter-spacing: .04em; }
+        .path-box { display: flex; flex-direction: column; gap: 8px; }
+        .path-box select { width: 100%; }
+        .path-steps { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; white-space: pre-wrap; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; min-height: 40px; }
+        .empty { color: var(--text-muted); font-size: 0.88rem; padding: 30px; text-align: center; border: 1px dashed var(--border-color); border-radius: 12px; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div id="sidebar-container"></div>
+
+    <main class="main-content">
+        <header class="header">
+            <div class="header-left">
+                <h1 class="page-title">🗺️ Uygulama Haritası</h1>
+                <p style="margin:6px 0 0; color:var(--text-muted); font-size:0.88rem;">
+                    Koşumlardan ve kayıt modundan öğrenilen ekranlar ve aralarındaki geçişler
+                </p>
+            </div>
+            <div class="header-right">
+                <button class="theme-toggle" onclick="Theme.toggle()">🌙</button>
+            </div>
+        </header>
+
+        <div class="page-content">
+            <div class="toolbar">
+                <select id="appSelect" onchange="selectApp(this.value)"></select>
+                <input id="search" placeholder="Ekran ara..." oninput="renderGrid()" style="min-width:240px;">
+                <button class="btn" onclick="reload()">⟳ Yenile</button>
+                <span class="stats" id="stats"></span>
+            </div>
+
+            <div class="layout">
+                <div id="gridWrap"><div class="empty">Yükleniyor...</div></div>
+
+                <div>
+                    <div class="panel" id="detailPanel">
+                        <h3>Ekran detayı</h3>
+                        <div class="empty" style="padding:20px;">Soldan bir ekran seçin.</div>
+                    </div>
+
+                    <div class="panel">
+                        <h3>🧭 Yol bul</h3>
+                        <div class="path-box">
+                            <label class="section-label">Başlangıç</label>
+                            <select id="pathFrom"></select>
+                            <label class="section-label">Hedef</label>
+                            <select id="pathTo"></select>
+                            <button class="btn primary" onclick="findPath()">Yolu Bul</button>
+                            <div class="path-steps" id="pathSteps">İki ekran seçip "Yolu Bul"a basın. Çıkan adımları kopyalayıp AI Test Generator'a yapıştırabilirsiniz.</div>
+                            <button class="btn" id="btnCopyPath" onclick="copyPath()" disabled>📋 Adımları Kopyala</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+    if (!Auth.checkAuth()) return;
+
+    let currentApp = "";
+    let map = { screens: [], transitions: [] };
+    let selectedId = "";
+    let pathText = "";
+    const thumbCache = {};   // screen_id → objectURL (görüntüler Bearer token ile çekilir)
+
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const byId = id => map.screens.find(s => s.id === id);
+    const enc = encodeURIComponent;
+
+    async function thumbUrl(id) {
+        if (thumbCache[id]) return thumbCache[id];
+        try {
+            const r = await fetch(`${API_URL}/app-map/maps/${enc(currentApp)}/screens/${enc(id)}/thumb`,
+                                  { headers: { Authorization: `Bearer ${Auth.getToken()}` } });
+            if (!r.ok) return "";
+            thumbCache[id] = URL.createObjectURL(await r.blob());
+            return thumbCache[id];
+        } catch { return ""; }
+    }
+
+    function actionText(a) {
+        if (!a) return "?";
+        if (a.type === "back") return "◀ Geri";
+        if (a.type === "input") return `✎ ${a.target ? `"${a.target}"` : "yazı"} girişi`;
+        return a.target ? `"${a.target}" dokun` : (a.label || "dokun");
+    }
+
+    // ── Yükleme ─────────────────────────────────────────────────────────────
+    async function loadApps() {
+        const sel = document.getElementById("appSelect");
+        const { apps } = await API.get("/app-map/apps");
+        if (!apps.length) {
+            sel.innerHTML = `<option value="">Henüz harita yok</option>`;
+            document.getElementById("gridWrap").innerHTML =
+                `<div class="empty">Henüz kayıtlı ekran yok.<br><br>Harita, AI Test Generator'da yapılan <b>mobil koşumlardan</b> ve <b>⏺ Kayıt Modu</b>'ndan otomatik oluşur.</div>`;
+            return;
+        }
+        let last = "";
+        try { last = localStorage.getItem("appMap_lastApp") || ""; } catch {}
+        sel.innerHTML = apps.map(a => `<option value="${esc(a.app)}">${esc(a.app)} (${a.screens} ekran)</option>`).join("");
+        const pick = apps.some(a => a.app === last) ? last : apps[0].app;
+        sel.value = pick;
+        await selectApp(pick);
+    }
+
+    window.selectApp = async function (app) {
+        if (!app) return;
+        currentApp = app;
+        try { localStorage.setItem("appMap_lastApp", app); } catch {}
+        Object.keys(thumbCache).forEach(k => { URL.revokeObjectURL(thumbCache[k]); delete thumbCache[k]; });
+        map = await API.get(`/app-map/maps/${enc(app)}`);
+        if (!byId(selectedId)) selectedId = "";
+        renderAll();
+    };
+
+    window.reload = async function () {
+        const keep = selectedId;
+        await selectApp(currentApp);
+        if (byId(keep)) selectScreen(keep);
+    };
+
+    // ── Çizim ───────────────────────────────────────────────────────────────
+    function renderAll() {
+        document.getElementById("stats").textContent =
+            `${map.screens.length} ekran · ${map.transitions.length} geçiş`;
+        renderGrid();
+        renderPathSelects();
+        renderDetail();
+    }
+
+    window.renderGrid = function () {
+        const q = document.getElementById("search").value.trim().toLocaleLowerCase("tr");
+        const list = map.screens
+            .filter(s => !q || (s.name || "").toLocaleLowerCase("tr").includes(q))
+            .sort((a, b) => (b.seen_count || 0) - (a.seen_count || 0));
+        const wrap = document.getElementById("gridWrap");
+        if (!list.length) {
+            wrap.innerHTML = `<div class="empty">${map.screens.length ? "Aramaya uyan ekran yok." : "Bu uygulamada henüz ekran yok."}</div>`;
+            return;
+        }
+        wrap.innerHTML = `<div class="grid">` + list.map(s => {
+            const out = map.transitions.filter(t => t.from === s.id).length;
+            return `<div class="screen-card ${s.id === selectedId ? "active" : ""}" onclick="selectScreen('${s.id}')">
+                <img class="thumb" data-thumb="${s.id}" alt="">
+                <div class="meta">
+                    <div class="name" title="${esc(s.name)}">${esc(s.name)}</div>
+                    <div class="sub">${s.seen_count || 1}× görüldü · ${out} çıkış</div>
+                </div></div>`;
+        }).join("") + `</div>`;
+        wrap.querySelectorAll("img[data-thumb]").forEach(async img => { img.src = await thumbUrl(img.dataset.thumb); });
+    };
+
+    function renderPathSelects() {
+        const opts = map.screens.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "tr"))
+            .map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+        ["pathFrom", "pathTo"].forEach(id => {
+            const el = document.getElementById(id), keep = el.value;
+            el.innerHTML = opts;
+            if (byId(keep)) el.value = keep;
+        });
+    }
+
+    function trItem(t, dir) {
+        const other = byId(dir === "out" ? t.to : t.from);
+        const otherName = other ? other.name : "?";
+        const arrow = dir === "out"
+            ? `${esc(actionText(t.action))} → <span class="go" onclick="selectScreen('${t.to}')">${esc(otherName)}</span>`
+            : `<span class="go" onclick="selectScreen('${t.from}')">${esc(otherName)}</span> → ${esc(actionText(t.action))}`;
+        return `<div class="tr-item">
+            <span>${arrow}</span>
+            <span class="badge ${t.source}">${t.source === "record" ? "kayıt" : "koşum"}</span>
+            ${t.action && t.action.dynamic ? `<span class="badge dyn" title="Dokunulan yazı ekranın sabit etiketi değil (isim, alıcı, kart adı gibi kişiye özel veri). Başka kullanıcıda çalışmayabilir; yol bulmada başka yol yoksa kullanılır.">⚠ veriye bağlı</span>` : ""}
+            <span class="cnt" title="İlk: ${esc(t.first_seen)} · Ekleyen: ${esc(t.added_by)}">${t.count}×</span>
+            <button class="del" title="Geçişi sil" onclick="deleteTransition('${t.id}')">✕</button></div>`;
+    }
+
+    async function renderDetail() {
+        const panel = document.getElementById("detailPanel");
+        const s = byId(selectedId);
+        if (!s) {
+            panel.innerHTML = `<h3>Ekran detayı</h3><div class="empty" style="padding:20px;">Soldan bir ekran seçin.</div>`;
+            return;
+        }
+        const outs = map.transitions.filter(t => t.from === s.id);
+        const ins  = map.transitions.filter(t => t.to === s.id);
+        panel.innerHTML = `
+            <h3>Ekran detayı</h3>
+            <img class="detail-thumb" id="detailThumb" alt="">
+            <input class="detail-name" id="detailName" value="${esc(s.name)}"
+                   onkeydown="if(event.key==='Enter') renameScreen()" title="Enter ile kaydet">
+            <div class="kv">${s.seen_count || 1}× görüldü · ilk: ${esc(s.first_seen)} · ekleyen: ${esc(s.added_by)}
+                <span class="badge ${s.source}">${s.source === "record" ? "kayıt" : "koşum"}</span></div>
+            <div class="kv" title="Sabit etiketler: ekranın her ziyarette gösterdiği yazılar (isim/bakiye gibi değişken veriler zamanla elenir). Yapı kimlikleri: uygulamanın resource-id'leri — veriden bağımsız, en güvenilir tanıma.">
+                Tanıma: ${s.static_labels || 0} sabit etiket · ${s.structure_ids || 0} yapı kimliği · ${s.visits || 1} ziyaret
+                ${(s.visits || 1) < 2 ? " — <i>sabit/değişken ayrımı için en az 2 ziyaret gerekir</i>" : ""}</div>
+            ${Object.keys(s.versions || {}).length ? `<div class="kv">Sürümler: ${Object.keys(s.versions).map(esc).join(", ")}</div>` : ""}
+            <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
+                <button class="btn" onclick="renameScreen()">Adı Kaydet</button>
+                <button class="btn" onclick="setPath('from')">Başlangıç yap</button>
+                <button class="btn" onclick="setPath('to')">Hedef yap</button>
+                <button class="btn danger" onclick="deleteScreen()" title="Ekranı ve geçişlerini sil">Sil</button>
+            </div>
+            <div style="display:flex; gap:6px; margin-bottom:14px;" title="Aynı ekran yanlışlıkla iki kez kaydedildiyse: bu ekran seçilen ekrana katılır, geçişleri taşınır, sabit etiketler yeniden öğrenilir.">
+                <select id="mergeInto" style="flex:1; min-width:0; padding:6px 10px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-primary); color:var(--text-primary); font-size:0.8rem;">
+                    <option value="">Aynı ekran mı? Şununla birleştir...</option>
+                    ${map.screens.filter(o => o.id !== s.id).sort((a, b) => (a.name || "").localeCompare(b.name || "", "tr"))
+                        .map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}
+                </select>
+                <button class="btn" onclick="mergeScreen()">Birleştir</button>
+            </div>
+            ${(() => {
+                const acts = Object.values(s.actions || {}).sort((x, y) => (y.count || 0) - (x.count || 0));
+                const icon = { input: "✎", tap: "☝" };
+                return `<div class="section-label">Bu ekrandaki işlemler (${acts.length})</div>
+                <div class="tr-list">${acts.map(a => `<div class="tr-item">
+                    <span>${icon[a.type] || "•"} ${a.target ? esc(`"${a.target}"`) : "<i>kişiye özel öğe</i>"} ${a.type === "input" ? "alanına yazı" : "dokunuşu (ekran değişmiyor)"}</span>
+                    ${a.dynamic ? `<span class="badge dyn">⚠ veriye bağlı</span>` : ""}
+                    <span class="badge ${a.source}">${a.source === "record" ? "kayıt" : "koşum"}</span>
+                    <span class="cnt">${a.count}×</span></div>`).join("") || `<div class="kv">Henüz yok — alanlara yazı, toggle gibi ekranı değiştirmeyen işlemler burada birikir</div>`}</div>`;
+            })()}
+            <div class="section-label">Bu ekrandan çıkışlar (${outs.length})</div>
+            <div class="tr-list">${outs.map(t => trItem(t, "out")).join("") || `<div class="kv">Henüz yok</div>`}</div>
+            <div class="section-label">Bu ekrana girişler (${ins.length})</div>
+            <div class="tr-list">${ins.map(t => trItem(t, "in")).join("") || `<div class="kv">Henüz yok</div>`}</div>`;
+        document.getElementById("detailThumb").src = await thumbUrl(s.id);
+    }
+
+    // ── Aksiyonlar ──────────────────────────────────────────────────────────
+    window.selectScreen = function (id) {
+        selectedId = id;
+        renderGrid();
+        renderDetail();
+    };
+
+    window.renameScreen = async function () {
+        const name = document.getElementById("detailName").value.trim();
+        if (!name) { Toast.error("Ad boş olamaz"); return; }
+        try {
+            await API.post(`/app-map/maps/${enc(currentApp)}/screens/${enc(selectedId)}/rename`, { name });
+            byId(selectedId).name = name;
+            renderAll();
+            Toast.success("Ekran adı kaydedildi");
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    window.deleteScreen = async function () {
+        const s = byId(selectedId);
+        if (!s || !confirm(`"${s.name}" ekranı ve tüm geçişleri silinsin mi?`)) return;
+        try {
+            await API.delete(`/app-map/maps/${enc(currentApp)}/screens/${enc(selectedId)}`);
+            selectedId = "";
+            await reload();
+            Toast.success("Ekran silindi");
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    window.mergeScreen = async function () {
+        const into = document.getElementById("mergeInto").value, s = byId(selectedId), t = byId(into);
+        if (!into || !s || !t) { Toast.error("Birleştirilecek ekranı seçin"); return; }
+        if (!confirm(`"${s.name}" ekranı "${t.name}" ekranına katılsın mı? Geçişleri taşınır, bu kayıt silinir.`)) return;
+        try {
+            await API.post(`/app-map/maps/${enc(currentApp)}/screens/${enc(selectedId)}/merge`, { into });
+            selectedId = into;
+            await reload();
+            Toast.success("Ekranlar birleştirildi");
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    window.deleteTransition = async function (tid) {
+        if (!confirm("Bu geçiş silinsin mi?")) return;
+        try {
+            await API.delete(`/app-map/maps/${enc(currentApp)}/transitions/${enc(tid)}`);
+            map.transitions = map.transitions.filter(t => t.id !== tid);
+            renderAll();
+        } catch (e) { Toast.error(e.message); }
+    };
+
+    window.setPath = function (which) {
+        document.getElementById(which === "from" ? "pathFrom" : "pathTo").value = selectedId;
+    };
+
+    window.findPath = async function () {
+        const from = document.getElementById("pathFrom").value, to = document.getElementById("pathTo").value;
+        const out = document.getElementById("pathSteps"), btn = document.getElementById("btnCopyPath");
+        pathText = ""; btn.disabled = true;
+        if (!from || !to) { out.textContent = "İki ekran seçin."; return; }
+        if (from === to) { out.textContent = "Başlangıç ve hedef aynı ekran."; return; }
+        try {
+            const d = await API.get(`/app-map/maps/${enc(currentApp)}/path?from_id=${enc(from)}&to_id=${enc(to)}`);
+            const dyn = new Set(d.dynamic_steps || []);
+            const lines = d.steps.filter(Boolean);
+            pathText = lines.join("\n");
+            out.innerHTML = lines.length
+                ? d.steps.map((l, i) => l ? `${i + 1}. ${esc(l)}${dyn.has(i) ? `  <span class="path-warn">⚠ veriye bağlı</span>` : ""}` : "")
+                      .filter(Boolean).join("\n")
+                  + (dyn.size ? `\n\n<span class="path-warn">⚠ İşaretli adımlar kişiye özel bir seçime (isim, alıcı, kart) dokunuyor; farklı kullanıcıyla koşarken bu adımı düzenleyin.</span>` : "")
+                : "Yol var ama adım metni kaydedilmemiş (koordinat dokunuşları).";
+            btn.disabled = !lines.length;
+        } catch (e) {
+            out.textContent = e.message + " — bu iki ekranı birbirine bağlayan bir koşum ya da kayıt yapın.";
+        }
+    };
+
+    window.copyPath = async function () {
+        if (!pathText) return;
+        try { await navigator.clipboard.writeText(pathText); Toast.success("Adımlar kopyalandı"); }
+        catch { Toast.error("Kopyalanamadı"); }
+    };
+
+    loadApps().catch(e => {
+        document.getElementById("gridWrap").innerHTML = `<div class="empty">Harita yüklenemedi: ${esc(e.message)}</div>`;
+    });
+})();
+</script>
+</body>
+</html>

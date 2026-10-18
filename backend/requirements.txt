@@ -38,3 +38,6 @@ python-docx>=1.1.0
 
 # Embedding / RAG
 numpy>=1.26.0
+
+# Mobil vision fallback OCR (AI Test Generator koşumu — LLM yerine)
+rapidocr_onnxruntime>=1.4.4

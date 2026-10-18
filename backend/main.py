@@ -31,6 +31,8 @@ from routers.workspace_router import router as workspace_router
 from routers.advanced_editor_router import router as advanced_editor_router
 # 🤖 AI Test Generator (Ollama / gemma3:4b)
 from routers.ai_test_generator_router import router as ai_gen_router
+from routers.app_map_router import router as app_map_router
+from routers.device_pool_router import router as device_pool_router
 # ☕ Java Test Generator (Ollama / gemma3:4b)
 from routers.java_generator_router import router as java_gen_router
 # 🥒 BDD Generator
@@ -78,6 +80,8 @@ app.include_router(workspace_router, prefix="/api")
 app.include_router(advanced_editor_router)
 # 🤖 AI Test Generator
 app.include_router(ai_gen_router)
+app.include_router(app_map_router)
+app.include_router(device_pool_router)
 # ☕ Java Test Generator
 app.include_router(java_gen_router)
 # 🥒 BDD Generator
@@ -104,12 +108,16 @@ async def health(): return {"status": "ok", "time": datetime.now().isoformat()}
 from fastapi import Depends
 from pydantic import BaseModel as _BM
 from routers.auth import get_current_user as _get_user
-from services.ai_service import get_ai_config, save_ai_config, get_gemini_key
+from fastapi import UploadFile, File
+from services.ai_service import get_ai_config, save_ai_config, get_gemini_key, get_evren_config, evren_predict
 
 class AIConfigBody(_BM):
     gemini_api_key: str = ""
     ollama_url:     str = ""
     ollama_model:   str = ""
+    evren_api_url:          str = ""
+    evren_api_key:          str = ""
+    evren_model_version_id: str = ""
 
 @app.get("/api/admin/ai-config", tags=["Admin"])
 async def get_ai_config_endpoint(current_user=Depends(_get_user)):
@@ -124,6 +132,10 @@ async def get_ai_config_endpoint(current_user=Depends(_get_user)):
         "masked_key":   masked,
         "ollama_url":   cfg.get("ollama_url",   "http://localhost:11434/api/generate"),
         "ollama_model": cfg.get("ollama_model", "gemma3:4b"),
+        "evren_api_url":          get_evren_config()["url"],
+        "evren_configured":       bool(cfg.get("evren_api_key")),
+        "evren_masked_key":       _mask(cfg.get("evren_api_key", "")),
+        "evren_model_version_id": cfg.get("evren_model_version_id", ""),
     }
 
 @app.post("/api/admin/ai-config", tags=["Admin"])
@@ -138,8 +150,33 @@ async def set_ai_config_endpoint(body: AIConfigBody, current_user=Depends(_get_u
         cfg["ollama_url"] = body.ollama_url
     if body.ollama_model:
         cfg["ollama_model"] = body.ollama_model
+    if body.evren_api_url:
+        cfg["evren_api_url"] = body.evren_api_url
+    if body.evren_api_key:
+        cfg["evren_api_key"] = body.evren_api_key
+    if body.evren_model_version_id:
+        cfg["evren_model_version_id"] = body.evren_model_version_id
     save_ai_config(cfg)
     return {"success": True, "message": "AI yapılandırması kaydedildi"}
+
+
+def _mask(key: str) -> str:
+    return ("*" * (len(key) - 4) + key[-4:]) if len(key) > 4 else ("*" * len(key))
+
+
+@app.post("/api/admin/ai-config/evren-test", tags=["Admin"])
+async def evren_test_endpoint(file: UploadFile = File(...), current_user=Depends(_get_user)):
+    """Evren modeline bir ekran görüntüsü gönderip HAM yanıtı döner —
+    yanıt formatını görmek / bağlantıyı doğrulamak için."""
+    from fastapi import HTTPException
+    from starlette.concurrency import run_in_threadpool
+    if current_user.role != "admin":
+        raise HTTPException(403, "Admin yetkisi gerekli")
+    data = await file.read()
+    try:
+        return {"success": True, "response": await run_in_threadpool(evren_predict, data, file.filename or "screen.png")}
+    except Exception as e:
+        raise HTTPException(502, f"Evren hatası: {e}")
 
 
 # ── Admin: Senaryolara Genel Bakış - workspace dosyalarından okur (Feature 1) ──

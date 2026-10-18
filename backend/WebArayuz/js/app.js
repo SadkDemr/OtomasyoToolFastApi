@@ -85,6 +85,8 @@ const API = {
                 if (typeof errorMsg === 'object') {
                     if (Array.isArray(errorMsg)) {
                         errorMsg = errorMsg.map(e => `${e.loc[1]}: ${e.msg}`).join(', ');
+                    } else if (errorMsg.message) {
+                        errorMsg = errorMsg.message;   // ör. 423 "Telefon meşgul" (sahip bilgisi detail'de)
                     } else {
                         errorMsg = JSON.stringify(errorMsg);
                     }

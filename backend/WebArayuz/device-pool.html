@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cihaz Havuzu - Test Otomasyon Platformu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .page-content { padding: 24px; width: 100%; max-width: 1200px; box-sizing: border-box; }
+        .pool-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+        .pool-summary { display: flex; gap: 8px; flex-wrap: wrap; }
+        .pool-chip { font-size: 0.78rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary); }
+        .pool-chip b { color: var(--text-primary); }
+        .pool-updated { margin-left: auto; font-size: 0.75rem; color: var(--text-muted); }
+        .pool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+        .dev-card { border: 1px solid var(--border-color); border-left: 4px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+        .dev-card.free { border-left-color: var(--success); }
+        .dev-card.busy { border-left-color: var(--danger); }
+        .dev-card.mine { border-left-color: var(--accent-primary); }
+        .dev-card.unavailable { border-left-color: var(--text-muted); opacity: 0.75; }
+        .dev-head { display: flex; align-items: center; gap: 8px; }
+        .dev-name { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+        .dev-id { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-muted); word-break: break-all; }
+        .dev-badge { margin-left: auto; font-size: 0.7rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+        .dev-badge.free { background: rgba(16,185,129,0.12); color: var(--success); }
+        .dev-badge.busy { background: rgba(239,68,68,0.12); color: var(--danger); }
+        .dev-badge.mine { background: rgba(79,70,229,0.12); color: var(--accent-primary); }
+        .dev-badge.unavailable { background: var(--bg-tertiary); color: var(--text-muted); }
+        .dev-holder { font-size: 0.85rem; color: var(--text-primary); }
+        .dev-uses { display: flex; flex-direction: column; gap: 3px; font-size: 0.76rem; color: var(--text-secondary); }
+        .dev-actions { display: flex; justify-content: flex-end; }
+        .pool-help { margin-top: 22px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.6; }
+        .empty-state { padding: 40px; text-align: center; color: var(--text-muted); }
+        .node-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+        .node-pill { font-size: 0.75rem; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary); }
+        .node-pill.down { border-color: rgba(239,68,68,0.45); color: var(--danger); }
+        .dev-node { font-size: 0.72rem; color: var(--text-secondary); }
+        .admin-nodes { margin-top: 28px; border-top: 1px solid var(--border-color); padding-top: 18px; }
+        .admin-nodes h3 { font-size: 0.95rem; margin: 0 0 4px; color: var(--text-primary); }
+        .admin-nodes .sub { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px; }
+        .node-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .node-table th, .node-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+        .node-table th { color: var(--text-muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; }
+        .node-table td.mono { font-family: 'JetBrains Mono', monospace; font-size: 0.74rem; }
+        .node-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-top: 12px; align-items: end; }
+        .node-form label { display: flex; flex-direction: column; gap: 3px; font-size: 0.72rem; color: var(--text-muted); }
+        .node-form input, .node-form select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 0.8rem; }
+        .node-test { margin-top: 10px; font-size: 0.78rem; white-space: pre-wrap; color: var(--text-secondary); }
+        .node-test .ok { color: var(--success); } .node-test .bad { color: var(--danger); }
+    </style>
+</head>
+<body>
+<div id="app-root">
+    <div id="sidebar-container"></div>
+    <div class="main-content">
+        <header class="top-bar">
+            <span class="top-bar-title">📱 Cihaz Havuzu</span>
+        </header>
+
+        <div class="page-content">
+            <div class="pool-toolbar">
+                <div class="pool-summary" id="poolSummary"></div>
+                <span class="pool-updated" id="poolUpdated"></span>
+                <button class="btn btn-secondary btn-sm" onclick="loadPool()">↺ Yenile</button>
+            </div>
+            <div id="nodeStrip" class="node-strip"></div>
+            <div id="poolWrap"><div class="empty-state">Yükleniyor...</div></div>
+            <div id="adminNodes" class="admin-nodes" style="display:none;">
+                <h3>🖧 Cihaz Sunucuları</h3>
+                <div class="sub">Telefonların USB ile takılı olduğu makineler (KVM ana makinesi, başka PC'ler, iPhone'lar için Mac mini). Android makinede adb sunucusu ağı dinlemeli, Mac'te iOS ajanı çalışmalı; ikisinde de Appium çalışmalı — kurulum: <code>deploy/device-node/</code>. Uygulamanın kendi makinesine takılı telefonlar için kayıt gerekmez.</div>
+                <table class="node-table"><thead><tr><th>Ad</th><th>Adres</th><th>Appium</th><th>Durum</th><th></th></tr></thead><tbody id="nodeRows"><tr><td colspan="5">Yükleniyor...</td></tr></tbody></table>
+                <div class="node-form" id="nodeForm">
+                    <input type="hidden" id="nfId">
+                    <label>Platform<select id="nfPlatform" onchange="nodePlatformUI()"><option value="android">Android (adb)</option><option value="ios">iOS (Mac)</option></select></label>
+                    <label>Ad<input id="nfName" placeholder="Ubuntu-1"></label>
+                    <label>Adres (IP)<input id="nfHost" placeholder="192.168.1.20"></label>
+                    <label class="nf-android">adb portu<input id="nfPort" type="number" value="5037"></label>
+                    <label class="nf-ios" style="display:none;">Ajan portu<input id="nfAgentPort" type="number" value="4724"></label>
+                    <label class="nf-ios" style="display:none;">Ajan anahtarı<input id="nfToken" type="password" placeholder="setup-macos.sh çıktısındaki anahtar" autocomplete="off"></label>
+                    <label>Appium adresi<input id="nfAppium" placeholder="boşsa http://IP:4723"></label>
+                    <label>Durum<select id="nfEnabled"><option value="1">Etkin</option><option value="0">Devre dışı</option></select></label>
+                    <div style="display:flex; gap:6px;">
+                        <button class="btn btn-secondary btn-sm" onclick="nodeTest()">🔌 Bağlantıyı test et</button>
+                        <button class="btn btn-primary btn-sm" id="nfSave" onclick="nodeSave()">＋ Ekle</button>
+                        <button class="btn btn-ghost btn-sm" id="nfCancel" onclick="nodeFormReset()" style="display:none;">Vazgeç</button>
+                    </div>
+                </div>
+                <div id="nodeTestOut" class="node-test"></div>
+            </div>
+            <div class="pool-help">
+                Bir telefon aynı anda yalnızca bir kişi tarafından kullanılabilir. AI Test Generator'da oturum açtığınızda,
+                koşum başlattığınızda ya da bir AI Job telefonda koşarken telefon sizin adınıza ayrılır; bitince otomatik boşa düşer
+                (15 dakika boşta kalan oturumlar kendiliğinden kapanır). Başkasının kullandığı telefona bağlanılamaz ve ekranı gösterilmez.
+                Takılı kalan bir telefonu kullanan kişi ya da yönetici <b>Boşa çıkar</b> ile serbest bırakabilir — bu, o telefondaki oturumu/koşumu kapatır.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/app.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    const STATUS = {
+        free:        { label: "🟢 Boş",          cls: "free" },
+        busy:        { label: "🔴 Meşgul",       cls: "busy" },
+        mine:        { label: "🔵 Sizde",        cls: "mine" },
+        unavailable: { label: "⚪ Kullanılamaz", cls: "unavailable" },
+    };
+    const PURPOSE = { session: "Oturum", run: "Koşum", job: "AI Job" };
+
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    function age(sec) {
+        const m = Math.floor(sec / 60);
+        if (m < 1) return "az önce";
+        if (m < 60) return `${m} dk`;
+        return `${Math.floor(m / 60)} sa ${m % 60} dk`;
+    }
+
+    let _timer = null;
+    window.loadPool = async function () {
+        clearTimeout(_timer);
+        const wrap = document.getElementById("poolWrap");
+        try {
+            const d = await API.get("/device-pool");
+            render(d.devices || []);
+            renderNodes(d.nodes);
+            if (d.is_admin && document.getElementById("adminNodes").style.display === "none") {
+                document.getElementById("adminNodes").style.display = "";
+                loadNodesAdmin();
+            }
+            document.getElementById("poolUpdated").textContent = "Güncellendi: " + new Date().toLocaleTimeString("tr-TR");
+        } catch (e) {
+            wrap.innerHTML = `<div class="empty-state">⚠️ ${esc(e.message)}</div>`;
+        } finally {
+            if (!document.hidden) _timer = setTimeout(loadPool, 5000);
+        }
+    };
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPool(); });
+
+    function render(devs) {
+        const n = k => devs.filter(d => d.status === k).length;
+        document.getElementById("poolSummary").innerHTML =
+            `<span class="pool-chip">Toplam <b>${devs.length}</b></span>` +
+            `<span class="pool-chip">🟢 Boş <b>${n("free")}</b></span>` +
+            `<span class="pool-chip">🔴 Meşgul <b>${n("busy")}</b></span>` +
+            `<span class="pool-chip">🔵 Sizde <b>${n("mine")}</b></span>`;
+        const wrap = document.getElementById("poolWrap");
+        if (!devs.length) {
+            wrap.innerHTML = `<div class="empty-state">Sunucuya bağlı telefon yok.<br><small>Telefonu USB ile bağlayıp USB hata ayıklamaya izin verin.</small></div>`;
+            return;
+        }
+        wrap.innerHTML = `<div class="pool-grid">${devs.map(card).join("")}</div>`;
+    }
+
+    function card(d) {
+        const st = STATUS[d.status] || STATUS.unavailable;
+        const name = (d.platform === "ios" ? "🍎 " : "") + (d.model || (d.platform === "ios" ? "iPhone" : "Telefon"));
+        let body = "";
+        if (d.status === "busy" || d.status === "mine") {
+            body += `<div class="dev-holder">👤 <b>${esc(d.status === "mine" ? "Siz" : d.holder)}</b>${d.status === "mine" ? "" : ` <span style="color:var(--text-muted);font-size:0.75rem;">(${esc(d.username)})</span>`} · ${age(d.age_sec)}</div>`;
+            body += `<div class="dev-uses">` + d.uses.map(u =>
+                `<div>• ${esc(PURPOSE[u.purpose] || u.purpose)}${u.detail ? ": " + esc(u.detail) : ""}</div>`).join("") + `</div>`;
+        } else if (d.status === "unavailable") {
+            body += `<div class="dev-uses">Durum: ${esc(d.adb_state_tr)}${d.adb_state === "unauthorized" ? " — telefonda USB hata ayıklama iznini onaylayın" : ""}</div>`;
+        } else {
+            body += `<div class="dev-uses">Kullanıma hazır</div>`;
+        }
+        const action = d.can_release
+            ? `<div class="dev-actions"><button class="btn btn-danger btn-sm" data-id="${esc(d.id)}" data-holder="${esc(d.status === "mine" ? "" : d.holder)}" onclick="releaseDevice(this)">Boşa çıkar</button></div>`
+            : "";
+        return `<div class="dev-card ${st.cls}">
+            <div class="dev-head"><span class="dev-name">${d.platform === "ios" ? "" : "📱 "}${esc(name)}</span><span class="dev-badge ${st.cls}">${st.label}</span></div>
+            <div class="dev-id">${esc(d.id)}${d.adb_state !== "device" ? " · " + esc(d.adb_state_tr) : ""}</div>
+            ${d.node_name ? `<div class="dev-node">🖧 ${esc(d.node_name)}${d.node_host ? " · " + esc(d.node_host) : ""}</div>` : ""}
+            ${body}${action}
+        </div>`;
+    }
+
+
+    // ── Cihaz sunucuları ──
+    function renderNodes(nodes) {
+        const strip = document.getElementById("nodeStrip");
+        strip.innerHTML = (nodes || []).map(n => n.ok
+            ? `<span class="node-pill">🖧 ${esc(n.name)}${n.host ? " · " + esc(n.host) : ""} — ${n.count} telefon</span>`
+            : `<span class="node-pill down" title="${esc(n.error)}">⚠ ${esc(n.name)}${n.host ? " · " + esc(n.host) : ""} — ulaşılamıyor</span>`).join("");
+    }
+
+    let _nodes = [];
+    async function loadNodesAdmin() {
+        try { _nodes = (await API.get("/device-pool/nodes")).nodes || []; }
+        catch (e) { document.getElementById("nodeRows").innerHTML = `<tr><td colspan="5">⚠ ${esc(e.message)}</td></tr>`; return; }
+        document.getElementById("nodeRows").innerHTML = _nodes.length ? _nodes.map(n => `<tr>
+            <td><b>${esc(n.name)}</b>${n.note ? `<div style="color:var(--text-muted)">${esc(n.note)}</div>` : ""}</td>
+            <td class="mono">${n.platform === "ios" ? "🍎 " : "🤖 "}${esc(n.host)}:${n.platform === "ios" ? n.agent_port : n.adb_port}${n.platform === "ios" && !n.has_token ? ' <span style="color:var(--danger)">(anahtar yok)</span>' : ""}</td>
+            <td class="mono">${esc(n.appium_url)}</td>
+            <td>${n.enabled ? "Etkin" : "Devre dışı"}</td>
+            <td style="white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm" data-id="${n.id}" onclick="nodeEdit(this)">Düzenle</button>
+                <button class="btn btn-ghost btn-sm" data-id="${n.id}" onclick="nodeDelete(this)" style="color:var(--danger)">Sil</button>
+            </td></tr>`).join("")
+            : `<tr><td colspan="5" style="color:var(--text-muted)">Henüz cihaz sunucusu yok — aşağıdan ekleyin.</td></tr>`;
+    }
+    function nodeBody() {
+        return {
+            name: document.getElementById("nfName").value.trim(),
+            host: document.getElementById("nfHost").value.trim(),
+            adb_port: parseInt(document.getElementById("nfPort").value || "5037", 10),
+            appium_url: document.getElementById("nfAppium").value.trim(),
+            enabled: document.getElementById("nfEnabled").value === "1",
+            platform: document.getElementById("nfPlatform").value,
+            agent_port: parseInt(document.getElementById("nfAgentPort").value || "4724", 10),
+            agent_token: document.getElementById("nfToken").value.trim(),
+            node_id: parseInt(document.getElementById("nfId").value || "0", 10) || null,
+        };
+    }
+    window.nodePlatformUI = function () {
+        const ios = document.getElementById("nfPlatform").value === "ios";
+        document.querySelectorAll(".nf-ios").forEach(e => e.style.display = ios ? "" : "none");
+        document.querySelectorAll(".nf-android").forEach(e => e.style.display = ios ? "none" : "");
+        document.getElementById("nfName").placeholder = ios ? "Mac mini" : "Ubuntu-1";
+    };
+    window.nodeFormReset = function () {
+        ["nfId", "nfName", "nfHost", "nfAppium", "nfToken"].forEach(id => document.getElementById(id).value = "");
+        document.getElementById("nfPort").value = "5037";
+        document.getElementById("nfAgentPort").value = "4724";
+        document.getElementById("nfPlatform").value = "android";
+        document.getElementById("nfToken").placeholder = "setup-macos.sh çıktısındaki anahtar";
+        nodePlatformUI();
+        document.getElementById("nfEnabled").value = "1";
+        document.getElementById("nfSave").textContent = "＋ Ekle";
+        document.getElementById("nfCancel").style.display = "none";
+        document.getElementById("nodeTestOut").textContent = "";
+    };
+    window.nodeEdit = function (btn) {
+        const n = _nodes.find(x => x.id === +btn.dataset.id);
+        if (!n) return;
+        document.getElementById("nfId").value = n.id;
+        document.getElementById("nfName").value = n.name;
+        document.getElementById("nfHost").value = n.host;
+        document.getElementById("nfPort").value = n.adb_port;
+        document.getElementById("nfAppium").value = n.appium_url;
+        document.getElementById("nfPlatform").value = n.platform || "android";
+        document.getElementById("nfAgentPort").value = n.agent_port || 4724;
+        document.getElementById("nfToken").value = "";
+        document.getElementById("nfToken").placeholder = n.has_token ? "değiştirmek için yeni anahtar (boş = aynı)" : "setup-macos.sh çıktısındaki anahtar";
+        nodePlatformUI();
+        document.getElementById("nfEnabled").value = n.enabled ? "1" : "0";
+        document.getElementById("nfSave").textContent = "💾 Kaydet";
+        document.getElementById("nfCancel").style.display = "";
+        document.getElementById("nfName").focus();
+    };
+    window.nodeSave = async function () {
+        const id = document.getElementById("nfId").value, body = nodeBody();
+        try {
+            if (id) await API.put(`/device-pool/nodes/${id}`, body);
+            else await API.post("/device-pool/nodes", body);
+            Toast.success(`"${body.name}" kaydedildi`);
+            nodeFormReset();
+            await loadNodesAdmin();
+            loadPool();
+        } catch (e) { Toast.error(e.message); }
+    };
+    window.nodeDelete = async function (btn) {
+        const n = _nodes.find(x => x.id === +btn.dataset.id);
+        if (!n || !confirm(`"${n.name}" cihaz sunucusu silinsin mi? Bu makinedeki telefonlar listeden çıkar.`)) return;
+        try { await API.delete(`/device-pool/nodes/${n.id}`); Toast.success("Silindi"); await loadNodesAdmin(); loadPool(); }
+        catch (e) { Toast.error(e.message); }
+    };
+    window.nodeTest = async function () {
+        const out = document.getElementById("nodeTestOut"), b = nodeBody();
+        if (!b.host) { Toast.error("Adres (IP) girin"); return; }
+        out.textContent = "Test ediliyor...";
+        try {
+            const r = await API.post("/device-pool/nodes/test", b);
+            const line = (ok, label, msg) => `<span class="${ok ? "ok" : "bad"}">${ok ? "✓" : "✗"} ${label}</span>${msg ? " — " + esc(msg) : ""}`;
+            const devs = (r.devices || []).map(d => `   • ${esc(d.model || "telefon")} (${esc(d.id)}) — ${esc(d.adb_state)}`).join("\n");
+            const what = b.platform === "ios" ? `iOS ajanı (${esc(b.host)}:${b.agent_port})` : `adb sunucusu (${esc(b.host)}:${b.adb_port})`;
+            out.innerHTML = line(r.adb.ok, what, r.adb.ok ? `${r.adb.count} telefon` : r.adb.error)
+                + (devs ? "\n" + devs : "")
+                + "\n" + line(r.appium && r.appium.ok, "Appium", r.appium ? (r.appium.ok ? "hazır" : r.appium.error) : "adres yok");
+        } catch (e) { out.textContent = "Hata: " + e.message; }
+    };
+
+    window.releaseDevice = async function (btn) {
+        const id = btn.dataset.id, who = btn.dataset.holder;
+        const q = who
+            ? `${id} telefonunu ${who} kullanıyor.\nBoşa çıkarılırsa o kişinin oturumu/koşumu kapatılır. Devam edilsin mi?`
+            : `${id} telefonundaki oturum/koşumunuz kapatılıp telefon boşa çıkarılsın mı?`;
+        if (!confirm(q)) return;
+        btn.disabled = true;
+        try {
+            const r = await API.post(`/device-pool/${encodeURIComponent(id)}/release`, {});
+            Toast.success(r.released ? `Telefon boşa çıkarıldı${(r.actions || []).length ? " (" + r.actions.join(", ") + ")" : ""}` : (r.message || "Telefon zaten boş"));
+        } catch (e) { Toast.error(e.message); }
+        loadPool();
+    };
+
+    loadPool();
+})();
+</script>
+</body>
+</html>

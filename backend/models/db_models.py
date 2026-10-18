@@ -442,3 +442,25 @@ class JavaStepTemplate(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# --- CIHAZ SUNUCULARI (telefonların takılı olduğu uzak makineler) ---
+class DeviceNode(Base):
+    """Telefonların USB ile takılı olduğu makine (Ubuntu ana makine, Mac mini...).
+    Uygulama bu makinedeki adb sunucusuna (host:adb_port) ve Appium'a (appium_url)
+    ağ üzerinden bağlanır. Uygulamanın kendi makinesindeki telefonlar kayıt gerektirmez
+    (services/device_node_service.py'de sabit "Bu sunucu" düğümü)."""
+    __tablename__ = "device_nodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)                 # "Ubuntu-1", "Mac mini"
+    host = Column(String, nullable=False)                 # IP / ad (bridge ağ)
+    platform = Column(String, default="android")          # "android" | "ios" (Faz 2)
+    adb_port = Column(Integer, default=5037)              # android: adb sunucusu (adb -a)
+    appium_url = Column(String, nullable=False)           # http://host:4723
+    agent_port = Column(Integer, default=4724)            # ios: Mac'teki cihaz listesi ajanı
+    agent_token = Column(String, nullable=True)           # ios: ajan erişim anahtarı
+    enabled = Column(Boolean, default=True)
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

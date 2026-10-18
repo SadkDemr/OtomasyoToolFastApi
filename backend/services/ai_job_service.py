@@ -648,8 +648,33 @@ async def _finalize_run(run_id: int, interrupted: bool) -> None:
         pass
 
 
+async def _fail_cell(run_id: int, cell_id: int, message: str) -> None:
+    """Hücreyi koşturmadan hata ile kapatır (ör. telefon başka kullanıcıda). İstisna sızdırmaz."""
+    try:
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            cell = db.query(AiJobRunResult).filter(AiJobRunResult.id == cell_id).first()
+            if cell:
+                cell.status = "error"
+                cell.ended_at = datetime.utcnow()
+                cell.log_json = _json.dumps({"error": message}, ensure_ascii=False)
+                db.commit()
+        finally:
+            db.close()
+        await _publish(run_id, {"type": "cell_update", "cell_id": cell_id, "status": "error"})
+    except Exception as e:
+        print(f"[AI-JOB] hücre {cell_id} kapatılamadı: {e}")
+
+
+# Telefon başka kullanıcıdaysa job hücreleri en fazla bu kadar bekler (zamanlanmış koşumlar
+# gece başkasının unuttuğu bir oturuma takılıp sonsuza dek beklemesin)
+JOB_DEVICE_WAIT_SEC = 600
+
+
 async def _run_job_cells(
     run_id: int, device_groups: list[list[dict]], scenario_data: dict[str, dict], platform: str,
+    owner=None, job_label: str = "",
 ) -> None:
     """FAZ 2 (arka plan): hücreleri koşturur ve run'ı sonlandırır.
 
@@ -677,11 +702,31 @@ async def _run_job_cells(
                 raise RuntimeError("Başka bir desktop testi çalışıyor, koşum iptal edildi")
 
         async def _device_sequence(cells: list[dict]) -> None:
-            for c in cells:
-                await _execute_cell(
-                    run_id, c["cell_id"], scenario_data.get(c["scenario_folder"]),
-                    c["device_id"], c["system_port"], platform,
-                )
+            from services import device_lease_service as leases
+            dev = cells[0]["device_id"] if cells else ""
+            token = None
+            if platform == "mobile" and owner is not None and dev:
+                async def _waiting(h):
+                    await _publish(run_id, {"type": "device_waiting", "device_id": dev,
+                                            "holder": h.get("display", ""),
+                                            "message": leases.busy_message(dev, h) + " — boşalması bekleniyor"})
+                try:
+                    token = await leases.acquire_wait(
+                        dev, owner, "job", job_label, ref=run_id, timeout=JOB_DEVICE_WAIT_SEC,
+                        on_wait=_waiting, cancelled=lambda: run_id in _stopped_runs)
+                except leases.DeviceBusyError as e:
+                    msg = str(e) if run_id not in _stopped_runs else "Koşum durduruldu"
+                    for c in cells:
+                        await _fail_cell(run_id, c["cell_id"], msg)
+                    return
+            try:
+                for c in cells:
+                    await _execute_cell(
+                        run_id, c["cell_id"], scenario_data.get(c["scenario_folder"]),
+                        c["device_id"], c["system_port"], platform,
+                    )
+            finally:
+                leases.release(dev, token)
 
         await asyncio.gather(*[_device_sequence(g) for g in device_groups])
     except Exception as e:
@@ -797,8 +842,18 @@ async def run_job(job_id: int, db: Session, trigger_type: str = "manual") -> int
 
         await _publish(run_id, {"type": "run_started", "run_id": run_id, "total": len(cells)})
 
+        # Telefonlar job sahibi adına kiralanır (Cihaz Havuzu'nda "X — AI Job" görünür).
+        # ORM nesnesi değil düz kopya: arka plan görevi istek session'ı kapandıktan sonra da çalışır.
+        from types import SimpleNamespace
+        from models.db_models import User
+        _u = db.query(User).filter(User.id == job.user_id).first()
+        owner = SimpleNamespace(id=job.user_id, username=getattr(_u, "username", "") or f"user{job.user_id}",
+                                full_name=getattr(_u, "full_name", "") or "")
+        job_label = f"{job.name} (koşum #{run_id})"
+
         # FAZ 2: arka plana devret — çağıran (router/zamanlayıcı) beklemez.
-        asyncio.create_task(_run_job_cells(run_id, device_groups, scenario_data, job.platform))
+        asyncio.create_task(_run_job_cells(run_id, device_groups, scenario_data, job.platform,
+                                           owner=owner, job_label=job_label))
     except Exception:
         try:
             db.rollback()

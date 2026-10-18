@@ -51,7 +51,58 @@ def _get_session(user_id: int, platform: str) -> dict | None:
 
 
 def _remove_session(user_id: int, platform: str) -> None:
-    _active_sessions.pop((user_id, platform), None)
+    info = _active_sessions.pop((user_id, platform), None)
+    if info and info.get("lease_token"):
+        leases.release(info.get("device_id", ""), info["lease_token"])
+
+
+def _quit_session(key: tuple[int, str]) -> None:
+    """Oturuma bağlanıp driver.quit() eder ve kaydı (telefon kirasıyla birlikte) siler."""
+    info = _active_sessions.get(key)
+    if not info:
+        return
+    try:
+        if key[1] == "mobile":
+            from services.session_reconnect import attach_appium_session
+            d = attach_appium_session(info["command_executor_url"], info["session_id"])
+        else:
+            from services.session_reconnect import attach_selenium_session
+            d = attach_selenium_session(info["command_executor_url"], info["session_id"])
+        d.quit()
+    except Exception as e:
+        print(f"[SESSION] Kapatma hatasi ({key}): {e}")
+    _remove_session(*key)
+
+
+# ── Telefon paylaşımı (birden fazla kullanıcı, birden fazla telefon) ─────────
+# Telefonu kullanan her yol önce kiralar: services/device_lease_service.py
+from services import device_lease_service as leases
+
+
+from services import device_node_service as dnodes
+
+
+def _adb_device_ids() -> list[str]:
+    """Tüm cihaz sunucularında (yerel + uzak) 'device' durumundaki telefonlar."""
+    return dnodes.adb_devices()
+
+
+def _resolve_device(device_id: str) -> str:
+    """Cihaz seçilmediyse tek bağlı telefon kullanılır; birden fazlaysa seçim zorunlu
+    (aksi halde Appium rastgele bir telefonu — belki başkasının telefonunu — alırdı)."""
+    device_id = (device_id or "").strip()
+    if device_id:
+        return device_id
+    devs = _adb_device_ids()
+    if len(devs) == 1:
+        return devs[0]
+    if not devs:
+        raise HTTPException(400, "Bağlı telefon bulunamadı.")
+    raise HTTPException(400, "Birden fazla telefon bağlı — lütfen kullanacağınız telefonu seçin.")
+
+
+def _busy_http(e: "leases.DeviceBusyError") -> HTTPException:
+    return HTTPException(423, leases.busy_http_detail(e))
 
 
 # ── Tek-adım test havuzu: SQL/API/OKU adımlarının kaydettiği {{değişken}}ler,
@@ -86,19 +137,9 @@ async def _session_idle_reaper():
             if not info:
                 continue
             if now - info["last_used_at"] > _SESSION_IDLE_TIMEOUT_SEC:
-                user_id, platform = key
-                try:
-                    if platform == "mobile":
-                        from services.session_reconnect import attach_appium_session
-                        d = attach_appium_session(info["command_executor_url"], info["session_id"])
-                    else:
-                        from services.session_reconnect import attach_selenium_session
-                        d = attach_selenium_session(info["command_executor_url"], info["session_id"])
-                    d.quit()
-                except Exception as e:
-                    print(f"[SESSION-REAPER] Kapatma hatasi ({key}): {e}")
-                _remove_session(user_id, platform)
-                print(f"[SESSION-REAPER] Idle oturum kapatildi: user={user_id} platform={platform}")
+                # Telefon kirası da düşer → başkaları kullanabilir
+                await asyncio.to_thread(_quit_session, key)
+                print(f"[SESSION-REAPER] Idle oturum kapatildi: user={key[0]} platform={key[1]}")
 
 
 _stop_files:        dict[str, str]               = {}   # run_id → stop flag dosyası
@@ -186,6 +227,7 @@ class GenerateRequest(BaseModel):
     window_title:   Optional[str]  = ""
     reuse_instance: Optional[bool] = True
     single_step_test: Optional[bool] = False   # tek adım "Test Et" çağrısı mı?
+    locator_file:   Optional[str]  = ""      # mobil: workspace/locators/<isim>.json (kayıt modu XPath'leri)
 
 class ExecuteRequest(BaseModel):
     script:          str
@@ -305,6 +347,90 @@ def _parse_azure_devops_csv(decoded: str) -> str | None:
     return "\n".join(steps) if steps else None
 
 
+# ── Locator dosyası (kayıt modu XPath'leri) ───────────────────────────────────
+# Seçiliyse _rule_mobile çıktısındaki tıklama/yazma hedefleri dosyada aranır:
+# bulunursa önce kayıtlı XPath denenir, eleman yoksa eski akıllı arama (metin,
+# kaydırma, vision) aynen çalışır — locator hiçbir zaman tek yol değildir.
+from contextvars import ContextVar
+import ast as _ast
+from services import locator_service
+
+_MOBILE_LOCATORS: ContextVar[dict | None] = ContextVar("ai_gen_mobile_locators", default=None)
+
+
+def _locator_lookup(user_id: int, db: Session, name: Optional[str]) -> dict | None:
+    name = (name or "").strip()
+    if not name:
+        return None
+    ws = _get_user_workspace(user_id, db)
+    if not ws:
+        return None
+    try:
+        return locator_service.load_lookup(ws.local_path, name)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"[LOCATOR] {e}")
+        return None
+
+
+def _call_args(line: str, fn: str):
+    """'_safe_click(driver, 'X', 'Y')' → (girinti, [argüman kaynak metinleri], [sabit değerler|None])"""
+    m = re.match(rf"^(\s*){fn}\(driver, .*\)\s*$", line)
+    if not m:
+        return None
+    src = line.strip()
+    try:
+        call = _ast.parse(src, mode="eval").body
+    except SyntaxError:
+        return None
+    args = call.args[1:]
+    return (m.group(1), [_ast.get_source_segment(src, a) for a in args],
+            [a.value if isinstance(a, _ast.Constant) and isinstance(a.value, str) else None for a in args])
+
+
+def _apply_locators_mobile(step: str, lines: list[str] | None, lookup: dict | None) -> tuple[list | None, bool]:
+    if not lines or not lookup:
+        return lines, False
+    out, hit = [], False
+    for ln in lines:
+        c = _call_args(ln, "_safe_click")
+        if c:
+            ind, srcs, vals = c
+            xp = None
+            for t in vals:
+                if t and not t.startswith(("//", "id/", "@id/")):
+                    xp = locator_service.resolve_xpath(lookup, t, "tap")
+                    if xp:
+                        break
+            if xp:
+                out += [f"{ind}try:",
+                        f"{ind}    driver.find_element(AppiumBy.XPATH, {xp!r}).click()",
+                        f"{ind}    print({('[OK] Locator XPath tıklandı: ' + xp)!r})",
+                        f"{ind}except Exception:",
+                        f"{ind}    _safe_click(driver, {', '.join(srcs)})"]
+                hit = True
+                continue
+        c = _call_args(ln, "_safe_assert")
+        if c and c[2] and c[2][0]:
+            # Sadece yazısız (ikon) kayıtlar: yazılı hedefte doğrulama yazının kendisini arar
+            xp = locator_service.resolve_xpath(lookup, c[2][0], "assert")
+            if xp:
+                out.append(f"{c[0]}_safe_assert(driver, {xp!r})")
+                hit = True
+                continue
+        c = _call_args(ln, "_safe_input")
+        if c and len(c[1]) == 2:
+            ind, srcs, _ = c
+            q = _extract_quoted(_clean_step(step))
+            xp = locator_service.resolve_xpath(lookup, q[0], "type") if len(q) >= 2 else None
+            if xp:
+                out += [f"{ind}_lx = {xp!r} if driver.find_elements(AppiumBy.XPATH, {xp!r}) else {srcs[0]}",
+                        f"{ind}_safe_input(driver, _lx, {srcs[1]})"]
+                hit = True
+                continue
+        out.append(ln)
+    return out, hit
+
+
 def _rule_mobile(step: str) -> list[str] | None:
     """
     Tek bir Türkçe adımı Appium satırlarına çevirir.
@@ -333,6 +459,28 @@ def _rule_mobile(step: str) -> list[str] | None:
             f"if not _VARS[{repr(vn)}]: raise ValueError({repr('Deger okunamadi: ' + hint)})",
             f"print(f'[OKU→_VARS] {vn} = {{_VARS[{repr(vn)}]}}')",
         ]
+
+    # ── Ok ikonları: '"X" yanındaki aşağı ok(una) tıkla', 'Aşağı oka tıkla' ──────
+    # Tırnaklı metin oka YAKINLIK için kullanılır, tıklanacak hedef değildir. Fiil
+    # yazılmasa da ("... aşağı ok butonu") doğrulama fiili yoksa tıklama sayılır.
+    # Evren'de oklar "<" / ">" gibi chevron ikonlarıyla eğitildi → adımda sembolün
+    # kendisi de yazılabilir: '"<" iconuna tıkla', '"Takımları Gör" yanındaki > ikonu'
+    _ARROW_SYMS = {"<": "sol", "‹": "sol", "←": "sol", ">": "sağ", "›": "sağ", "→": "sağ",
+                   "˅": "aşağı", "⌄": "aşağı", "▼": "aşağı", "↓": "aşağı",
+                   "^": "yukarı", "˄": "yukarı", "⌃": "yukarı", "▲": "yukarı", "↑": "yukarı"}
+    _SM = re.search(r'(?:^|\s)["“”\']?([<>‹›←→˅⌄▼↓^˄⌃▲↑])["“”\']?\s+(?:[iı]con|[iı]kon|simge|buton|ok)\w*', s, re.IGNORECASE)
+    _AM = re.search(r'\b(sol|sağ|sag|aşağı|asagi|yukarı|yukari)\s+ok(?:a|u|un|una|lar\w*)?\b', sl)
+    if (_SM or _AM) and not re.search(r'g[öo]r[üu]l[üu]r|g[öo]r[üu]nmeli|kontrol|do[ğg]rula', sl):
+        if _SM:
+            _dir = _ARROW_SYMS[_SM.group(1)]
+        else:
+            _dir = {"sag": "sağ", "asagi": "aşağı", "yukari": "yukarı"}.get(_AM.group(1), _AM.group(1))
+        _near = next((q for q in quoted if q.strip() not in _ARROW_SYMS), "")
+        if not _near:
+            _nm = re.match(r'^(.+?)\s+(?:yan[ıi]ndaki|sa[ğg][ıi]ndaki|solundaki)\b', s, re.IGNORECASE)
+            _near = _nm.group(1).strip() if _nm else ""
+        _phrase = (_near + " " if _near else "") + _dir + " ok"
+        return [f'# {s}', f"_safe_click_arrow(driver, {repr(_phrase)})", 'time.sleep(0.8)']
 
     # ── Pasif Türkçe: "X [suffix] tıklanır" (tırnaksız) ─────────────────────
     _PC = re.search(
@@ -398,7 +546,9 @@ def _rule_mobile(step: str) -> list[str] | None:
 
     # ── Tıklama ───────────────────────────────────────────────────────────────
     CLICK_WORDS = r'(?:t[iı]kla|tikla|bas|click|se[cç]|tap|a[cç])'
-    if re.search(CLICK_WORDS, sl) and quoted:
+    _ASSERT_PRE = r'(?:g[oö]r[uü]l[uü]r|g[oö]r[uü]n[uü]r|g[oö]r[uü]nt[uü]len|do[gğ]rula|kontrol)'
+    _sl_noq = re.sub(r'"[^"]*"', '', sl)
+    if re.search(CLICK_WORDS, sl) and quoted and not (re.search(_ASSERT_PRE, _sl_noq) and not re.search(CLICK_WORDS, _sl_noq)):
         text = quoted[0]
         return [
             f'# {s}',
@@ -412,7 +562,7 @@ def _rule_mobile(step: str) -> list[str] | None:
         text = quoted[0]
         return [
             f'# {s}',
-            f'_safe_assert(driver, \'{text}\')',
+            f'_safe_assert(driver, {text!r})',
         ]
 
     # ── Metin girişi ──────────────────────────────────────────────────────────
@@ -423,11 +573,17 @@ def _rule_mobile(step: str) -> list[str] | None:
         # Şifre alanı mı?
         if re.search(r'(?:şifre|sifre|password|pin|parola)', sl):
             field_xpath = '//android.widget.EditText[@password="true"]'
+        elif len(quoted) >= 2 and not quoted[0].startswith("//"):
+            # '"Tutar" alanına "100" yaz' → alan ADIYLA bul (çok alanlı formlarda ilk
+            # EditText'e yazılmasın): alanın kendi ipucu/metni ya da önündeki etiket
+            lbl = quoted[0].replace('"', "'")
+            field_xpath = (f'(//android.widget.EditText[@text="{lbl}" or @hint="{lbl}"]'
+                           f' | //*[@text="{lbl}" or @content-desc="{lbl}"]/following::android.widget.EditText[1])[1]')
         else:
             field_xpath = '//android.widget.EditText[1]'
         return [
             f'# {s}',
-            f'_safe_input(driver, \'{field_xpath}\', \'{value}\')',
+            f'_safe_input(driver, {field_xpath!r}, {value!r})',
             'time.sleep(0.5)',
         ]
 
@@ -844,77 +1000,390 @@ Code:"""
 VISION_HELPER = '''
 import base64 as _b64, requests as _req, re as _re
 
-def _vision_find(driver, search_text):
-    """Element bulunamazsa screenshot al, LLM ile koordinat bul, tap yap."""
+# ── Vision fallback: OCR (metni bulur) + Evren (nesne tespiti, sınıflı) ───────
+# Koşum sırasında LLM (Gemini/Ollama) KULLANILMAZ — yavaştı (15-60 sn timeout).
+# OCR: rapidocr_onnxruntime (lokal). Evren: ai_config.json'da key + version varsa
+# paralel çağrılır. Sınıflar: Buton, Metin, İcon, Logo, Input, sol/sağ/aşağı/yukarı ok.
+#  - Metin bir Buton/Input kutusundaysa kutunun merkezine dokunulur
+#  - Metni olmayan oklar (geri, ileri, açılır liste) doğrudan Evren'den bulunur
+#  - EditText bulunamayan input'larda etikete en yakın Input kutusuna dokunulur
+_OCR_ENGINE = None
+_TR_MAP = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
+
+import threading as _vis_threading
+_OCR_LOCK = _vis_threading.Lock()
+
+
+def _ocr_engine():
+    global _OCR_ENGINE
+    with _OCR_LOCK:
+        if _OCR_ENGINE is None:
+            from rapidocr_onnxruntime import RapidOCR
+            _OCR_ENGINE = RapidOCR()
+    return _OCR_ENGINE
+
+
+def _ocr_preload():
+    """Her koşum yeni süreç → model ilk vision çağrısında yüklenince ~5 sn kaybediliyordu.
+    Script açılırken arka planda yükle + ısıt; ilk adımlar koşarken hazır olur."""
     try:
-        print(f"[VISION] '{search_text}' aranıyor...")
-        screenshot = driver.get_screenshot_as_base64()
+        from PIL import Image
+        import io
+        _b = io.BytesIO()
+        Image.new("RGB", (64, 32), "white").save(_b, "PNG")
+        _ocr_engine()(_b.getvalue(), use_cls=False)
+    except Exception:
+        pass
 
-        # Önce Gemini dene (ai_config.json'da key varsa)
+
+_vis_threading.Thread(target=_ocr_preload, daemon=True).start()
+
+
+def _vis_norm(s):
+    """Türkçe harfleri sadeleştirip karşılaştırmaya hazırlar. OCR 'ç'yi sık
+    sık 'q' okuduğundan (Seçimi → Seqimi) q da c'ye çevrilir; 'ı'yı da 'l'
+    okuyabildiğinden (Takımları → Takimlarl) l → i. İki tarafa birden
+    uygulandığı için gerçekten l içeren kelimeler (Ayarlar) etkilenmez."""
+    s = str(s).translate(_TR_MAP).lower().replace("q", "c").replace("l", "i")
+    return "".join(ch for ch in s if ch.isalnum())
+
+
+# Evren sınıf adları da _vis_norm'dan geçer → "sol ok" / "Sol_Ok" / "solok" aynı
+_CLS_BUTON = _vis_norm("Buton")
+_CLS_INPUT = _vis_norm("Input")
+_ARROW_PHRASES = {
+    _vis_norm("sol ok"):    ["sol ok", "geri", "back"],
+    _vis_norm("sağ ok"):    ["sağ ok", "ileri", "next"],
+    _vis_norm("aşağı ok"):  ["aşağı ok", "açılır", "dropdown"],
+    _vis_norm("yukarı ok"): ["yukarı ok"],
+}
+
+
+def _vis_cfg():
+    try:
+        import json, pathlib
+        _cp = pathlib.Path(_AI_CONFIG_PATH) if "_AI_CONFIG_PATH" in globals() else None
+        if _cp and _cp.exists():
+            return json.loads(_cp.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _evren_boxes(png_bytes, img_w, img_h, out):
+    """Evren predict → [(x1, y1, x2, y2, sınıf, güven), ...] piksel cinsinden (out'a yazar)."""
+    cfg = _vis_cfg()
+    key = (cfg.get("evren_api_key") or "").strip()
+    ver = (cfg.get("evren_model_version_id") or "").strip()
+    if not (key and ver):
+        return
+    url = cfg.get("evren_api_url") or "https://api.ssyz.org.tr/api/v1/inference/predict"
+    try:
+        for _h in ({"Authorization": "Bearer " + key}, {"X-API-Key": key}):
+            r = _req.post(url, headers=_h, files={"file": ("screen.png", png_bytes, "image/png")},
+                          data={"model_version_id": ver}, timeout=10)
+            if r.status_code != 401:
+                break
+        if not r.ok:
+            print(f"[VISION] Evren HTTP {r.status_code}: {r.text[:120]}")
+            return
+        for p in r.json().get("predictions") or []:
+            bb = p.get("bbox") or []
+            conf = p.get("confidence") or 0
+            if len(bb) == 4 and conf >= 0.3:
+                out.append((bb[0] * img_w, bb[1] * img_h, bb[2] * img_w, bb[3] * img_h,
+                            _vis_norm(p.get("class_name") or ""), float(conf)))
+    except Exception as _e:
+        print(f"[VISION] Evren hatası: {_e}")
+
+
+def _vis_score(target, line):
+    """Hedef metin ile OCR satırı arasındaki benzerlik (0-1)."""
+    import difflib
+    if not target or not line:
+        return 0.0
+    if target == line:
+        return 1.0
+    if len(target) == 1:
+        return 0.0  # tek karakter (PIN rakamı) sadece birebir eşleşir
+    if target in line:
+        # Hedef satırın ne kadarını kaplıyor → "Takım", "Takım Yönetimi ..." grubundan
+        # önce tek başına "Takım" yazan satırı seçsin
+        return (0.85 + 0.14 * len(target) / len(line)) if len(target) >= 3 else 0.0
+    r = difflib.SequenceMatcher(None, target, line).ratio()
+    # Uzunluklar çok farklıysa ceza: "Takvim Ayarları Kaydet" aranırken ekrandaki
+    # "Takvim Ayarları" 0.82 alıp YANLIŞ elemana dokunulmasın (iki satıra bölünen
+    # yazılar zaten bitişik satır grupları olarak tam uzunlukta değerlendiriliyor)
+    lr = min(len(target), len(line)) / max(len(target), len(line))
+    return r * lr if lr < 0.8 else r
+
+
+def _vis_capture(driver):
+    import io
+    from PIL import Image
+    png = _b64.b64decode(driver.get_screenshot_as_base64())
+    w, h = Image.open(io.BytesIO(png)).size
+    return png, w, h
+
+
+def _vis_analyze(png, img_w, img_h):
+    """OCR (bu thread) + Evren (paralel thread). Döner: (items, boxes, evren_thread)
+    items: [(metin, norm, x1, y1, x2, y2, güven)] — yukarıdan aşağı sıralı.
+    boxes listesi Evren thread'i bitince dolar; gerekirse çağıran join eder."""
+    import threading
+    boxes = []
+    th = threading.Thread(target=_evren_boxes, args=(png, img_w, img_h, boxes), daemon=True)
+    th.start()
+    # use_cls=False: ekran metni hep düz, açı sınıflandırma gereksiz (~%20 hızlı)
+    ocr_res, _ = _ocr_engine()(png, use_cls=False)
+    items = []
+    for box, txt, conf in ocr_res or []:
+        xs = [p[0] for p in box]; ys = [p[1] for p in box]
+        items.append((txt, _vis_norm(txt), min(xs), min(ys), max(xs), max(ys), float(conf)))
+    items.sort(key=lambda it: (it[3], it[2]))
+    return items, boxes, th
+
+
+def _vis_adjacent(a, b):
+    """b, a'nın hemen altında (aynı sütun) ya da hemen sağında (aynı satır) mı?
+    İki satıra bölünmüş buton yazıları ("Takımları" / "Gör") tek aday olsun diye."""
+    h = max(a[5] - a[3], b[5] - b[3], 1)
+    x_overlap = min(a[4], b[4]) - max(a[2], b[2])
+    v_gap = b[3] - a[5]
+    if x_overlap > 0 and -0.3 * h <= v_gap <= 0.8 * h:
+        return True
+    same_row = abs((a[3] + a[5]) / 2 - (b[3] + b[5]) / 2) < 0.5 * h
+    h_gap = b[2] - a[4]
+    return same_row and -0.3 * h <= h_gap <= 1.5 * h
+
+
+def _vis_text_cands(items, search_text):
+    """Hedef metne benzeyen OCR satırları + bitişik 2-3 satır grupları.
+    Döner: (adaylar[(skor, x1, y1, x2, y2, güven, metin)], tüm_skorlar)"""
+    target = _vis_norm(search_text)
+    groups = [[it] for it in items]
+    for i, a in enumerate(items):
+        for j in range(i + 1, len(items)):
+            b = items[j]
+            if not _vis_adjacent(a, b):
+                continue
+            groups.append([a, b])
+            for k in range(j + 1, len(items)):
+                if _vis_adjacent(b, items[k]):
+                    groups.append([a, b, items[k]])
+    cands, scores = [], []
+    for g in groups:
+        txt = " ".join(it[0] for it in g)
+        sc = _vis_score(target, "".join(it[1] for it in g))
+        scores.append((sc, txt))
+        if sc >= 0.8:
+            cands.append((sc, min(it[2] for it in g), min(it[3] for it in g),
+                          max(it[4] for it in g), max(it[5] for it in g),
+                          min(it[6] for it in g), txt))
+    return cands, scores
+
+
+def _vis_container(boxes, cx, cy, classes):
+    """(cx, cy) noktasını içeren, verilen sınıflardaki EN KÜÇÜK Evren kutusu."""
+    inside = [b for b in boxes if b[4] in classes and b[0] <= cx <= b[2] and b[1] <= cy <= b[3]]
+    return min(inside, key=lambda b: (b[2] - b[0]) * (b[3] - b[1])) if inside else None
+
+
+def _vis_tap(driver, x, y, img_w, img_h):
+    """Screenshot pikseli → dokunma koordinatı (iOS'ta point/piksel oranı farklı)."""
+    try:
+        ws = driver.get_window_size()
+        sx, sy = ws["width"] / img_w, ws["height"] / img_h
+    except Exception:
+        sx = sy = 1.0
+    x, y = int(x * sx), int(y * sy)
+    driver.tap([(x, y)])
+    return x, y
+
+
+def _vis_save_fail(png):
+    try:
+        import tempfile, os, time as _t
+        _shot = os.path.join(tempfile.gettempdir(), f"vision_fail_{int(_t.time())}.png")
+        open(_shot, "wb").write(png)
+        print(f"[VISION] Ekran görüntüsü: {_shot}")
+    except Exception:
+        pass
+
+
+def _vis_arrow_intent(search_text):
+    """'Geri', 'sol ok', 'aşağı oka' ... → (ok sınıfı, kalan yakın metin, açık_ok_mu)
+    ya da (None, None, False). açık_ok: ifade doğrudan "... ok" (önce Evren oku aranır);
+    geri/ileri/açılır gibi kelimelerde önce metin aranır (butonda "Geri" yazabilir)."""
+    # "İ".lower() birleşik noktalı i üretir ("i̇leri") → önce düz i'ye çevir
+    low = str(search_text).replace("İ", "i").replace("I", "ı").lower()
+    toks = [_vis_norm(w) for w in low.split()]
+    toks = [t for t in toks if t]
+
+    def _has(ph):
+        # Kelime bazlı: "Değerleri" içindeki "geri" eşleşmesin; son kelimede kısa
+        # ek serbest (ok → oka/okuna, geri → geriye)
+        pt = [_vis_norm(w) for w in ph.split()]
+        n = len(pt)
+        for i in range(len(toks) - n + 1):
+            seg = toks[i:i + n]
+            if seg[:-1] == pt[:-1] and seg[-1].startswith(pt[-1]) and len(seg[-1]) <= len(pt[-1]) + 3:
+                return True
+        return False
+
+    for cls, phrases in _ARROW_PHRASES.items():
+        for ph in phrases:
+            if _has(ph):
+                near = low.replace(ph, " ")
+                for _w in ("butonuna", "butonu", "ikonuna", "ikonu", "oka", "simgesine",
+                           "simgesi", "yanındaki", "yanında", "tıkla", "tıklanır"):
+                    near = near.replace(_w, " ")
+                return cls, " ".join(near.split()), ph.endswith(" ok")
+    return None, None, False
+
+
+def _vis_pick_arrow(boxes, cls, items, near_text):
+    """Ok sınıfındaki kutulardan birini seç: yakın metin varsa ona en yakını,
+    geri (sol ok) için ekranın en üst-solundaki, diğerlerinde en yüksek güvenli."""
+    arrows = [b for b in boxes if b[4] == cls]
+    if not arrows:
+        return None, ""
+    if near_text and len(_vis_norm(near_text)) >= 3:
+        cands, _ = _vis_text_cands(items, near_text)
+        if cands:
+            c = max(cands, key=lambda c: (round(c[0], 2), c[5]))
+            tx, ty = (c[1] + c[3]) / 2, (c[2] + c[4]) / 2
+            b = min(arrows, key=lambda b: ((b[0] + b[2]) / 2 - tx) ** 2 + ((b[1] + b[3]) / 2 - ty) ** 2)
+            return b, f"'{c[6]}' metnine en yakın"
+    if cls == _vis_norm("sol ok"):
+        return min(arrows, key=lambda b: (round(b[1] / 50), b[0])), "en üst-sol"
+    return max(arrows, key=lambda b: b[5]), "en yüksek güven"
+
+
+def _vision_find(driver, search_text):
+    """Element bulunamazsa: screenshot → OCR ile metni bul (Buton kutusuna hizala)
+    → yoksa ok ifadesiyse (geri/ileri/açılır) Evren'den ok bul → tap."""
+    import time as _t
+    try:
+        print(f"[VISION] '{search_text}' aranıyor (OCR + Evren)...")
+        _t0 = _t.time()
+        png, img_w, img_h = _vis_capture(driver)
         try:
-            import json, pathlib
-            # Önce backend dizinini ara, sonra script konumunu dene
-            _candidates = [
-                pathlib.Path(_AI_CONFIG_PATH) if "_AI_CONFIG_PATH" in globals() else None,
-                pathlib.Path(__file__).parent / "ai_config.json",
-                pathlib.Path(__file__).parent.parent / "ai_config.json",
-            ]
-            cfg = {}
-            for _cp in _candidates:
-                if _cp and _cp.exists():
-                    cfg = json.loads(_cp.read_text(encoding="utf-8"))
-                    break
-            gemini_key = cfg.get("gemini_api_key", "")
-        except Exception:
-            gemini_key = ""
-
-        # Bağlama özel prompt — tek rakam = klavye tuşu, diğer = genel element
-        if len(search_text) == 1 and search_text.isdigit():
-            _prompt_tr = (f"Bu Android ekranında sayısal tuş takımı (PIN klavyesi) görünüyor. "
-                          f"'{search_text}' rakamının TUŞUNU bul. Başka yerde görünen '{search_text}' rakamına bakma, "
-                          f"sadece klavye tuşuna bak. Koordinat: x=NNN y=NNN")
-            _prompt_en = (f"A numeric PIN keyboard is visible on this Android screen. "
-                          f"Find ONLY the '{search_text}' key on the keyboard (bottom of screen). "
-                          f"Reply only: x=<number> y=<number>")
-        else:
-            _prompt_tr = (f"Android ekranında '{search_text}' yazan veya gösteren tıklanabilir elementi bul. "
-                          f"Koordinat: x=NNN y=NNN")
-            _prompt_en = (f"Find the clickable element showing '{search_text}' on this Android screen. "
-                          f"Reply only: x=<number> y=<number>")
-
-        if gemini_key:
-            resp = _req.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
-                json={"contents": [{"parts": [
-                    {"text": _prompt_tr},
-                    {"inline_data": {"mime_type": "image/png", "data": screenshot}}
-                ]}]},
-                timeout=15
-            )
-            answer = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-        else:
-            # Ollama fallback (llava/gemma3 vision)
-            resp = _req.post(_ollama_url(), json={
-                "model": _ollama_model(),
-                "prompt": _prompt_en,
-                "images": [screenshot],
-                "stream": False
-            }, timeout=30)
-            answer = resp.json().get("response", "")
-
-        mx = _re.search(r"x[=:\\s]*(\\d+)", answer, _re.IGNORECASE)
-        my = _re.search(r"y[=:\\s]*(\\d+)", answer, _re.IGNORECASE)
-        if mx and my:
-            x, y = int(mx.group(1)), int(my.group(1))
-            print(f"[VISION] Koordinat bulundu: ({x}, {y})")
-            driver.tap([(x, y)])
-            return True
-        else:
-            print(f"[VISION] Koordinat bulunamadı. Yanıt: {answer[:100]}")
+            items, boxes, th = _vis_analyze(png, img_w, img_h)
+        except ImportError as _ie:
+            import sys as _sys
+            print(f"[VISION] OCR yüklenemedi ({_ie}) — Python: {_sys.executable} "
+                  f"→ bu Python'a: pip install rapidocr_onnxruntime")
             return False
+        _t_ocr = _t.time() - _t0
+        arrow_cls, near_text, explicit_arrow = _vis_arrow_intent(search_text)
+        # Ok aranıyorsa Evren şart → tam bekle; değilse Evren sadece hizalama/tercih
+        # için, OCR bittikten sonra en fazla 1 sn (yavaş/502 dönen Evren yavaşlatmasın)
+        th.join(timeout=10 if arrow_cls else 1.0)
+        print(f"[VISION] OCR {len(items)} metin ({_t_ocr:.1f} sn), "
+              f"Evren {len(boxes)} nesne ({_t.time() - _t0:.1f} sn)")
+
+        def _tap_arrow():
+            b, why = _vis_pick_arrow(boxes, arrow_cls, items, near_text)
+            if not b:
+                print(f"[VISION] Evren ekranda '{arrow_cls}' sınıfında ok bulamadı")
+                return False
+            x, y = _vis_tap(driver, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2, img_w, img_h)
+            print(f"[VISION] Evren ok bulundu ({why}, güven {b[5]:.2f}) → tap ({x}, {y}) "
+                  f"[{_t.time() - _t0:.1f} sn]")
+            return True
+
+        # "X aşağı ok" gibi açık ok ifadesi: önce ok; yoksa X etiketine dokunulur
+        # (dropdown'larda etikete dokunmak da listeyi açar)
+        if explicit_arrow:
+            if _tap_arrow():
+                return True
+            search_text = near_text or search_text
+
+        cands, scores = _vis_text_cands(items, search_text)
+        if cands:
+            def _key(c):
+                cx, cy = (c[1] + c[3]) / 2, (c[2] + c[4]) / 2
+                in_btn = _vis_container(boxes, cx, cy, (_CLS_BUTON, _CLS_INPUT)) is not None
+                return (round(c[0], 2), in_btn, c[5])
+            if len(_vis_norm(search_text)) == 1:
+                # PIN klavyesi: aynı rakam ekranın başka yerinde de olabilir → en alttaki tuş
+                best = max(cands, key=lambda c: c[2])
+            else:
+                best = max(cands, key=_key)
+            sc, x1, y1, x2, y2, conf, txt = best
+            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+            btn = _vis_container(boxes, cx, cy, (_CLS_BUTON, _CLS_INPUT))
+            where = "metin merkezi"
+            if btn:
+                cx, cy = (btn[0] + btn[2]) / 2, (btn[1] + btn[3]) / 2
+                where = f"Evren {('Buton' if btn[4] == _CLS_BUTON else 'Input')} merkezi"
+            x, y = _vis_tap(driver, cx, cy, img_w, img_h)
+            print(f"[VISION] '{txt}' bulundu (benzerlik {sc:.2f}) → {where} "
+                  f"tap ({x}, {y}) [{_t.time() - _t0:.1f} sn]")
+            return True
+
+        if arrow_cls and not explicit_arrow and _tap_arrow():
+            return True
+
+        print(f"[VISION] '{search_text}' ekranda bulunamadı ({_t.time() - _t0:.1f} sn)")
+        _near = sorted(scores, reverse=True)[:5]
+        if _near:
+            print("[VISION] En yakın metinler: " + ", ".join(f"'{t}' ({s:.2f})" for s, t in _near))
+        _vis_save_fail(png)
+        return False
     except Exception as e:
         print(f"[VISION] Hata: {e}")
         return False
+
+
+def _vision_focus_input(driver, label):
+    """EditText bulunamadığında: OCR ile alan etiketini bul → Evren'in etikete en
+    yakın Input kutusuna (içinde ya da altında) dokun. Yazmayı çağıran yapar."""
+    import time as _t
+    if not label or len(_vis_norm(label)) < 2:
+        return False
+    try:
+        print(f"[VISION] '{label}' alanı aranıyor (OCR + Evren Input)...")
+        _t0 = _t.time()
+        png, img_w, img_h = _vis_capture(driver)
+        items, boxes, th = _vis_analyze(png, img_w, img_h)
+        th.join(timeout=10)
+        inputs = [b for b in boxes if b[4] == _CLS_INPUT]
+        cands, _ = _vis_text_cands(items, label)
+        if not cands:
+            print(f"[VISION] '{label}' etiketi ekranda bulunamadı")
+            _vis_save_fail(png)
+            return False
+        c = max(cands, key=lambda c: (round(c[0], 2), c[5]))
+        tx, ty = (c[1] + c[3]) / 2, (c[2] + c[4]) / 2
+        if inputs:
+            def _dist(b):
+                bx, by = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+                if b[0] <= tx <= b[2] and b[1] <= ty <= b[3]:
+                    return 0  # etiket kutunun içinde (placeholder)
+                below = by >= ty  # input genelde etiketin altında
+                return ((bx - tx) ** 2 + (by - ty) ** 2) * (1 if below else 4)
+            b = min(inputs, key=_dist)
+            x, y = _vis_tap(driver, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2, img_w, img_h)
+            print(f"[VISION] '{c[6]}' etiketine en yakın Evren Input → tap ({x}, {y}) "
+                  f"[{_t.time() - _t0:.1f} sn]")
+        else:
+            x, y = _vis_tap(driver, tx, ty, img_w, img_h)
+            print(f"[VISION] Evren Input bulamadı → '{c[6]}' metnine tap ({x}, {y})")
+        _t.sleep(0.4)
+        return True
+    except Exception as e:
+        print(f"[VISION] Input arama hatası: {e}")
+        return False
+
+
+def _safe_click_arrow(driver, phrase):
+    """Ok ikonları ('Takımları Gör aşağı ok', 'sol ok') — yazısı olmadığı için
+    XPath/scroll denenmez, doğrudan Evren ok tespitine gidilir."""
+    print(f"[OK-IKON] '{phrase}' aranıyor...")
+    if not _vision_find(driver, phrase):
+        raise Exception(f"Ok bulunamadı: {phrase}")
 
 
 def _safe_click(driver, text, key_text=None):
@@ -1119,6 +1588,20 @@ def _safe_input(driver, xpath, value):
 
     _el = _find_el()
     print(f"[INPUT] EditText {'bulundu' if _el else 'bulunamadı'}")
+    if not _el:
+        # EditText yok (WebView/özel bileşen) → OCR ile etiketi bul, Evren Input'una dokun;
+        # yazmayı aşağıdaki ADB/mobile:type stratejileri odaklanan alana yapar
+        _lbl = None
+        for _attr in ("@text", "@hint", "@content-desc"):
+            _ix = (xpath or "").find(_attr)
+            if _ix >= 0:
+                _rest = xpath[_ix:]
+                _qs = [k for k, ch in enumerate(_rest) if ch in (chr(39), chr(34))]
+                if len(_qs) >= 2:
+                    _lbl = _rest[_qs[0] + 1:_qs[1]]
+                    break
+        if _lbl and _vision_focus_input(driver, _lbl):
+            _el = _find_el()
 
     # Alan tıklandıktan sonra PIN klavyesi açıldıysa buton moduna geç
     time.sleep(0.4)
@@ -1264,15 +1747,16 @@ def _safe_assert(driver, text, key_text=None):
     Bulunamazsa WARNING verir ama testi durdurmaz (beklenen ekran gecikmeli gelebilir).
     """
     _all_texts = [t for t in [text, key_text] if t]
+    _is_xp = text.startswith("//") or text.startswith("(//")
 
     def _try_find():
         for _t in _all_texts:
-            for _xp in [
+            for _xp in ([_t] if _is_xp else [
                 f\'//*[@text="{_t}"]\',
                 f\'//*[contains(@text,"{_t}")]\',
                 f\'//*[@content-desc="{_t}"]\',
                 f\'//*[contains(@content-desc,"{_t}")]\',
-            ]:
+            ]):
                 try:
                     el = driver.find_element(AppiumBy.XPATH, _xp)
                     if el.is_displayed():
@@ -1294,7 +1778,10 @@ def _safe_assert(driver, text, key_text=None):
     driver.swipe(540, 500, 540, 1400, 800); time.sleep(0.7)
     if _try_find(): return True
 
-    # Vision fallback
+    # Vision fallback (XPath hedefte görüntüde aranacak yazı yok)
+    if _is_xp:
+        print(f"[WARN] XPath ile eleman bulunamadı: {text} — adım geçiliyor")
+        return False
     print(f"[VISION] '{text}' için ekran görüntüsü analiz ediliyor...")
     if _vision_find(driver, key_text or text):
         print(f"[OK] Vision ile doğrulandı: {text}")
@@ -2357,6 +2844,263 @@ def _refocus_window():
 # BÖLÜM 3: ŞABLONLAR
 # ══════════════════════════════════════════════════════════════════════════════
 
+MAP_TRACE_HELPER = '''
+# ── Uygulama haritası izi (backend _AI_MAP_TRACE verirse) ─────────────────
+# İlk adımdan önce ve her başarılı adımdan sonra ekran görüntüsü alınır;
+# koşum bitince backend bunları OCR'dan geçirip haritaya işler.
+import os as _mt_os, json as _mt_json, builtins as _mt_bi
+_MAP_TRACE_DIR = _mt_os.environ.get("_AI_MAP_TRACE", "")
+_mt_state = {"k": 0, "started": False}
+
+
+def _map_snap(after_step):
+    _drv = globals().get("driver")
+    if not _MAP_TRACE_DIR or _drv is None:
+        return
+    try:
+        if _mt_state["k"] == 0:
+            _app = globals().get("_TARGET_PKG") or getattr(_drv, "current_package", "") or ""
+            _ver = ""
+            try:
+                import subprocess as _mt_sp
+                _out = _mt_sp.run(["adb", "-s", globals().get("_DEVICE_ID", ""), "shell", "dumpsys", "package", _app],
+                                  capture_output=True, text=True, timeout=8).stdout
+                for _ln in _out.splitlines():
+                    if "versionName=" in _ln:
+                        _ver = _ln.split("versionName=", 1)[1].strip(); break
+            except Exception:
+                pass
+            with open(_mt_os.path.join(_MAP_TRACE_DIR, "meta.json"), "w", encoding="utf-8") as _mf:
+                _mt_json.dump({"app": _app, "version": _ver}, _mf)
+        _f = "snap_" + str(_mt_state["k"]) + ".png"
+        _drv.get_screenshot_as_file(_mt_os.path.join(_MAP_TRACE_DIR, _f))
+        # Sayfa yapısı (resource-id'ler) → ekranı veriden bağımsız tanımak için
+        try:
+            with open(_mt_os.path.join(_MAP_TRACE_DIR, _f.replace(".png", ".xml")), "w", encoding="utf-8") as _xf:
+                _xf.write(_drv.page_source)
+        except Exception:
+            pass
+        with open(_mt_os.path.join(_MAP_TRACE_DIR, "events.jsonl"), "a", encoding="utf-8") as _ef:
+            _ef.write(_mt_json.dumps({"file": _f, "after_step": after_step}) + chr(10))
+        _mt_state["k"] += 1
+    except Exception:
+        pass
+
+
+def print(*_a, **_k):
+    _mt_bi.print(*_a, **_k)
+    if _MAP_TRACE_DIR and _a and isinstance(_a[0], str):
+        if _a[0].startswith("STEP_START:") and not _mt_state["started"]:
+            _mt_state["started"] = True
+            _map_snap(-1)
+        elif _a[0].startswith("STEP_DONE:"):
+            try:
+                _map_snap(int(_a[0].split(":", 1)[1]))
+            except ValueError:
+                pass
+'''
+
+
+MAP_RECOVERY_HELPER = '''
+# ── Kendini toparlama (uygulama haritası) ──────────────────────────────────
+# Bir adım başarısız olunca: ekranı haritada tanı → bağlayıcı olmayan popup'ı
+# kapat → yanlış ekrandaysa haritadaki yolla beklenen ekrana dön → adım 1 kez
+# daha denenir. Backend _AI_MAP_RECOVER=0 verirse kapalıdır.
+_MR_ENABLED = _mt_os.environ.get("_AI_MAP_RECOVER", "1") == "1"
+# Sadece işlemi iptal/onay ETMEYEN butonlar — "Tamam/Onayla/Vazgeç/İptal" bilerek yok
+_MR_DISMISS = ["kapat", "anladım", "daha sonra", "şimdi değil", "hayır teşekkürler", "atla", "geç"]
+_MR_MAX_PATH = 6
+
+
+def _mr_load():
+    import sys as _mr_sys
+    _bdir = _mt_os.path.dirname(globals().get("_AI_CONFIG_PATH", ""))
+    if _bdir and _bdir not in _mr_sys.path:
+        _mr_sys.path.insert(0, _bdir)
+    from services import app_map_service as _ams
+    return _ams
+
+
+def _mr_identify(_ams, data):
+    _drv = globals()["driver"]
+    png = _drv.get_screenshot_as_png()
+    try:
+        src = _drv.page_source
+    except Exception:
+        src = None
+    lines, w, h = _ams.ocr_lines(png)
+    cur, score = _ams.match_screen(data, _ams.observation_tokens(lines, src))
+    return cur, score, lines, w, h
+
+
+def _mr_dismiss_popup(_ams, lines, w, h, step_target):
+    """Ekranda bağlayıcı olmayan bir kapatma butonu varsa ona dokun."""
+    _tn = _ams._norm(step_target or "")
+    for word in _MR_DISMISS:
+        _wn = _ams._norm(word)
+        for l in lines:
+            if l["norm"] == _wn and l["norm"] != _tn:
+                _cx = (l["box"][0] + l["box"][2]) / 2 * w
+                _cy = (l["box"][1] + l["box"][3]) / 2 * h
+                _vis_tap(globals()["driver"], _cx, _cy, w, h)
+                print(f"[TOPARLAMA] Popup kapatıldı: '{l['text']}'")
+                time.sleep(1.0)
+                return True
+    return False
+
+
+def _map_recover(idx, label):
+    """True → adım tekrar denenebilir (ekran düzeltildi), False → toparlanamadı."""
+    if not _MR_ENABLED or "driver" not in globals():
+        return False
+    try:
+        _ams = _mr_load()
+        app = globals().get("_TARGET_PKG") or ""
+        data = _ams.load_map(app)
+    except Exception as _e:
+        print(f"[TOPARLAMA] Harita yüklenemedi: {_e}")
+        return False
+    if not data.get("screens"):
+        print("[TOPARLAMA] Bu uygulama için harita henüz yok — toparlama atlandı")
+        return False
+    target = _ams.action_from_step(label).get("target") or ""
+    expected = _ams.expected_screens(data, target)
+    _last = str(globals().get("_LAST_STEP_ERROR") or "")
+    if "instrumentation process is not running" in _last:
+        print("[TOPARLAMA] Telefondaki UiAutomator2 çöktü — toparlama yapılamaz, oturumu yeniden başlatın.")
+        return False
+    print(f"[TOPARLAMA] Adım {idx} başarısız ('{label}') — ekran haritada aranıyor...")
+    fixed = False
+    for attempt in range(3):
+        try:
+            cur, score, lines, w, h = _mr_identify(_ams, data)
+        except Exception as _e:
+            print(f"[TOPARLAMA] Ekran tanınamadı: {_e}")
+            return False
+        cur_name = data["screens"].get(cur, {}).get("name") if cur else None
+        print(f"[TOPARLAMA] Şu anki ekran: {cur_name or 'bilinmiyor'} (skor {score:.2f})")
+        if _mr_dismiss_popup(_ams, lines, w, h, target):
+            fixed = True
+            continue
+        if cur and (not expected or cur in expected):
+            # Doğru ekrandayız; popup kapatıldıysa tekrar denemeye değer
+            if not fixed:
+                if expected:
+                    print("[TOPARLAMA] Zaten beklenen ekrandayız — ekran sorunu değil")
+                else:
+                    print(f"[TOPARLAMA] '{target or label}' haritada hiçbir ekranda bilinmiyor — toparlama atlandı")
+            return fixed
+        if not cur:
+            if attempt == 0:
+                print("[TOPARLAMA] Bilinmeyen ekran → bir kez geri")
+                globals()["driver"].back()
+                time.sleep(1.0)
+                fixed = True
+                continue
+            return fixed
+        best = None
+        for e in expected:
+            p = _ams.find_path_in(data, cur, e)
+            if p is not None and (best is None or len(p) < len(best)):
+                best = p
+        if best is None or len(best) > _MR_MAX_PATH:
+            print(f"[TOPARLAMA] Haritada '{cur_name}' → beklenen ekran yolu yok")
+            return fixed
+        names = [data["screens"].get(t["to"], {}).get("name", "?") for t in best]
+        print(f"[TOPARLAMA] Yol bulundu ({len(best)} adım): {' → '.join(names)}")
+        try:
+            for t in best:
+                a = t.get("action", {})
+                if a.get("type") == "back":
+                    globals()["driver"].back()
+                elif a.get("target"):
+                    _safe_click(globals()["driver"], a["target"])
+                else:
+                    raise Exception("yoldaki geçişin hedefi yok")
+                time.sleep(0.8)
+        except Exception as _e:
+            print(f"[TOPARLAMA] Yol izlenemedi: {_e}")
+            return False
+        if _MAP_TRACE_DIR:
+            _map_snap(-2)   # harita izi: toparlama dokunuşları adım geçişi sayılmasın
+        print("[TOPARLAMA] Beklenen ekrana dönüldü → adım tekrar deneniyor")
+        return True
+    return fixed
+'''
+
+
+# ── iOS uyum katmanı (iPhone, Mac düğümündeki Appium/XCUITest) ────────────────
+# Kural motoru ve yardımcılar Android XPath'i üretir (@text, @content-desc,
+# android.widget.EditText ...). iOS'ta driver.find_element(s) çağrıları burada iOS
+# karşılıklarına çevrilir (@label/@value/@name, XCUIElementType...); kaydırma
+# koordinatları (1080x2400 referanslı) iPhone ekranına ölçeklenir. Android'de no-op.
+IOS_SHIM_HELPER = r'''
+import re as _re_ios
+_IOS_CLASSES = {
+    "android.widget.EditText": "XCUIElementTypeTextField",
+    "android.widget.Button": "XCUIElementTypeButton",
+    "android.widget.ImageButton": "XCUIElementTypeButton",
+    "android.widget.TextView": "XCUIElementTypeStaticText",
+    "android.widget.ImageView": "XCUIElementTypeImage",
+    "android.widget.CheckBox": "XCUIElementTypeSwitch",
+    "android.widget.Switch": "XCUIElementTypeSwitch",
+    "android.widget.ListView": "XCUIElementTypeTable",
+    "android.widget.ScrollView": "XCUIElementTypeScrollView",
+    "androidx.recyclerview.widget.RecyclerView": "XCUIElementTypeCollectionView",
+}
+_IOS_LIT = r'("[^"]*"|\'[^\']*\')'
+
+
+def _ios_xpath(xp):
+    for _a, _i in _IOS_CLASSES.items():
+        xp = xp.replace(_a, _i)
+    xp = xp.replace('XCUIElementTypeTextField[@password="true"]', "XCUIElementTypeSecureTextField")
+    xp = xp.replace("XCUIElementTypeTextField[@password='true']", "XCUIElementTypeSecureTextField")
+    xp = _re_ios.sub(r"contains\(\s*@text\s*,\s*" + _IOS_LIT + r"\s*\)",
+                     r"(contains(@label,\1) or contains(@value,\1) or contains(@name,\1))", xp)
+    xp = _re_ios.sub(r"@text\s*=\s*" + _IOS_LIT, r"(@label=\1 or @value=\1 or @name=\1)", xp)
+    xp = xp.replace("@text", "@label").replace("@content-desc", "@name")
+    xp = xp.replace("@resource-id", "@name").replace("@hint", "@placeholderValue")
+    xp = xp.replace("@clickable", "@enabled").replace("@password", "@enabled")
+    return xp
+
+
+def _ios_install(drv):
+    """iOS'ta find_element(s)/swipe'ı çevirir; Android'de dokunmaz."""
+    if not _IS_IOS:
+        return
+    try:   # bağlanılan (attach) oturumda yetenekler boş gelir → yardımcılar iOS olduğunu bilsin
+        drv.caps = {**(getattr(drv, "caps", None) or {}), "platformName": "iOS"}
+    except Exception:
+        pass
+    _fe, _fes, _sw = drv.find_element, drv.find_elements, drv.swipe
+
+    def _find_element(by="id", value=None):
+        if by == AppiumBy.XPATH and value:
+            value = _ios_xpath(value)
+        return _fe(by, value)
+
+    def _find_elements(by="id", value=None):
+        if by == AppiumBy.XPATH and value:
+            value = _ios_xpath(value)
+        return _fes(by, value)
+
+    _ws = {}
+
+    def _swipe(x1, y1, x2, y2, duration=0):
+        if not _ws:
+            try:
+                _ws.update(drv.get_window_size())
+            except Exception:
+                _ws.update({"width": 390, "height": 844})
+        fx, fy = _ws["width"] / 1080.0, _ws["height"] / 2400.0
+        return _sw(int(x1 * fx), int(y1 * fy), int(x2 * fx), int(y2 * fy), duration)
+
+    drv.find_element, drv.find_elements, drv.swipe = _find_element, _find_elements, _swipe
+    print("[iOS] XPath/kaydırma uyum katmanı etkin")
+'''
+
+
 def _build_mobile_template(
     req: GenerateRequest,
     steps_code: str,
@@ -2364,15 +3108,27 @@ def _build_mobile_template(
     session_id: str = "",
     command_executor_url: str = "",
     vars_seed: dict | None = None,
+    mjpeg_port: int = 0,
 ) -> str:
     device  = req.device_id    or "emulator-5554"
     pkg     = req.app_package  or ""
     act     = req.app_activity or ""
     appium  = req.appium_url   or "http://localhost:4723"
+    # Telefon başka bir makinede (cihaz sunucusu): oturum o makinenin Appium'unda açılır,
+    # script'in kendi adb çağrıları (monkey, dumpsys, ADB ile yazma) o makinenin adb sunucusuna gider
+    adb_env: dict = {}
+    is_ios = False
+    if req.device_id:
+        appium = dnodes.appium_url_for(req.device_id, appium)
+        adb_env = dnodes.adb_env_for(req.device_id)
+        is_ios = dnodes.platform_for(req.device_id) == "ios"   # pkg = Bundle ID
+    env_lines = ([f"import os as _os_env; _os_env.environ.update({adb_env!r})  # telefon uzak cihaz sunucusunda"]
+                 if adb_env else [])
 
     if session_mode in ("attach", "end"):
         lines = [
             "# -*- coding: utf-8 -*-",
+            *env_lines,
             "import sys",
             f'sys.path.insert(0, r"{_ROUTER_BASE_DIR}")',
             "from services.session_reconnect import attach_appium_session",
@@ -2387,14 +3143,22 @@ def _build_mobile_template(
             "    return _s",
             "",
             f"driver = attach_appium_session({command_executor_url!r}, {session_id!r})",
+            f"_IS_IOS = {is_ios}",
+            IOS_SHIM_HELPER,
+            "_ios_install(driver)",
             "wait = WebDriverWait(driver, 15)",
+            f'_AI_CONFIG_PATH = r"{os.path.join(_ROUTER_BASE_DIR, "ai_config.json")}"',
+            f"_TARGET_PKG = {(req.app_package or '')!r}",
             "",
             VISION_HELPER,
+            MAP_TRACE_HELPER,
+            MAP_RECOVERY_HELPER,
             "",
             "try:",
         ]
         for line in steps_code.splitlines():
             lines.append("    " + line if line.strip() else "")
+        lines.append("    pass  # adım kodu boşsa (örn. oturum başlatma) try bloğu boş kalmasın")
         if session_mode == "end":
             lines += [
                 "",
@@ -2415,7 +3179,14 @@ def _build_mobile_template(
 
     # session_mode in ("fresh", "start") - asagidaki mevcut kod aynen devam eder
 
-    if act:
+    if is_ios:
+        # iPhone: XCUITest (WebDriverAgent imzası Mac'teki Appium'un varsayılan yeteneklerinde)
+        caps = (f'options.bundle_id              = "{pkg}"\n' if pkg else "") + '''\
+options.no_reset               = True
+options.set_capability("appium:wdaLaunchTimeout", 180000)
+options.set_capability("appium:newCommandTimeout", 900)'''
+        pre = ""
+    elif act:
         caps = f'''\
 options.app_package            = "{pkg}"
 options.app_activity           = "{act}"
@@ -2440,6 +3211,7 @@ time.sleep(3)
 
     lines = [
         "# -*- coding: utf-8 -*-",
+        *env_lines,
         "from appium import webdriver",
         "from appium.options.android import UiAutomator2Options",
         "from appium.webdriver.common.appiumby import AppiumBy",
@@ -2468,6 +3240,8 @@ time.sleep(3)
         "    raise SystemExit(1)",
         "",
         VISION_HELPER,
+        MAP_TRACE_HELPER,
+        MAP_RECOVERY_HELPER,
         "",
     ]
 
@@ -2478,25 +3252,46 @@ time.sleep(3)
     # asıl seçici udid'dir. device_id verilmişse udid de yazılır (ek satır — device_name
     # davranışı aynen korunur). system_port yalnızca job motoru gönderdiğinde eklenir.
     _opt_lines = [
+        "from appium.options.ios import XCUITestOptions",
+        "options = XCUITestOptions()",
+        'options.platform_name = "iOS"',
+        f'options.device_name   = "{device}"',
+    ] if is_ios else [
         "options = UiAutomator2Options()",
         f'options.platform_name = "Android"',
         f'options.device_name   = "{device}"',
     ]
     if req.device_id:
         _opt_lines.append(f'options.udid          = "{device}"')
-    if getattr(req, "system_port", None):
+    if is_ios:
+        # Aynı Mac'teki her iPhone'un WebDriverAgent'ı ayrı yerel portta (varsayılan 8100
+        # paylaşılırsa iki iPhone'da eşzamanlı oturum çakışır); telefon başına sabit port
+        from services.ai_job_service import _acquire_system_port
+        _wda = int(getattr(req, "system_port", None) or _acquire_system_port(device))
+        _opt_lines.append(f'options.set_capability("appium:wdaLocalPort", {_wda})')
+    elif getattr(req, "system_port", None):
         _opt_lines.append(f'options.system_port   = {int(req.system_port)}')
+    if mjpeg_port:   # kalıcı oturum: telefon ekranı canlı MJPEG akışı (Telefon paneli / kayıt modu)
+        _opt_lines.append(f'options.set_capability("appium:mjpegServerPort", {int(mjpeg_port)})')
 
     lines += _opt_lines + caps.splitlines() + [
         "",
         f'print("Appium baglaniyor: {appium}")',
         f'driver = webdriver.Remote("{appium}", options=options)',
+        f"_IS_IOS = {is_ios}",
+        IOS_SHIM_HELPER,
+        "_ios_install(driver)",
         "wait   = WebDriverWait(driver, 15)",
         "time.sleep(2)",
         "",
         f'# Uygulama açık değilse başlat',
         f'_TARGET_PKG = "{pkg}"',
-        "if _TARGET_PKG:",
+        "if _TARGET_PKG and _IS_IOS:",
+        "    try:",
+        "        driver.activate_app(_TARGET_PKG)   # bundle_id ile zaten açıldıysa öne getirir",
+        "    except Exception as _launch_err:",
+        f'        print(f"activate_app başarısız: {{_launch_err}}")',
+        "elif _TARGET_PKG:",
         "    try:",
         "        _curr_pkg = driver.current_package",
         "        if _curr_pkg != _TARGET_PKG:",
@@ -2518,6 +3313,7 @@ time.sleep(3)
 
     for line in steps_code.splitlines():
         lines.append("    " + line if line.strip() else "")
+    lines.append("    pass  # adım kodu boşsa (örn. oturum başlatma) try bloğu boş kalmasın")
 
     lines += [
         "",
@@ -2581,6 +3377,7 @@ def _build_web_template(
         ]
         for line in steps_code.splitlines():
             lines.append("    " + line if line.strip() else "")
+        lines.append("    pass  # adım kodu boşsa (örn. oturum başlatma) try bloğu boş kalmasın")
         if session_mode == "end":
             lines += [
                 "",
@@ -2688,6 +3485,7 @@ def _build_web_template(
 
     for line in steps_code.splitlines():
         lines.append("    " + line if line.strip() else "")
+    lines.append("    pass  # adım kodu boşsa (örn. oturum başlatma) try bloğu boş kalmasın")
 
     lines += [
         "",
@@ -2890,6 +3688,7 @@ def _build_desktop_template(req: GenerateRequest, steps_code: str, vars_seed: di
     lines += ["try:"]
     for line in steps_code.splitlines():
         lines.append("    " + line if line.strip() else "")
+    lines.append("    pass  # adım kodu boşsa (örn. oturum başlatma) try bloğu boş kalmasın")
 
     lines += [
         "",
@@ -3427,6 +4226,48 @@ def _condition_expr(item: "StepItem", platform: str, idx: int, browser: str = ""
     return "False"  # condition_type boş/bilinmeyen — güvenli varsayılan
 
 
+def _wrap_text_step(idx: int, inner_lines: list, indent: str, platform: str, label: str,
+                    comment: str = "") -> str:
+    """Metin adımını STEP_START/DONE/FAIL ile sarar. Mobilde başarısız adımda
+    _map_recover (uygulama haritasıyla kendini toparlama) çağrılır; ekran
+    düzeltilebildiyse adım BİR KEZ daha denenir."""
+    nl = chr(10)
+    body = (nl + indent + "    ").join(inner_lines)
+    head = f"{indent}_check_stop(){nl}{indent}print('STEP_START:{idx}'){nl}"
+    if comment:
+        head += f"{indent}# {comment}{nl}"
+    if platform != "mobile":
+        return head + (
+            f"{indent}try:{nl}"
+            f"{indent}    {body}{nl}"
+            f"{indent}    print('STEP_DONE:{idx}'){nl}"
+            f"{indent}except Exception as _e_{idx}:{nl}"
+            f"{indent}    print(f'[FAIL] {{_e_{idx}}}'){nl}"
+            f"{indent}    print('STEP_FAIL:{idx}'){nl}"
+            f"{indent}    raise"
+        )
+    body2 = (nl + indent + "            ").join(inner_lines)
+    return head + (
+        f"{indent}try:{nl}"
+        f"{indent}    {body}{nl}"
+        f"{indent}    print('STEP_DONE:{idx}'){nl}"
+        f"{indent}except Exception as _e_{idx}:{nl}"
+        f"{indent}    print(f'[FAIL] {{_e_{idx}}}'){nl}"
+        f"{indent}    _LAST_STEP_ERROR = str(_e_{idx}){nl}"
+        f"{indent}    if _map_recover({idx}, {label!r}):{nl}"
+        f"{indent}        try:{nl}"
+        f"{indent}            {body2}{nl}"
+        f"{indent}            print('STEP_DONE:{idx}'){nl}"
+        f"{indent}        except Exception as _e2_{idx}:{nl}"
+        f"{indent}            print(f'[FAIL] {{_e2_{idx}}}'){nl}"
+        f"{indent}            print('STEP_FAIL:{idx}'){nl}"
+        f"{indent}            raise{nl}"
+        f"{indent}    else:{nl}"
+        f"{indent}        print('STEP_FAIL:{idx}'){nl}"
+        f"{indent}        raise"
+    )
+
+
 def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: str = "", browser: str = "") -> tuple[str, list, list]:
     """items (üst seviye ya da bir then/else dalı) için Python kodu üretir.
     counter=[n] paylaşılan/mutable sayaç — dal içindeki adımlar da aynı artan idx'i kullanır.
@@ -3490,18 +4331,7 @@ def _steps_to_code(items: list, platform: str, counter: list, rule_fn, indent: s
             step = item.content
             parsed = rule_fn(step)
             if parsed:
-                _inner = ("\n" + indent + "    ").join(parsed)
-                wrapped = (
-                    f"{indent}_check_stop()\n"
-                    f"{indent}print('STEP_START:{idx}')\n"
-                    f"{indent}try:\n"
-                    f"{indent}    {_inner}\n"
-                    f"{indent}    print('STEP_DONE:{idx}')\n"
-                    f"{indent}except Exception as _e_{idx}:\n"
-                    f"{indent}    print(f'[FAIL] {{_e_{idx}}}')\n"
-                    f"{indent}    print('STEP_FAIL:{idx}')\n"
-                    f"{indent}    raise"
-                )
+                wrapped = _wrap_text_step(idx, parsed, indent, platform, step)
                 blocks.append(wrapped)
                 code_lines.append(("rule", step, wrapped))
             else:
@@ -3522,6 +4352,14 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
         _rule_desktop if req.platform == "desktop" else
         _rule_web
     )
+    lookup = _MOBILE_LOCATORS.get() if req.platform == "mobile" else None
+    locator_hits: set = set()
+    if lookup:
+        def rule_fn(step: str, _base=rule_fn):
+            lines, hit = _apply_locators_mobile(step, _base(step), lookup)
+            if hit:
+                locator_hits.add(step)
+            return lines
 
     if req.steps_list:
         structured = req.steps_list
@@ -3598,18 +4436,7 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
             step = item.content
             parsed = rule_fn(step)
             if parsed:
-                _inner = ("\n" + indent + "    ").join(parsed)
-                block = (
-                    f"{indent}_check_stop()\n"
-                    f"{indent}print('STEP_START:{idx}')\n"
-                    f"{indent}try:\n"
-                    f"{indent}    {_inner}\n"
-                    f"{indent}    print('STEP_DONE:{idx}')\n"
-                    f"{indent}except Exception as _e_{idx}:\n"
-                    f"{indent}    print(f'[FAIL] {{_e_{idx}}}')\n"
-                    f"{indent}    print('STEP_FAIL:{idx}')\n"
-                    f"{indent}    raise"
-                )
+                block = _wrap_text_step(idx, parsed, indent, req.platform, step)
                 blocks.append(block)
                 report_out.append({"step": step, "method": "rule", "code": block, "index": idx})
             else:
@@ -3627,19 +4454,7 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
                     blocks.append(block)
                     report_out.append({"step": step, "method": "todo", "code": block, "index": idx})
                 else:
-                    _llm_inner = ("\n" + indent + "    ").join(llm_code.splitlines())
-                    block = (
-                        f"{indent}_check_stop()\n"
-                        f"{indent}print('STEP_START:{idx}')\n"
-                        f"{indent}# {step}\n"
-                        f"{indent}try:\n"
-                        f"{indent}    {_llm_inner}\n"
-                        f"{indent}    print('STEP_DONE:{idx}')\n"
-                        f"{indent}except Exception as _e_{idx}:\n"
-                        f"{indent}    print(f'[FAIL] {{_e_{idx}}}')\n"
-                        f"{indent}    print('STEP_FAIL:{idx}')\n"
-                        f"{indent}    raise"
-                    )
+                    block = _wrap_text_step(idx, llm_code.splitlines(), indent, req.platform, step, comment=step)
                     blocks.append(block)
                     report_out.append({"step": step, "method": "llm", "code": block, "index": idx})
         return "\n\n".join(blocks)
@@ -3657,6 +4472,9 @@ async def _generate_steps(req: GenerateRequest) -> tuple[str, list[dict]]:
             {"step": step, "method": kind, "code": code, "index": i}
             for i, (kind, step, code) in enumerate(code_lines)
         ]
+    for r in report:
+        if r.get("method") == "rule" and r.get("step") in locator_hits:
+            r["locator"] = True
 
     return steps_code, report
 
@@ -4098,28 +4916,22 @@ def _find_adb() -> str:
 
 @router.get("/adb/devices")
 async def adb_devices(current_user: User = Depends(get_current_user)):
-    try:
-        adb_path = _find_adb()
-        result = await asyncio.to_thread(
-            subprocess.run, [adb_path, "devices"],
-            capture_output=True, timeout=10
-        )
-        lines   = result.stdout.decode("utf-8", errors="replace").strip().splitlines()
-        devices = [l.split("\t")[0].strip() for l in lines[1:] if "\t" in l and "device" in l.split("\t")[1]]
-        return {"devices": devices}
-    except FileNotFoundError:
-        raise HTTPException(500, "ADB bulunamadı")
+    # Tüm cihaz sunucuları (yerel + uzak); "devices" listesi eski biçimde (seri no) kalır
+    found, _ = await asyncio.to_thread(dnodes.discover)
+    ready = [d for d in found if d["adb_state"] == "device"]
+    busy = {d: {"holder": h["display"], "mine": h["user_id"] == current_user.id,
+                "purposes": leases.purposes_text(h)}
+            for d, h in leases.all_holders().items()}
+    return {"devices": [d["id"] for d in ready], "busy": busy,
+            "info": {d["id"]: {"model": d["model"], "node": d["node_name"]} for d in ready}}
 
 
 @router.get("/adb/activity")
 async def adb_get_activity(device_id: str, app_package: str, current_user: User = Depends(get_current_user)):
     try:
-        adb_path = _find_adb()
-        result = await asyncio.to_thread(
-            subprocess.run,
-            [adb_path, "-s", device_id, "shell", "cmd", "package", "resolve-activity", "--brief", app_package],
-            capture_output=True, timeout=10
-        )
+        cmd = await asyncio.to_thread(dnodes.adb_cmd, device_id, "shell", "cmd", "package",
+                                      "resolve-activity", "--brief", app_package)
+        result = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, timeout=10)
         output = result.stdout.decode("utf-8", errors="replace").strip()
         for line in output.splitlines():
             if "/" in line and app_package in line:
@@ -4133,14 +4945,20 @@ async def adb_get_activity(device_id: str, app_package: str, current_user: User 
 
 
 @router.post("/generate")
-async def generate_script(req: GenerateRequest, current_user: User = Depends(get_current_user)):
+async def generate_script(req: GenerateRequest, current_user: User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
     """
     Hibrit dönüşüm:
     - Kural motoru → standart adımlar
     - LLM          → tanınmayanlar
     - Vision helper → runtime fallback (script içine gömülü)
     """
-    steps_code, report = await _generate_steps(req)
+    tok = _MOBILE_LOCATORS.set(_locator_lookup(current_user.id, db, req.locator_file)
+                               if req.platform == "mobile" else None)
+    try:
+        steps_code, report = await _generate_steps(req)
+    finally:
+        _MOBILE_LOCATORS.reset(tok)
 
     vars_seed = _get_step_vars(current_user.id) if req.single_step_test else None
 
@@ -4195,6 +5013,22 @@ async def execute_script(
             raise HTTPException(423, "Şu an başka bir desktop testi çalışıyor. Lütfen bekleyin.")
 
     run_id     = str(uuid.uuid4())[:8]
+
+    # Mobil koşum telefonu koşum boyunca kiralar (başkasının oturumu/koşumu varken reddedilir).
+    # Telefon, üretilen script'teki udid'den okunur; yoksa tek bağlı telefon.
+    run_device, run_lease = "", None
+    if req.platform == "mobile":
+        _um = re.search(r'options\.udid\s*=\s*["\']([^"\']+)["\']', req.script)
+        run_device = _um.group(1) if _um else await asyncio.to_thread(_resolve_device, "")
+        try:
+            run_lease = leases.acquire(run_device, current_user, "run",
+                                       req.scenario_name or "Adsız Senaryo", ref=run_id)
+        except leases.DeviceBusyError as e:
+            raise _busy_http(e)
+
+    def _release_run_device():
+        leases.release(run_device, run_lease)   # iki kez çağrılması zararsız
+
     log_dir    = _run_log_dir(current_user.id, db)
     started_at = _datetime.datetime.utcnow().isoformat()
     step_outcomes: dict[int, str] = {}   # idx -> "pass" | "fail"
@@ -4203,6 +5037,20 @@ async def execute_script(
     os.close(_stop_fd)
     os.unlink(stop_file)  # Dosya yokluğu = devam; varlığı = dur sinyali
     _stop_files[run_id] = stop_file
+
+    # Uygulama haritası: mobil koşumda ekran izi tutulur, koşum bitince arka planda
+    # haritaya işlenir (ai_config.json → "app_map_auto": false ile kapatılabilir)
+    map_trace_dir = ""
+    map_recover = "1"   # kendini toparlama ("app_map_recovery": false ile kapatılır)
+    if req.platform == "mobile":
+        try:
+            from services.ai_service import get_ai_config as _gac
+            _mcfg = _gac()
+            if _mcfg.get("app_map_auto", True):
+                map_trace_dir = tempfile.mkdtemp(prefix=f"ai_maptrace_{run_id}_")
+            map_recover = "1" if _mcfg.get("app_map_recovery", True) else "0"
+        except Exception:
+            map_trace_dir = ""
 
     async def stream():
         nonlocal step_outcomes
@@ -4231,7 +5079,8 @@ async def execute_script(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8",
-                     "_AI_STOP_FILE": stop_file},
+                     "_AI_STOP_FILE": stop_file, "_AI_MAP_TRACE": map_trace_dir,
+                     "_AI_MAP_RECOVER": map_recover},
             )
             if sys.platform == "win32":
                 _popen_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -4322,6 +5171,20 @@ async def execute_script(
             except Exception:
                 pass
 
+            # ── Uygulama haritası: izi arka planda işle (OCR koşumu yavaşlatmasın) ──
+            if map_trace_dir:
+                import threading as _thr
+                from services.app_map_service import process_run_trace as _prt
+                _labels, _outs, _user = list(req.step_labels), dict(step_outcomes), current_user.username
+
+                def _map_job():
+                    try:
+                        _sm = _prt(map_trace_dir, _labels, _outs, _user)
+                        print(f"[APP-MAP] run {run_id}: {_sm}")
+                    except Exception as _me:
+                        print(f"[APP-MAP] run {run_id} işlenemedi: {_me}")
+                _thr.Thread(target=_map_job, daemon=True).start()
+
             # Yalnizca BU istek gercekten kilidi aldiysa serbest birakilir (bkz.
             # ai_job_service._run_job_cells'teki ayni duzeltme / final review notu).
             if desktop_lock_held:
@@ -4329,11 +5192,15 @@ async def execute_script(
                     _get_desktop_lock().release()
                 except RuntimeError:
                     pass
+            _release_run_device()
 
             yield _sse("done", "")
 
+    # background: istemci akışı hiç okumadan koparsa (generator başlamazsa) da kira bırakılır
+    from starlette.background import BackgroundTask
     return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                             background=BackgroundTask(_release_run_device))
 
 
 class SessionStartRequest(BaseModel):
@@ -4354,15 +5221,41 @@ async def session_start(req: SessionStartRequest, current_user: User = Depends(g
     if _get_session(current_user.id, req.platform):
         raise HTTPException(409, "Bu platform için zaten aktif bir oturum var.")
 
+    device_id, lease_token = req.device_id or "", None
+    if req.platform == "mobile":
+        device_id = await asyncio.to_thread(_resolve_device, req.device_id)
+        try:
+            lease_token = leases.acquire(device_id, current_user, "session", req.app_package or "")
+        except leases.DeviceBusyError as e:
+            raise _busy_http(e)
+    try:
+        return await _session_start(req, current_user, device_id, lease_token)
+    except BaseException:
+        leases.release(device_id, lease_token)   # oturum açılamadı → telefon boşa düşer
+        raise
+
+
+async def _session_start(req: "SessionStartRequest", current_user: User, device_id: str,
+                         lease_token: Optional[str]):
     _reset_step_vars(current_user.id)
 
     gen_req = GenerateRequest(
         platform=req.platform, browser=req.browser, target_url=req.target_url,
-        device_id=req.device_id, app_package=req.app_package, app_activity=req.app_activity,
+        device_id=device_id, app_package=req.app_package, app_activity=req.app_activity,
         appium_url=req.appium_url,
     )
-    build_fn = _build_mobile_template if req.platform == "mobile" else _build_web_template
-    script = build_fn(gen_req, "", session_mode="start")
+    mjpeg_port = 0
+    if req.platform == "mobile":
+        # Canlı MJPEG akışı yalnız yerel telefonda: Appium akış portunu telefonun takılı olduğu
+        # makinenin localhost'una yönlendirir, uzak telefonda VM'den erişilemez → adb ekran görüntüsü
+        if not dnodes.is_remote(device_id):
+            import socket as _sock
+            with _sock.socket() as _s:          # boş yerel port (birden fazla telefon/oturum çakışmasın)
+                _s.bind(("127.0.0.1", 0))
+                mjpeg_port = _s.getsockname()[1]
+        script = _build_mobile_template(gen_req, "", session_mode="start", mjpeg_port=mjpeg_port)
+    else:
+        script = _build_web_template(gen_req, "", session_mode="start")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8", prefix="ai_session_start_") as f:
         f.write(script)
@@ -4380,11 +5273,14 @@ async def session_start(req: SessionStartRequest, current_user: User = Depends(g
                 [sys.executable, tmp], stdout=out_f, stderr=out_f,
                 env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
             )
+            # iPhone: WebDriverAgent ilk açılışta derlenip yüklenir (birkaç dakika sürebilir)
+            is_ios = req.platform == "mobile" and dnodes.platform_for(device_id) == "ios"
             try:
-                proc.wait(timeout=60)
+                await asyncio.to_thread(proc.wait, 300 if is_ios else 60)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                raise HTTPException(500, "Oturum başlatma zaman aşımına uğradı.")
+                raise HTTPException(500, "Oturum başlatma zaman aşımına uğradı."
+                                    + (" (iPhone: WebDriverAgent imzalama/kurulumunu kontrol edin)" if is_ios else ""))
 
         out = Path(out_path).read_text(encoding="utf-8", errors="replace")
         sid_m = re.search(r"SESSION_ID:\s*(\S+)", out)
@@ -4394,6 +5290,11 @@ async def session_start(req: SessionStartRequest, current_user: User = Depends(g
         _active_sessions[(current_user.id, req.platform)] = {
             "session_id": sid_m.group(1),
             "command_executor_url": url_m.group(1),
+            "app_package": req.app_package or "",   # uygulama haritası kayıt modu için
+            "device_id": device_id,
+            "device_os": "ios" if is_ios else ("android" if req.platform == "mobile" else ""),
+            "lease_token": lease_token,             # _remove_session telefon kirasını bırakır
+            "mjpeg_port": mjpeg_port,
             "started_at": _time_mod.time(),
             "last_used_at": _time_mod.time(),
         }
@@ -4420,17 +5321,25 @@ class SessionRunStepRequest(BaseModel):
     platform:    str
     step:        StepItem
     step_label:  Optional[str] = "Adım"
+    locator_file: Optional[str] = ""
 
 
 @router.post("/session/run-step")
-async def session_run_step(req: SessionRunStepRequest, current_user: User = Depends(get_current_user)):
+async def session_run_step(req: SessionRunStepRequest, current_user: User = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
     """Aktif oturuma bağlanıp TEK bir adımı, önceki adımların bıraktığı durumdan devam ederek çalıştırır."""
     sess = _get_session(current_user.id, req.platform)
     if not sess:
         raise HTTPException(404, "Aktif oturum yok. Önce oturumu başlatın.")
 
-    gen_req = GenerateRequest(platform=req.platform, steps_list=[req.step])
-    steps_code, report = await _generate_steps(gen_req)
+    gen_req = GenerateRequest(platform=req.platform, steps_list=[req.step],
+                              device_id=sess.get("device_id", ""))   # uzak telefonda adb ortamı için
+    tok = _MOBILE_LOCATORS.set(_locator_lookup(current_user.id, db, req.locator_file)
+                               if req.platform == "mobile" else None)
+    try:
+        steps_code, report = await _generate_steps(gen_req)
+    finally:
+        _MOBILE_LOCATORS.reset(tok)
     build_fn = _build_mobile_template if req.platform == "mobile" else _build_web_template
     script = build_fn(
         gen_req, steps_code, session_mode="attach",
@@ -4472,7 +5381,7 @@ async def session_end(platform: str, current_user: User = Depends(get_current_us
     if not sess:
         raise HTTPException(404, "Aktif oturum yok.")
 
-    gen_req = GenerateRequest(platform=platform)
+    gen_req = GenerateRequest(platform=platform, device_id=sess.get("device_id", ""))
     build_fn = _build_mobile_template if platform == "mobile" else _build_web_template
     script = build_fn(
         gen_req, "", session_mode="end",
@@ -4508,7 +5417,8 @@ async def session_end(platform: str, current_user: User = Depends(get_current_us
 @router.get("/session/status")
 async def session_status(platform: str, current_user: User = Depends(get_current_user)):
     sess = _get_session(current_user.id, platform)
-    return {"active": sess is not None, "started_at": sess["started_at"] if sess else None}
+    return {"active": sess is not None, "started_at": sess["started_at"] if sess else None,
+            "device_id": (sess or {}).get("device_id", ""), "device_os": (sess or {}).get("device_os", "")}
 
 
 @router.get("/run-logs")

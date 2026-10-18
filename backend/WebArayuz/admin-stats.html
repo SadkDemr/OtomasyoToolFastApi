@@ -140,6 +140,26 @@
                     <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:5px;">Gemini API Key</label>
                     <input id="cfgGeminiKey" type="password" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;" placeholder="Yeni key girin (boş bırakırsanız değişmez)">
                 </div>
+                <div style="border-top:1px solid var(--border-color);margin:14px 0 12px;padding-top:12px;font-size:0.85rem;font-weight:600;">Evren Modeli (mobil ekran)</div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:5px;">Predict URL</label>
+                    <input id="cfgEvrenUrl" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;" placeholder="https://api.ssyz.org.tr/api/v1/inference/predict">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                    <div>
+                        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:5px;">API Key <span id="cfgEvrenKeyState"></span></label>
+                        <input id="cfgEvrenKey" type="password" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;" placeholder="Boş bırakırsanız değişmez">
+                    </div>
+                    <div>
+                        <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:5px;">Model Version ID</label>
+                        <input id="cfgEvrenVersion" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);font-size:0.88rem;box-sizing:border-box;" placeholder="UUID: 3f2a9c1e-7b4d-...">
+                    </div>
+                </div>
+                <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;">
+                    <input id="cfgEvrenTestFile" type="file" accept="image/*" style="font-size:0.8rem;">
+                    <button onclick="testEvren()" style="padding:6px 14px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:8px;font-size:0.82rem;cursor:pointer;">Test Et</button>
+                </div>
+                <pre id="cfgEvrenResult" style="display:none;max-height:260px;overflow:auto;font-size:0.75rem;background:var(--bg-secondary);padding:10px;border-radius:8px;white-space:pre-wrap;"></pre>
                 <button onclick="saveAiConfig()" style="padding:9px 20px;background:var(--accent-primary);color:#fff;border:none;border-radius:8px;font-size:0.88rem;cursor:pointer;font-weight:600;">Kaydet</button>
                 <span id="cfgMsg" style="font-size:0.82rem;margin-left:12px;color:var(--text-muted);"></span>
             </div>
@@ -401,15 +421,22 @@
             const d = await r.json();
             document.getElementById("cfgOllamaUrl").value   = d.ollama_url   || "";
             document.getElementById("cfgOllamaModel").value = d.ollama_model || "";
+            document.getElementById("cfgEvrenUrl").value     = d.evren_api_url || "";
+            document.getElementById("cfgEvrenVersion").value = d.evren_model_version_id || "";
+            document.getElementById("cfgEvrenKeyState").textContent = d.evren_configured ? `(kayıtlı: ${d.evren_masked_key})` : "(yok)";
         } catch {}
     }
 
     window.saveAiConfig = async function () {
+        let r_ok_reload = false;
         const msg  = document.getElementById("cfgMsg");
         const body = {
             ollama_url:     document.getElementById("cfgOllamaUrl").value.trim(),
             ollama_model:   document.getElementById("cfgOllamaModel").value.trim(),
             gemini_api_key: document.getElementById("cfgGeminiKey").value.trim(),
+            evren_api_url:          document.getElementById("cfgEvrenUrl").value.trim(),
+            evren_api_key:          document.getElementById("cfgEvrenKey").value.trim(),
+            evren_model_version_id: document.getElementById("cfgEvrenVersion").value.trim(),
         };
         try {
             const r = await fetch(`${API}/admin/ai-config`, {
@@ -418,9 +445,28 @@
             });
             const d = await r.json();
             msg.textContent = r.ok ? "✓ Kaydedildi" : (d.detail || "Hata");
+            r_ok_reload = r.ok;
             msg.style.color = r.ok ? "#10b981" : "#ef4444";
         } catch { msg.textContent = "Hata"; msg.style.color="#ef4444"; }
         setTimeout(() => { msg.textContent = ""; }, 3000);
+        if (r_ok_reload) { document.getElementById("cfgEvrenKey").value = ""; loadAiConfig(); }
+        return r_ok_reload;
+    };
+
+    window.testEvren = async function () {
+        const out = document.getElementById("cfgEvrenResult");
+        const f = document.getElementById("cfgEvrenTestFile").files[0];
+        out.style.display = "block";
+        if (!f) { out.textContent = "Önce bir ekran görüntüsü seçin."; return; }
+        // Formda girilen (henüz kaydedilmemiş) key/version da test edilsin diye önce kaydet
+        if (!(await saveAiConfig())) { out.textContent = "Ayarlar kaydedilemedi — alanları kontrol edin."; return; }
+        out.textContent = "Gönderiliyor...";
+        const fd = new FormData(); fd.append("file", f);
+        try {
+            const r = await fetch(`${API}/admin/ai-config/evren-test`, { method:"POST", headers: hdrs(), body: fd });
+            const d = await r.json();
+            out.textContent = r.ok ? JSON.stringify(d.response, null, 2) : (d.detail || "Hata");
+        } catch (e) { out.textContent = "Hata: " + e; }
     };
 
     if (!Auth.checkAuth()) return;

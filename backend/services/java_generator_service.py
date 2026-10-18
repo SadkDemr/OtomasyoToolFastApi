@@ -9,8 +9,40 @@ BİREBİR aynıdır (referans: BDD Generator, üretimde çalışan taraf).
 """
 
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 
-from services.appium_codegen_service import action_to_java
+from services.appium_codegen_service import action_to_java, build_android_xpath, has_vars
+from services.locator_service import resolve_xpath
+
+# Kayıt modunda oluşturulan locator dosyası (workspace/locators/<isim>.json) seçiliyse:
+# hedef adı dosyada varsa metinle arama yerine kaydedilmiş XPath kullanılır.
+_LOCATORS: ContextVar[dict | None] = ContextVar("java_gen_locators", default=None)
+_LOCATOR_HITS: ContextVar[list | None] = ContextVar("java_gen_locator_hits", default=None)
+# assert/assert_not_visible: resolve_xpath yalnız yazısız (iconN) kayıtta XPath döndürür
+_LOCATOR_ACTIONS = {"click", "type", "long_press", "clear", "wait_for_element",
+                    "assert", "assert_not_visible"}
+
+
+@contextmanager
+def use_locators(lookup: dict | None):
+    """Bu blokta üretilen adımlar locator dosyasını kullanır (locator_service.build_lookup)."""
+    tok = _LOCATORS.set(lookup or None)
+    try:
+        yield
+    finally:
+        _LOCATORS.reset(tok)
+
+
+@contextmanager
+def track_locator_hits():
+    """Bloktaki adım(lar)da locator dosyasından XPath alınan hedefler → yield edilen liste."""
+    hits: list = []
+    tok = _LOCATOR_HITS.set(hits)
+    try:
+        yield hits
+    finally:
+        _LOCATOR_HITS.reset(tok)
 
 CLICK_WORDS     = r'(?:t[iı]kla|tikla|bas|click|tap|se[cç]|a[cç]|dokun|işaretle)'
 INPUT_WORDS     = r'(?:yaz(?:[ıi]l[ıi]r)?\b|(?<![a-zğışöüçA-ZĞİŞÖÜÇ])gir(?!iş|iyor)|doldur|type|enter\b)'
@@ -311,6 +343,18 @@ def _resolve_target(target: str | None) -> tuple[str | None, str | None]:
 
 
 def _action_java(action: str, target: str | None, param: str | None, s: str, platform: str):
+    # Locator dosyası Android kaydından üretilir; yazılı hedefte doğrulamalar (görülür/
+    # görülmez) metin kontrolü olduğundan metinle aramaya devam eder.
+    lookup = _LOCATORS.get()
+    if (lookup and platform == "android" and action in _LOCATOR_ACTIONS and target
+            and not _looks_like_xpath(target) and not has_vars(target)):
+        fallback = build_android_xpath(target) if action != "type" else None
+        xp = resolve_xpath(lookup, target, action, fallback)
+        if xp:
+            hits = _LOCATOR_HITS.get()
+            if hits is not None:
+                hits.append(target)
+            return action_to_java(action, None, param, s, platform, full_xpath=xp)
     xv, fx = _resolve_target(target)
     return action_to_java(action, xv, param, s, platform, full_xpath=fx)
 

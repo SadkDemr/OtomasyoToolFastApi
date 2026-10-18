@@ -33,3 +33,6 @@ Thumbs.db
 ai_config.json
 
 .superpowers/
+
+# Uygulama haritası (ekran görüntüleri müşteri verisi içerebilir)
+backend/app_maps/

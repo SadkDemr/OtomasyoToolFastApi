@@ -308,7 +308,12 @@
         if (currentPlatform === 'mobile') {
             try {
                 const dRes = await API.get('/ai-gen/adb/devices');
-                units = (dRes.devices || []).map(id => ({ id, name: id }));
+                const busy = dRes.busy || {};
+                units = (dRes.devices || []).map(id => {
+                    const b = busy[id];
+                    const tag = !b ? "" : b.mine ? " — 🔵 sizde" : ` — 🔴 ${b.holder} kullanıyor (job boşalmasını bekler)`;
+                    return { id, name: id + tag };
+                });
             } catch (e) { units = []; }
         } else if (currentPlatform === 'web') {
             units = WEB_BROWSERS;
@@ -585,6 +590,9 @@
             if (event.type === 'cell_update' && currentRunCells[event.cell_id]) {
                 currentRunCells[event.cell_id].status = event.status;
                 renderMatrix();
+            } else if (event.type === 'device_waiting') {
+                // Telefon başka kullanıcıda — job en fazla 10 dk boşalmasını bekler
+                Toast.info(event.message);
             } else if (event.type === 'run_completed') {
                 document.getElementById('stopRunBtn').style.display = 'none';
                 openRunMatrix(runId);  // final hali cek (log_json dahil)
