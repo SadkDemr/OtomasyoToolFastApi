@@ -61,3 +61,15 @@ Ayarlar → Geliştirici → UI Otomasyonu. İlk oturumda WebDriverAgent derleni
 - **Güvenlik:** Mac'teki Appium (4723) kimlik doğrulaması yapmaz; Mac'i yalnızca uygulama
   VM'inin erişebildiği bir ağ bölümünde tutun (ajan anahtarla korunur).
 - Mac mini sürekli açık ve **otomatik girişli** olmalı (LaunchAgent'lar kullanıcı oturumunda çalışır).
+
+### Aynı Mac'e Android telefonlar da takılıysa
+
+```bash
+./setup-macos.sh --team-id <Apple Team ID> --android
+```
+
+Ek olarak güncel adb (`~/otomasyon-node/android-sdk`), Java 17, UiAutomator2 sürücüsü ve ağı
+dinleyen adb servisi (`com.otomasyon.adb`, port 5037) kurulur; Appium hem iPhone hem Android'e
+hizmet verir. Uygulamada aynı Mac için **iki kayıt** eklenir: biri Platform **iOS** (ajan
+anahtarıyla), biri Platform **Android** (adb portu 5037) — ikisinde de Appium `http://<mac-ip>:4723`.
+Bu Mac'te `adb kill-server` demeyin (servisin adb sunucusunu kapatır; servis kendini yeniden başlatır).
