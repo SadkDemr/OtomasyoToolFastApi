@@ -1,30 +1,20 @@
-for s in com.otomasyon.appium com.otomasyon.adb com.otomasyon.ios-agent; do
-  launchctl bootout "gui/$(id -u)/$s" 2>/dev/null
-  rm -f ~/Library/LaunchAgents/$s.plist
-done
-rm -rf ~/otomasyon-node ~/otomasyon-node-setup
-launchctl list | grep otomasyon
-Bu adım üç servisi, logları, ajan anahtarını ve bizim indirdiğimiz adb'yi siliyor. Son komut hiçbir şey yazdırmamalı.
-
-2. Diğerleri bizden mi geldi, bak
-
+1. Şu an ne kurulu, bak:
 bash
-ls -ldT $(brew --prefix)/Cellar/{node,libimobiledevice,openjdk@17} 2>/dev/null
-ls -ldT "$(npm root -g)/appium"
-ls -ldT ~/.appium/node_modules/appium-* 2>/dev/null
 appium -v
-grep -h -E "appium@[0-9]" ~/.npm/_logs/*.log 2>/dev/null | tail -10
-Tarihi bugün olan satırlar bizim kurulumdan geliyor, eski tarihliler zaten vardı. Çıktıyı yapıştır; sadece bugün eklenenleri kaldırmak ve Appium'u eski sürümüne döndürmek için kesin komutları vereyim. Yaklaşık şöyle olacak:
+appium driver list --installed
+grep -h -E "appium@[0-9]|added|changed" ~/.npm/_logs/*.log 2>/dev/null | grep -i appium | tail -10
+npm logları, bizden önce hangi Appium sürümünün kurulu olduğunu gösterebilir.
+
+2. Eski sürümü geri kur. Eski sürüm Appium 3 idiyse ve logda belli bir sürüm görünmüyorsa:
 bash
-brew uninstall openjdk@17
-appium driver uninstall uiautomator2
-npm install -g appium@<eski sürüm>
-Bunları şimdi çalıştırma, yukarıdaki çıktıya göre netleştireceğiz.
+npm install -g appium@3
+appium driver update xcuitest
+appium driver update uiautomator2
+Eski sürüm logda görünüyorsa, örneğin appium@2.11.5:
+bash
+npm install -g appium@2.11.5
+Sürücüleri de mevcut Appium'a uygun sürüme çekmek gerekebilir. Bunu appium driver list --installed çıktısına göre söylerim.
 
-3. Mevcut sistemi yeniden başlat
+3. Mevcut Appium'u yeniden başlat. Mac'i yeniden başlatmak da olur.
 
-Bizim betik Mac'teki adb'yi kapatmıştı. Mac'te önceden çalışan sistemi (GADS ya da kendi Appium'unuz) yeniden başlatın; adb'yi o araç kendisi açar. Emin olmak için Mac'i yeniden başlatmak da yeterli.
-
-4. Uygulamada
-
-Cihaz Havuzu → Cihaz Sunucuları'na 10.40.9.167 için kayıt eklediysen sil.
+İlk komutların çıktısını yapıştır; tam olarak hangi sürüme döneceğimizi söyleyeyim.
